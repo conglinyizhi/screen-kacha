@@ -14,6 +14,8 @@ pub struct Store {
   shot : String
   lock : @async.Mutex
   magick : String?
+  /// 测试用假帧源：设了就不跑 spectacle，直接读这个文件
+  fake : String?
   mut frame : Frame?
   mut cap_ms : Int64
   mut count : Int32
@@ -23,11 +25,16 @@ pub struct Store {
 }
 
 ///|
-pub fn Store::new(shot~ : String, magick~ : String? = None) -> Store {
+pub fn Store::new(
+  shot~ : String,
+  magick~ : String? = None,
+  fake~ : String? = None,
+) -> Store {
   {
     shot,
     lock: @async.Mutex(),
     magick,
+    fake,
     frame: None,
     cap_ms: 0L,
     count: 0,
@@ -63,6 +70,22 @@ pub async fn Store::ensure(self : Store, max_age_ms : Int64) -> Unit {
 ///|
 async fn Store::capture(self : Store) -> Unit {
   let t0 = @async.now()
+  // 假帧源：测试时绕开 spectacle，直接从固定文件读一帧
+  if self.fake is Some(path) {
+    let data = try {
+      let f = @fs.open(path, mode=ReadOnly)
+      let bytes = f.read_all().binary()
+      f.close()
+      bytes
+    } catch {
+      err => {
+        self.record_fail("读假帧失败: \{err}")
+        return
+      }
+    }
+    self.record_ok(data, @async.now() - t0)
+    return
+  }
   // spectacle 是单实例的：别的抓帧客户端占着锁时它会一直等。
   // 没有超时就会永久卡住并一直握着采集锁，所以用 timeout 兜住。
   let code = @process.run("/usr/bin/timeout", [

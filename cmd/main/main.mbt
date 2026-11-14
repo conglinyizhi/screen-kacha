@@ -34,6 +34,11 @@ fn cli_cmd() -> @argparse.Command {
       default_values=["20"],
     ),
     @argparse.OptionArg(
+      "fake",
+      about="测试用：用这张图片当帧源，不跑 spectacle",
+      default_values=[""],
+    ),
+    @argparse.OptionArg(
       "pump",
       about="后台抓帧间隔（毫秒），0 表示不启动后台泵",
       default_values=["200"],
@@ -81,6 +86,7 @@ async fn main {
   let bind = pick(m, "bind", "0.0.0.0")
   let idle = parse_int(pick(m, "idle", "20"), 20)
   let pump = parse_int(pick(m, "pump", "200"), 200)
+  let fake = pick(m, "fake", "")
   let shm = pick(m, "shm", "/tmp/screenstream-mb")
   let max_conns = parse_int(pick(m, "max-conns", "64"), 64)
   @fs.mkdir(shm, permission=0o700, recursive=true) catch {
@@ -93,7 +99,13 @@ async fn main {
       }
   }
   let magick = @store.detect_magick()
-  let store = @store.Store::new(shot="\{shm}/latest.jpg", magick~)
+  let fake_source = if fake == "" { None } else { Some(fake) }
+  // 假帧模式下 shot 直接指向那张图，连拷贝都省了
+  let shot_path = match fake_source {
+    Some(p) => p
+    None => "\{shm}/latest.jpg"
+  }
+  let store = @store.Store::new(shot=shot_path, magick~, fake=fake_source)
   let app = @store.build_app(store, port)
   // reuse_addr：服务重启时旧连接还处于 TIME-WAIT，不开这个 bind 会失败
   let server = @http.Server(

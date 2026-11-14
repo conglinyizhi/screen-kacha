@@ -44,6 +44,17 @@ WAYLAND_DISPLAY=wayland-1 ./_build/native/release/build/cmd/main/main.exe
 而这里的地址是局域网 IP、随时可能变；再加上 robots 已经全站禁止，
 放一份 sitemap 只会自相矛盾。真有公网域名了再加。
 
+## 测试
+
+```bash
+moon test --target native      # 单元测试
+bash scripts/smoke.sh          # 端到端冒烟
+```
+
+冒烟脚本用 `--fake` 指定一张图片当帧源，绕开 spectacle，自己挑一个空闲端口起临时实例，
+把路由、类型、缩放、WebP、帧龄缓存、并发合并都走一遍，跑完就退出。
+不需要显示器，也不碰正在运行的服务。
+
 ## 后台抓帧泵
 
 默认每 200 ms 抓一帧放到缓存里，请求侧直接读缓存，不再每次等 spectacle 那 0.6 秒。
