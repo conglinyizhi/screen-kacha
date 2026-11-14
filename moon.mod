@@ -9,7 +9,7 @@
 //   "moonbitlang/x@0.4.6",
 // }
 
-name = "clyzhi/screenstream"
+name = "conglinyizhi/screenstream"
 
 version = "0.1.0"
 
@@ -23,7 +23,7 @@ keywords = [ ]
 
 preferred_target = "native"
 
-description = ""
+description = "HTTP screen snapshot service for the local desktop (KDE Wayland)"
 
 import {
   "bobzhang/crescent@0.11.2",
