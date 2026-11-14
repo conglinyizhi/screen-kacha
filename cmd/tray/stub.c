@@ -19,6 +19,12 @@ int moonbit_screenstream_run(const char *cmd) {
     setsid();
     pid_t inner = fork();
     if (inner != 0) _exit(0);
+    // 关键：子进程不能继承托盘的 D-Bus socket。
+    // 像 wl-copy 这种常驻命令会一直握着它，导致托盘退出后
+    // 连接不断开，桌面上留下幽灵图标。
+    long max_fd = sysconf(_SC_OPEN_MAX);
+    if (max_fd < 0 || max_fd > 4096) max_fd = 4096;
+    for (int fd = 3; fd < max_fd; fd++) close(fd);
     execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
     _exit(127);
   }
