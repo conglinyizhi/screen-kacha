@@ -1,0 +1,8 @@
+import {
+  "clyzhi/screenstream" @store,
+  "moonbitlang/async",
+}
+
+supported_targets = "+native"
+
+pkgtype(kind: "executable")

@@ -1,0 +1,9 @@
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/process",
+  "moonbitlang/core/encoding/utf8" @utf8,
+  "bobzhang/crescent",
+}
+
+supported_targets = "+native"
