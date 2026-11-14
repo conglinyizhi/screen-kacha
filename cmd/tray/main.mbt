@@ -55,8 +55,7 @@ fn pick(m : @argparse.Matches, name : String, dflt : String) -> String {
 
 ///|
 /// 菜单标题只放短提示，完整 JSON 走「复制健康 JSON」。
-fn health_summary(base : String) -> String {
-  let text = capture("curl -s --max-time 2 '\{base}/health'", 2048)
+fn shorten(text : String) -> String {
   if text.length() == 0 {
     return "服务未响应"
   }
@@ -87,6 +86,8 @@ fn main raise {
 
   })
   status.set_enabled(false)
+  // 自绘图标就绪，但 moonsni 0.1.4 的 IconPixmap 编码会让 dbus-daemon 断开连接，
+  // 暂时仍用主题图标；修好库再接线。
 
   t.on("open", "打开网页", fn(_) { sh("xdg-open '\{base}/'") }) |> ignore
   t.on("copy_url", "复制地址", fn(_) {
@@ -103,7 +104,8 @@ fn main raise {
   |> ignore
   t.separator()
   t.on("refresh", "刷新状态", fn(_) {
-    status.set_title("端口 \{port} · \{health_summary(base)}")
+    let h = capture("curl -s --max-time 2 '\{base}/health'", 2048)
+    status.set_title("端口 \{port} · \{shorten(h)}")
   })
   |> ignore
   t.on("restart", "重启服务", fn(_) {
@@ -111,6 +113,11 @@ fn main raise {
   })
   |> ignore
   t.separator()
+  // 左键点图标也刷新一次，顺手重画灯
+  t.on_click(fn(_x, _y) {
+    let h = capture("curl -s --max-time 2 '\{base}/health'", 2048)
+    status.set_title("端口 \{port} · \{shorten(h)}")
+  })
   t.on("quit", "退出托盘", fn(_) { exit_now(0) }) |> ignore
   match t.run() {
     Ok(_) => eprintln("托盘事件循环已结束")

@@ -39,6 +39,7 @@ pub struct Store {
   shot : String
   lock : @async.Mutex
   magick : String?
+  fake : String?
   mut frame : Frame?
   mut cap_ms : Int64
   mut count : Int32
@@ -55,7 +56,7 @@ pub fn Store::err(Self) -> String
 pub fn Store::fails(Self) -> Int32
 pub fn Store::has_magick(Self) -> Bool
 pub fn Store::magick(Self) -> String?
-pub fn Store::new(shot~ : String, magick? : String?) -> Self
+pub fn Store::new(shot~ : String, magick? : String?, fake? : String?) -> Self
 pub fn Store::next_tmp(Self, String) -> String
 pub fn Store::shot(Self) -> String
 
