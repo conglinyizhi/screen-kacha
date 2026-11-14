@@ -33,6 +33,16 @@ WAYLAND_DISPLAY=wayland-1 ./_build/native/release/build/cmd/main/main.exe
 
 `String::to_bytes()` 产出的是 UTF-16，文本响应必须用 `@encoding/utf8.encode`，否则浏览器收到的是一堆夹着零字节的东西。
 
+## 后台抓帧泵
+
+默认每 200 ms 抓一帧放到缓存里，请求侧直接读缓存，不再每次等 spectacle 那 0.6 秒。
+`--pump 0` 关掉它，回到按需抓取。
+
+`?age=` 是能接受的最大帧龄，默认 1 秒；要更甜的帧就用 `?age=0.1`，代价是当场触发一次抓取。
+
+抓帧带超时（3 秒）和失败退避：spectacle 是单实例的，被别的抓帧客户端占着时会一直等，
+没有超时就会永久卡住并一直握着采集锁。
+
 ## 依赖
 
 `bobzhang/crescent` 锁在 0.11.2，它依赖 `moonbitlang/async@0.20.3`。0.20.3 没有 `shell` 包，所以调 magick 走文件而不是管道。

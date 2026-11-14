@@ -63,7 +63,11 @@ pub async fn Store::ensure(self : Store, max_age_ms : Int64) -> Unit {
 ///|
 async fn Store::capture(self : Store) -> Unit {
   let t0 = @async.now()
-  let code = @process.run("/usr/bin/spectacle", [
+  // spectacle 是单实例的：别的抓帧客户端占着锁时它会一直等。
+  // 没有超时就会永久卡住并一直握着采集锁，所以用 timeout 兜住。
+  let code = @process.run("/usr/bin/timeout", [
+    "3",
+    "/usr/bin/spectacle",
     "-f",
     "-b",
     "-n",
@@ -74,6 +78,12 @@ async fn Store::capture(self : Store) -> Unit {
       self.record_fail("spectacle 调用失败: \{err}")
       return
     }
+  }
+  if code == 124 {
+    self.record_fail(
+      "spectacle 超过 8 秒未完成（多半被别的抓帧进程占着），已中止",
+    )
+    return
   }
   if code != 0 {
     self.record_fail("spectacle 退出码 \{code}")

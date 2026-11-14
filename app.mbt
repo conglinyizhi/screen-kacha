@@ -192,7 +192,7 @@ async fn handle_snapshot(
       }
       let raw_age = match query_age {
         Some(v) => parse_seconds_ms(v)
-        None => Some(400L)
+        None => Some(1000L)
       }
       let max_age = match raw_age {
         Some(ms) =>
@@ -203,7 +203,7 @@ async fn handle_snapshot(
           } else {
             ms
           }
-        None => 400L
+        None => 1000L
       }
       store.ensure(max_age)
       match store.bytes() {

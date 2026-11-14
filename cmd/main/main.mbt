@@ -33,6 +33,11 @@ fn cli_cmd() -> @argparse.Command {
       about="无人请求时的保活间隔（秒），0 表示不保活",
       default_values=["20"],
     ),
+    @argparse.OptionArg(
+      "pump",
+      about="后台抓帧间隔（毫秒），0 表示不启动后台泵",
+      default_values=["200"],
+    ),
     @argparse.OptionArg("shm", about="帧文件存放目录", default_values=[
       "/tmp/screenstream-mb",
     ]),
@@ -40,6 +45,22 @@ fn cli_cmd() -> @argparse.Command {
       "64",
     ]),
   ])
+}
+
+///|
+/// 后台抓帧泵：抓完睡 interval_ms 再抓，请求侧直接读缓存，不必等采集。
+async fn pump_loop(store : @store.Store, interval_ms : Int32) -> Unit {
+  let mut last_fails = store.fails()
+  for ;; {
+    store.ensure(0L)
+    // 抓帧失败（多半是单实例锁被别人占着）就退避，别和对方互相堵
+    if store.fails() > last_fails {
+      last_fails = store.fails()
+      @async.sleep(1000)
+    } else {
+      @async.sleep(interval_ms)
+    }
+  }
 }
 
 ///|
@@ -59,6 +80,7 @@ async fn main {
   let port = parse_int(pick(m, "port", "18940"), 18940)
   let bind = pick(m, "bind", "0.0.0.0")
   let idle = parse_int(pick(m, "idle", "20"), 20)
+  let pump = parse_int(pick(m, "pump", "200"), 200)
   let shm = pick(m, "shm", "/tmp/screenstream-mb")
   let max_conns = parse_int(pick(m, "max-conns", "64"), 64)
   @fs.mkdir(shm, permission=0o700, recursive=true) catch {
@@ -73,11 +95,15 @@ async fn main {
     None => "未找到，缩放与 WebP 将退回原图"
   }
   eprintln(
-    "screenstream-mb v0.1 监听 \{bind}:\{port}  帧目录 \{shm}  保活 \{idle}s  并发上限 \{max_conns}",
+    "screenstream-mb v0.1 监听 \{bind}:\{port}  帧目录 \{shm}  泵 \{pump}ms  并发上限 \{max_conns}",
   )
   eprintln("  ImageMagick: \{magick_note}")
   @async.with_task_group() <| group => {
-    group.spawn_bg(no_wait=true) <| async fn() { idle_loop(store, idle) }
+    if pump > 0 {
+      group.spawn_bg(no_wait=true) <| async fn() { pump_loop(store, pump) }
+    } else {
+      group.spawn_bg(no_wait=true) <| async fn() { idle_loop(store, idle) }
+    }
     app.serve_on(
       server,
       options=@crescent.NativeServeOptions(
