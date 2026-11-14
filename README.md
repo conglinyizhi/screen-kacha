@@ -33,6 +33,17 @@ WAYLAND_DISPLAY=wayland-1 ./_build/native/release/build/cmd/main/main.exe
 
 `String::to_bytes()` 产出的是 UTF-16，文本响应必须用 `@encoding/utf8.encode`，否则浏览器收到的是一堆夹着零字节的东西。
 
+## 静态文件
+
+`/skill.md`、`/robots.txt`、`/llms.txt` 优先读工作目录下的同名文件（可以改，改完不用重编），
+读不到就用编进二进制的兜底内容。所以单文件部署也能用。
+
+`robots.txt` 是 `Disallow: /`：这套服务只给本地 agent 用，画面是桌面内容，不该被任何爬虫索引。
+
+没有 `sitemap.xml`。它是给搜索引擎的索引清单，规范要求填绝对地址，
+而这里的地址是局域网 IP、随时可能变；再加上 robots 已经全站禁止，
+放一份 sitemap 只会自相矛盾。真有公网域名了再加。
+
 ## 后台抓帧泵
 
 默认每 200 ms 抓一帧放到缓存里，请求侧直接读缓存，不再每次等 spectacle 那 0.6 秒。

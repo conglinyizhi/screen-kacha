@@ -248,6 +248,12 @@ pub fn build_app(store : Store, port : Int32) -> @crescent.App {
   })
   app.get("/health", fn(_ev) { handle_health(store, port).to_responder() })
   app.get("/skill.md", async fn(_ev) { handle_skill().to_responder() })
+  app.get("/robots.txt", async fn(_ev) {
+    handle_text_file("robots.txt", "text/plain; charset=utf-8", fallback_robots).to_responder()
+  })
+  app.get("/llms.txt", async fn(_ev) {
+    handle_text_file("llms.txt", "text/plain; charset=utf-8", fallback_llms).to_responder()
+  })
   app.get("/:file", async fn(ev) {
     match ev.param("file") {
       Some(name) =>
