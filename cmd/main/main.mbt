@@ -84,12 +84,22 @@ async fn main {
   let shm = pick(m, "shm", "/tmp/screenstream-mb")
   let max_conns = parse_int(pick(m, "max-conns", "64"), 64)
   @fs.mkdir(shm, permission=0o700, recursive=true) catch {
-    err => eprintln("创建帧目录失败：\{err}")
+    err =>
+      // 目录已存在是正常情况（重启时），只有真的建不出来才报
+      if @fs.exists(shm) {
+        ()
+      } else {
+        eprintln("创建帧目录失败：\{err}")
+      }
   }
   let magick = @store.detect_magick()
   let store = @store.Store::new(shot="\{shm}/latest.jpg", magick~)
   let app = @store.build_app(store, port)
-  let server = @http.Server(@socket.Addr::parse("\{bind}:\{port}"))
+  // reuse_addr：服务重启时旧连接还处于 TIME-WAIT，不开这个 bind 会失败
+  let server = @http.Server(
+    @socket.Addr::parse("\{bind}:\{port}"),
+    reuse_addr=true,
+  )
   let magick_note = match magick {
     Some(m) => m
     None => "未找到，缩放与 WebP 将退回原图"
