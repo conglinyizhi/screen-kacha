@@ -7,7 +7,9 @@ extern "c" fn run_shell(cmd : Bytes) -> Int32 = "moonbit_screenstream_run"
 extern "c" fn capture_shell(cmd : Bytes, buf : Bytes, len : Int32) -> Int32 = "moonbit_screenstream_capture"
 
 ///|
-/// 给 C 用的 NUL 结尾字符串。
+extern "c" fn exit_now(code : Int32) -> Unit = "moonbit_screenstream_exit"
+
+///|
 fn cstr(s : String) -> Bytes {
   let src = @utf8.encode(s)
   let n = src.length()
@@ -20,7 +22,6 @@ fn sh(cmd : String) -> Unit {
 }
 
 ///|
-/// 同步跑一条命令，返回去掉尾部空白的输出前 limit 字节。
 fn capture(cmd : String, limit : Int32) -> String {
   let buf = Bytes::makei(limit + 1, fn(_) { 0 })
   let n = capture_shell(cstr(cmd), buf, limit + 1)
@@ -31,12 +32,34 @@ fn capture(cmd : String, limit : Int32) -> String {
 }
 
 ///|
+fn parse_int(s : StringView, dflt : Int32) -> Int32 {
+  if s.length() == 0 {
+    return dflt
+  }
+  let mut n = 0
+  for i in 0..<s.length() {
+    let c = s[i]
+    guard c >= 48 && c <= 57 else { return dflt }
+    n = n * 10 + (c.to_int() - 48)
+  }
+  n
+}
+
+///|
+fn pick(m : @argparse.Matches, name : String, dflt : String) -> String {
+  match m.values.get(name) {
+    Some([v, ..]) => v
+    _ => dflt
+  }
+}
+
+///|
+/// 菜单标题只放短提示，完整 JSON 走「复制健康 JSON」。
 fn health_summary(base : String) -> String {
   let text = capture("curl -s --max-time 2 '\{base}/health'", 2048)
   if text.length() == 0 {
     return "服务未响应"
   }
-  // 菜单标题只放短提示，完整 JSON 走「复制健康 JSON」
   if text.length() > 46 {
     text[0:46].to_owned() + "…"
   } else {
@@ -45,14 +68,24 @@ fn health_summary(base : String) -> String {
 }
 
 ///|
-fn main {
-  let port = 18940
+fn main raise {
+  let cmd = @argparse.Command(
+    "screenstream-tray",
+    about="screenstream 托盘",
+    options=[
+      @argparse.OptionArg("port", about="服务端口", default_values=["8930"]),
+    ],
+  )
+  let m = cmd.parse()
+  let port = parse_int(pick(m, "port", "8930"), 8930)
   let base = "http://127.0.0.1:\{port}"
   let cfg = @sni.default_tray_config(
     "screenstream", "screenstream 屏幕快照", "video-display",
   )
   let t = @sni.tray(cfg)
-  let status = t.on("status", "端口 \{port} · 点击刷新", fn(_) {  })
+  let status = t.on("status", "端口 \{port} · 点「刷新状态」", fn(_) {
+
+  })
   status.set_enabled(false)
 
   t.on("open", "打开网页", fn(_) { sh("xdg-open '\{base}/'") }) |> ignore
@@ -73,7 +106,12 @@ fn main {
     status.set_title("端口 \{port} · \{health_summary(base)}")
   })
   |> ignore
-  t.on("quit", "退出托盘", fn(_) { sh("true") }) |> ignore
+  t.on("restart", "重启服务", fn(_) {
+    sh("systemctl --user restart screenstream-mb.service")
+  })
+  |> ignore
+  t.separator()
+  t.on("quit", "退出托盘", fn(_) { exit_now(0) }) |> ignore
   match t.run() {
     Ok(_) => eprintln("托盘事件循环已结束")
     Err(code) => eprintln("托盘启动失败，错误码 \{code}")

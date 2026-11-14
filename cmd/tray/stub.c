@@ -44,3 +44,9 @@ int moonbit_screenstream_capture(const char *cmd, uint8_t *buf, int32_t len) {
   buf[n] = 0;
   return (int)n;
 }
+
+// 直接退出托盘进程；D-Bus 连接随进程结束由内核关闭。
+MOONBIT_FFI_EXPORT
+void moonbit_screenstream_exit(int32_t code) {
+  _exit(code);
+}

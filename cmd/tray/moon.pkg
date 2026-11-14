@@ -1,4 +1,5 @@
 import {
+  "moonbitlang/core/argparse",
   "conglinyizhi/moonsni/src/tray" @sni,
   "moonbitlang/core/encoding/utf8",
 }
