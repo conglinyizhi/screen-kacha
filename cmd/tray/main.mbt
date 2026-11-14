@@ -74,5 +74,8 @@ fn main {
   })
   |> ignore
   t.on("quit", "退出托盘", fn(_) { sh("true") }) |> ignore
-  t.run() |> ignore
+  match t.run() {
+    Ok(_) => eprintln("托盘事件循环已结束")
+    Err(code) => eprintln("托盘启动失败，错误码 \{code}")
+  }
 }
