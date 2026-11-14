@@ -86,8 +86,8 @@ fn main raise {
 
   })
   status.set_enabled(false)
-  // 自绘图标（icon.mbt）已就绪，但启用了 IconPixmap 元素会让 dbus-daemon 断开连接，
-  // 先继续用主题图标；库那边修好后再接线。
+  // 自绘图标（icon.mbt）已就绪，但带元素的 IconPixmap 会让 dbus-daemon 断开连接，
+  // 先继续用主题图标；库那边定位到根因后再接线。
 
   t.on("open", "打开网页", fn(_) { sh("xdg-open '\{base}/'") }) |> ignore
   t.on("copy_url", "复制地址", fn(_) {
