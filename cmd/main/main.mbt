@@ -76,7 +76,12 @@ async fn main {
     group.spawn_bg(no_wait=true) <| async fn() { idle_loop(store, idle) }
     app.serve_on(
       server,
-      options=@crescent.NativeServeOptions(max_connections=max_conns),
+      options=@crescent.NativeServeOptions(
+        max_connections=max_conns,
+        // 单连接读写超时对齐 Python 版的 15 秒
+        request_body_read_timeout_ms=15000,
+        handler_timeout_ms=15000,
+      ),
     )
   }
 }

@@ -9,6 +9,52 @@ fn digit_of(c : UInt16) -> Int32 {
 }
 
 ///|
+/// 解析查询参数里的秒数，支持整数和小数，返回毫秒。
+fn parse_seconds_ms(s : StringView) -> Int64? {
+  if s.length() == 0 {
+    return None
+  }
+  let mut int_part = 0L
+  let mut frac = 0L
+  let mut frac_scale = 1L
+  let mut seen_dot = false
+  for i in 0..<s.length() {
+    let c = s[i]
+    if c == 46 {
+      if seen_dot {
+        return None
+      }
+      seen_dot = true
+      continue
+    }
+    guard is_digit(c) else { return None }
+    let d = digit_of(c).to_int64()
+    if seen_dot {
+      frac_scale = frac_scale * 10L
+      frac = frac * 10L + d
+    } else {
+      int_part = int_part * 10L + d
+    }
+  }
+  Some(int_part * 1000L + frac * 1000L / frac_scale)
+}
+
+///|
+/// 查询参数里的整数宽度，非法返回 None。
+fn parse_width(s : StringView) -> Int32? {
+  if s.length() == 0 || s.length() > 5 {
+    return None
+  }
+  let mut n = 0
+  for i in 0..<s.length() {
+    let c = s[i]
+    guard is_digit(c) else { return None }
+    n = n * 10 + digit_of(c)
+  }
+  Some(n)
+}
+
+///|
 /// 解析 snapshot.jpg / snapshot-1280.jpg / snapshot-1280.webp
 fn parse_snapshot(name : StringView) -> (Int32?, String)? {
   let (stem, fmt) = if name.has_suffix(".jpg") {
@@ -79,11 +125,32 @@ fn handle_health(store : Store, port : Int32) -> @crescent.HttpResponse {
 async fn handle_snapshot(
   store : Store,
   name : StringView,
+  query_w : String?,
+  query_age : String?,
 ) -> @crescent.HttpResponse {
   match parse_snapshot(name) {
     None => not_found("/\{name}")
-    Some((w, fmt)) => {
-      store.ensure(400L)
+    Some((path_w, fmt)) => {
+      let w = match query_w {
+        Some(v) => parse_width(v)
+        None => path_w
+      }
+      let raw_age = match query_age {
+        Some(v) => parse_seconds_ms(v)
+        None => Some(400L)
+      }
+      let max_age = match raw_age {
+        Some(ms) =>
+          if ms < 50L {
+            50L
+          } else if ms > 60000L {
+            60000L
+          } else {
+            ms
+          }
+        None => 400L
+      }
+      store.ensure(max_age)
       match store.bytes() {
         None =>
           make_res(
@@ -145,7 +212,13 @@ pub fn build_app(store : Store, port : Int32) -> @crescent.App {
   app.get("/skill.md", async fn(_ev) { handle_skill().to_responder() })
   app.get("/:file", async fn(ev) {
     match ev.param("file") {
-      Some(name) => handle_snapshot(store, name).to_responder()
+      Some(name) =>
+        handle_snapshot(
+          store,
+          name,
+          ev.req.get_query("w"),
+          ev.req.get_query("age"),
+        ).to_responder()
       None => not_found("/").to_responder()
     }
   })
