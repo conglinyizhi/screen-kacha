@@ -1,13 +1,22 @@
 ///|
 test "原图路径" {
   inspect(parse_snapshot("snapshot.jpg") is Some((None, "jpg")), content="true")
-  inspect(parse_snapshot("snapshot.webp") is Some((None, "webp")), content="true")
+  inspect(
+    parse_snapshot("snapshot.webp") is Some((None, "webp")),
+    content="true",
+  )
 }
 
 ///|
 test "带宽度的路径" {
-  inspect(parse_snapshot("snapshot-1280.jpg") is Some((Some(1280), "jpg")), content="true")
-  inspect(parse_snapshot("snapshot-640.webp") is Some((Some(640), "webp")), content="true")
+  inspect(
+    parse_snapshot("snapshot-1280.jpg") is Some((Some(1280), "jpg")),
+    content="true",
+  )
+  inspect(
+    parse_snapshot("snapshot-640.webp") is Some((Some(640), "webp")),
+    content="true",
+  )
 }
 
 ///|

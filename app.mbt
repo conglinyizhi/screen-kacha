@@ -4,13 +4,13 @@ fn is_digit(c : UInt16) -> Bool {
 }
 
 ///|
-fn digit_of(c : UInt16) -> Int {
+fn digit_of(c : UInt16) -> Int32 {
   c.to_int() - 48
 }
 
 ///|
 /// 解析 snapshot.jpg / snapshot-1280.jpg / snapshot-1280.webp
-fn parse_snapshot(name : StringView) -> (Int?, String)? {
+fn parse_snapshot(name : StringView) -> (Int32?, String)? {
   let (stem, fmt) = if name.has_suffix(".jpg") {
     (name[:name.length() - 4], "jpg")
   } else if name.has_suffix(".webp") {
@@ -36,7 +36,7 @@ fn parse_snapshot(name : StringView) -> (Int?, String)? {
 }
 
 ///|
-fn clamp_width(w : Int?) -> Int? {
+fn clamp_width(w : Int32?) -> Int32? {
   match w {
     None => None
     Some(v) => Some(if v < 160 { 160 } else if v > 3840 { 3840 } else { v })
@@ -44,7 +44,11 @@ fn clamp_width(w : Int?) -> Int? {
 }
 
 ///|
-fn make_res(code : @crescent.StatusCode, ctype : String, body : Bytes) -> @crescent.HttpResponse {
+fn make_res(
+  code : @crescent.StatusCode,
+  ctype : String,
+  body : Bytes,
+) -> @crescent.HttpResponse {
   @crescent.HttpResponse::HttpResponse(
     status_code=code,
     headers={ "Content-Type": ctype, "Cache-Control": "no-store" },
@@ -72,7 +76,10 @@ fn handle_health(store : Store, port : Int32) -> @crescent.HttpResponse {
 }
 
 ///|
-async fn handle_snapshot(store : Store, name : StringView) -> @crescent.HttpResponse {
+async fn handle_snapshot(
+  store : Store,
+  name : StringView,
+) -> @crescent.HttpResponse {
   match parse_snapshot(name) {
     None => not_found("/\{name}")
     Some((w, fmt)) => {
@@ -117,20 +124,24 @@ async fn handle_skill() -> @crescent.HttpResponse {
   } catch {
     _ => fallback_skill
   }
-  make_res(@crescent.StatusCode::OK, "text/markdown; charset=utf-8", @utf8.encode(text))
+  make_res(
+    @crescent.StatusCode::OK,
+    "text/markdown; charset=utf-8",
+    @utf8.encode(text),
+  )
 }
 
 ///|
 pub fn build_app(store : Store, port : Int32) -> @crescent.App {
   let app = @crescent.App()
-  app.get("/", async fn(_ev) {
+  app.get("/", fn(_ev) {
     make_res(
       @crescent.StatusCode::OK,
       "text/html; charset=utf-8",
       @utf8.encode(page_html),
     ).to_responder()
   })
-  app.get("/health", async fn(_ev) { handle_health(store, port).to_responder() })
+  app.get("/health", fn(_ev) { handle_health(store, port).to_responder() })
   app.get("/skill.md", async fn(_ev) { handle_skill().to_responder() })
   app.get("/:file", async fn(ev) {
     match ev.param("file") {
@@ -138,6 +149,6 @@ pub fn build_app(store : Store, port : Int32) -> @crescent.App {
       None => not_found("/").to_responder()
     }
   })
-  app.get("/**", async fn(ev) { not_found(ev.req.path()).to_responder() })
+  app.get("/**", fn(ev) { not_found(ev.req.path()).to_responder() })
   app
 }

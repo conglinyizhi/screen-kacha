@@ -1,0 +1,47 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "clyzhi/screenstream"
+
+import {
+  "bobzhang/crescent",
+  "moonbitlang/async",
+}
+
+// Values
+pub fn build_app(Store, Int32) -> @crescent.App
+
+pub fn not_found_text(String) -> String
+
+pub async fn render_file(String, String, Int32?) -> Bytes?
+
+// Errors
+
+// Types and methods
+pub struct Frame {
+  bytes : Bytes
+  ts : Int64
+}
+
+pub struct Store {
+  shot : String
+  lock : @async.Mutex
+  mut frame : Frame?
+  mut cap_ms : Int64
+  mut count : Int32
+  mut fails : Int32
+  mut err : String
+  mut seq : Int32
+}
+pub fn Store::age_ms(Self) -> Int64
+pub fn Store::bytes(Self) -> Bytes?
+pub fn Store::cap_ms(Self) -> Int64
+pub fn Store::count(Self) -> Int32
+pub async fn Store::ensure(Self, Int64) -> Unit
+pub fn Store::err(Self) -> String
+pub fn Store::fails(Self) -> Int32
+pub fn Store::new(shot~ : String) -> Self
+pub fn Store::next_tmp(Self, String) -> String
+pub fn Store::shot(Self) -> String
+
+// Type aliases
+
+// Traits

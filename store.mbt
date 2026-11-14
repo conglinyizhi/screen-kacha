@@ -38,7 +38,7 @@ pub fn Store::new(shot~ : String) -> Store {
 ///|
 fn Store::fresh(self : Store, max_age_ms : Int64) -> Bool {
   match self.frame {
-    Some(f) => (@async.now() - f.ts) <= max_age_ms
+    Some(f) => @async.now() - f.ts <= max_age_ms
     None => false
   }
 }
@@ -61,9 +61,13 @@ pub async fn Store::ensure(self : Store, max_age_ms : Int64) -> Unit {
 ///|
 async fn Store::capture(self : Store) -> Unit {
   let t0 = @async.now()
-  let code = try {
-    @process.run("/usr/bin/spectacle", ["-f", "-b", "-n", "-o", self.shot])
-  } catch {
+  let code = @process.run("/usr/bin/spectacle", [
+    "-f",
+    "-b",
+    "-n",
+    "-o",
+    self.shot,
+  ]) catch {
     err => {
       self.fails += 1
       self.err = "spectacle 调用失败: \{err}"
@@ -90,7 +94,7 @@ async fn Store::capture(self : Store) -> Unit {
   self.cap_ms = @async.now() - t0
   self.count += 1
   self.err = ""
-  self.frame = Some({ bytes: data, ts: @async.now() })
+  self.frame = Some({ bytes: data, ts: @async.now(), })
 }
 
 ///|
