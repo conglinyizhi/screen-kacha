@@ -119,3 +119,100 @@ async test "路由：非法快照名不触发采集，直接 404" {
     assert_true(code is @crescent.StatusCode::NotFound)
   }
 }
+
+///|
+test "render_plan：不需要 magick 时直通" {
+  assert_true(render_plan(None, "jpg", true) is RenderPlan::Passthrough)
+  assert_true(render_plan(None, "jpg", false) is RenderPlan::Passthrough)
+}
+
+///|
+test "render_plan：缺 magick 时降级而不是报错" {
+  assert_true(render_plan(Some(1280), "jpg", false) is RenderPlan::Downgrade)
+  assert_true(render_plan(None, "webp", false) is RenderPlan::Downgrade)
+}
+
+///|
+test "render_plan：有 magick 时正常渲染" {
+  assert_true(render_plan(Some(1280), "jpg", true) is RenderPlan::Render)
+  assert_true(render_plan(None, "webp", true) is RenderPlan::Render)
+}
+
+///|
+async test "find_magick：按顺序取第一个存在的" {
+  match find_magick(["/nonexistent-a", "/bin/sh", "/bin/ls"]) {
+    Some(p) => assert_eq(p, "/bin/sh")
+    None => assert_true(false)
+  }
+  match find_magick(["/nonexistent-a", "/nonexistent-b"]) {
+    Some(_) => assert_true(false)
+    None => assert_true(true)
+  }
+}
+
+///|
+async test "record_ok 与 record_fail 正确累计" {
+  let store = Store::new(shot="/tmp/none.jpg")
+  store.record_fail("spectacle 退出码 1")
+  assert_eq(store.fails(), 1)
+  assert_eq(store.count(), 0)
+  assert_eq(store.err(), "spectacle 退出码 1")
+  store.record_ok(b"abc", 42L)
+  assert_eq(store.count(), 1)
+  assert_eq(store.cap_ms(), 42L)
+  assert_eq(store.err(), "")
+  assert_eq(store.bytes(), Some(b"abc"))
+  assert_true(store.age_ms() >= 0L)
+}
+
+///|
+test "health 里带 magick 标志" {
+  let with_magick = Store::new(
+    shot="/tmp/none.jpg",
+    magick=Some("/usr/bin/magick"),
+  )
+  let without = Store::new(shot="/tmp/none.jpg")
+  assert_true(
+    @utf8.decode(handle_health(with_magick, 1).raw_body).contains(
+      "\"magick\": true",
+    ),
+  )
+  assert_true(
+    @utf8.decode(handle_health(without, 1).raw_body).contains(
+      "\"magick\": false",
+    ),
+  )
+}
+
+///|
+async test "缺 magick 时缩放请求退回原图，并带标记头" {
+  let store = Store::new(shot="/tmp/none.jpg")
+  store.record_ok(b"ORIGINAL", 1L)
+  let res = build_image_response(store, b"ORIGINAL", Some(640), "jpg")
+  assert_true(res.status_code is @crescent.StatusCode::OK)
+  expect_header(res.headers, "Content-Type", "image/jpeg")
+  expect_header(res.headers, "X-Screenstream-Fallback", "no-magick")
+  assert_eq(res.raw_body, b"ORIGINAL")
+}
+
+///|
+async test "缺 magick 时 WebP 请求同样退回 JPEG" {
+  let store = Store::new(shot="/tmp/none.jpg")
+  let res = build_image_response(store, b"RAW", None, "webp")
+  expect_header(res.headers, "Content-Type", "image/jpeg")
+  expect_header(res.headers, "X-Screenstream-Fallback", "no-magick")
+  assert_eq(res.raw_body, b"RAW")
+}
+
+///|
+async test "不需要换算时直通原字节，不带降级头" {
+  let store = Store::new(shot="/tmp/none.jpg", magick=Some("/usr/bin/magick"))
+  let res = build_image_response(store, b"RAW", None, "jpg")
+  assert_true(res.status_code is @crescent.StatusCode::OK)
+  expect_header(res.headers, "Content-Type", "image/jpeg")
+  match res.headers.get("X-Screenstream-Fallback") {
+    Some(_) => assert_true(false)
+    None => assert_true(true)
+  }
+  assert_eq(res.raw_body, b"RAW")
+}

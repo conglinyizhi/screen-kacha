@@ -9,9 +9,17 @@ import {
 // Values
 pub fn build_app(Store, Int32) -> @crescent.App
 
+pub fn default_magick_candidates() -> Array[String]
+
+pub async fn detect_magick() -> String?
+
+pub async fn find_magick(Array[String]) -> String?
+
 pub fn not_found_text(String) -> String
 
-pub async fn render_file(String, String, Int32?) -> Bytes?
+pub async fn render_file(String, String, String, Int32?) -> Bytes?
+
+pub fn render_plan(Int32?, String, Bool) -> RenderPlan
 
 // Errors
 
@@ -21,9 +29,16 @@ pub struct Frame {
   ts : Int64
 }
 
+pub enum RenderPlan {
+  Passthrough
+  Downgrade
+  Render
+}
+
 pub struct Store {
   shot : String
   lock : @async.Mutex
+  magick : String?
   mut frame : Frame?
   mut cap_ms : Int64
   mut count : Int32
@@ -38,7 +53,9 @@ pub fn Store::count(Self) -> Int32
 pub async fn Store::ensure(Self, Int64) -> Unit
 pub fn Store::err(Self) -> String
 pub fn Store::fails(Self) -> Int32
-pub fn Store::new(shot~ : String) -> Self
+pub fn Store::has_magick(Self) -> Bool
+pub fn Store::magick(Self) -> String?
+pub fn Store::new(shot~ : String, magick? : String?) -> Self
 pub fn Store::next_tmp(Self, String) -> String
 pub fn Store::shot(Self) -> String
 

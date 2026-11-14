@@ -64,12 +64,18 @@ async fn main {
   @fs.mkdir(shm, permission=0o700, recursive=true) catch {
     err => eprintln("创建帧目录失败：\{err}")
   }
-  let store = @store.Store::new(shot="\{shm}/latest.jpg")
+  let magick = @store.detect_magick()
+  let store = @store.Store::new(shot="\{shm}/latest.jpg", magick~)
   let app = @store.build_app(store, port)
   let server = @http.Server(@socket.Addr::parse("\{bind}:\{port}"))
+  let magick_note = match magick {
+    Some(m) => m
+    None => "未找到，缩放与 WebP 将退回原图"
+  }
   eprintln(
     "screenstream-mb v0.1 监听 \{bind}:\{port}  帧目录 \{shm}  保活 \{idle}s  并发上限 \{max_conns}",
   )
+  eprintln("  ImageMagick: \{magick_note}")
   @async.with_task_group() <| group => {
     group.spawn_bg(no_wait=true) <| async fn() { idle_loop(store, idle) }
     app.serve_on(

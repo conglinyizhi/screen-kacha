@@ -103,6 +103,27 @@ fn make_res(
 }
 
 ///|
+fn make_res_extra(
+  code : @crescent.StatusCode,
+  ctype : String,
+  body : Bytes,
+  extra : Map[String, String],
+) -> @crescent.HttpResponse {
+  let headers : Map[String, String] = {
+    "Content-Type": ctype,
+    "Cache-Control": "no-store",
+  }
+  for k, v in extra {
+    headers[k] = v
+  }
+  @crescent.HttpResponse::HttpResponse(
+    status_code=code,
+    headers~,
+    raw_body=body,
+  )
+}
+
+///|
 fn not_found(path : String) -> @crescent.HttpResponse {
   make_res(
     @crescent.StatusCode::NotFound,
@@ -117,8 +138,42 @@ fn handle_health(store : Store, port : Int32) -> @crescent.HttpResponse {
     Some(_) => store.err() == ""
     None => false
   }
-  let json = "{\"ok\": \{ok}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"err\": \"\{store.err()}\", \"port\": \{port}}"
+  let json = "{\"ok\": \{ok}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"err\": \"\{store.err()}\", \"port\": \{port}, \"magick\": \{store.has_magick()}}"
   make_res(@crescent.StatusCode::OK, "application/json", @utf8.encode(json))
+}
+
+///|
+/// 按渲染计划构造图像响应。单独抽出来，好在不跑 spectacle 的前提下测降级分支。
+async fn build_image_response(
+  store : Store,
+  data : Bytes,
+  width : Int32?,
+  fmt : String,
+) -> @crescent.HttpResponse {
+  let ctype = if fmt == "webp" { "image/webp" } else { "image/jpeg" }
+  match render_plan(width, fmt, store.has_magick()) {
+    Passthrough => make_res(@crescent.StatusCode::OK, ctype, data)
+    Downgrade =>
+      make_res_extra(@crescent.StatusCode::OK, "image/jpeg", data, {
+        "X-Screenstream-Fallback": "no-magick",
+      })
+    Render => {
+      let out = store.next_tmp(fmt)
+      let magick = match store.magick() {
+        Some(m) => m
+        None => ""
+      }
+      match render_file(magick, store.shot(), out, width) {
+        Some(b) => make_res(@crescent.StatusCode::OK, ctype, b)
+        None =>
+          make_res(
+            @crescent.StatusCode::InternalServerError,
+            "application/json",
+            @utf8.encode("{\"error\":\"图像转换失败\"}"),
+          )
+      }
+    }
+  }
 }
 
 ///|
@@ -158,24 +213,7 @@ async fn handle_snapshot(
             "application/json",
             @utf8.encode("{\"error\":\"还没有可用帧\"}"),
           )
-        Some(data) => {
-          let width = clamp_width(w)
-          let ctype = if fmt == "webp" { "image/webp" } else { "image/jpeg" }
-          if width is None && fmt == "jpg" {
-            make_res(@crescent.StatusCode::OK, ctype, data)
-          } else {
-            let out = store.next_tmp(fmt)
-            match render_file(store.shot(), out, width) {
-              Some(b) => make_res(@crescent.StatusCode::OK, ctype, b)
-              None =>
-                make_res(
-                  @crescent.StatusCode::InternalServerError,
-                  "application/json",
-                  @utf8.encode("{\"error\":\"图像转换失败\"}"),
-                )
-            }
-          }
-        }
+        Some(data) => build_image_response(store, data, clamp_width(w), fmt)
       }
     }
   }

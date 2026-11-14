@@ -37,8 +37,15 @@ WAYLAND_DISPLAY=wayland-1 ./_build/native/release/build/cmd/main/main.exe
 
 `bobzhang/crescent` 锁在 0.11.2，它依赖 `moonbitlang/async@0.20.3`。0.20.3 没有 `shell` 包，所以调 magick 走文件而不是管道。
 
+### ImageMagick 是可选的
+
+启动时按 `/usr/bin/magick`、`/usr/bin/convert`、`/usr/bin/gm` 的顺序探测一次，结果写进 `/health` 的 `magick` 字段。
+
+没有 ImageMagick 也能跑：`/snapshot.jpg` 原样返回，需要缩放或 WebP 的请求退回原始 JPEG，并带 `X-Screenstream-Fallback: no-magick` 头，方便调用方知道拿到的不是所请求的尺寸。
+
 ## 已知限制
 
 - 没有托盘、没有 systemd 单元，需要手动起。
+- 缺 ImageMagick 时缩放与 WebP 降级为原图，不会报错。
 - 采集失败时 `/snapshot.jpg` 返回 503 带错误原因。
 - 临时文件落在 `/tmp/screenstream-mb-*.jpg`，退出不清理。

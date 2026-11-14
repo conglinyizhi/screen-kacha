@@ -13,6 +13,7 @@ pub struct Frame {
 pub struct Store {
   shot : String
   lock : @async.Mutex
+  magick : String?
   mut frame : Frame?
   mut cap_ms : Int64
   mut count : Int32
@@ -22,10 +23,11 @@ pub struct Store {
 }
 
 ///|
-pub fn Store::new(shot~ : String) -> Store {
+pub fn Store::new(shot~ : String, magick~ : String? = None) -> Store {
   {
     shot,
     lock: @async.Mutex(),
+    magick,
     frame: None,
     cap_ms: 0L,
     count: 0,
@@ -69,14 +71,12 @@ async fn Store::capture(self : Store) -> Unit {
     self.shot,
   ]) catch {
     err => {
-      self.fails += 1
-      self.err = "spectacle 调用失败: \{err}"
+      self.record_fail("spectacle 调用失败: \{err}")
       return
     }
   }
   if code != 0 {
-    self.fails += 1
-    self.err = "spectacle 退出码 \{code}"
+    self.record_fail("spectacle 退出码 \{code}")
     return
   }
   let data = try {
@@ -86,15 +86,11 @@ async fn Store::capture(self : Store) -> Unit {
     bytes
   } catch {
     err => {
-      self.fails += 1
-      self.err = "读帧文件失败: \{err}"
+      self.record_fail("读帧文件失败: \{err}")
       return
     }
   }
-  self.cap_ms = @async.now() - t0
-  self.count += 1
-  self.err = ""
-  self.frame = Some({ bytes: data, ts: @async.now(), })
+  self.record_ok(data, @async.now() - t0)
 }
 
 ///|
@@ -142,4 +138,33 @@ pub fn Store::shot(self : Store) -> String {
 pub fn Store::next_tmp(self : Store, ext : String) -> String {
   self.seq += 1
   "/tmp/screenstream-mb-\{self.seq}.\{ext}"
+}
+
+///|
+pub fn Store::magick(self : Store) -> String? {
+  self.magick
+}
+
+///|
+pub fn Store::has_magick(self : Store) -> Bool {
+  match self.magick {
+    Some(_) => true
+    None => false
+  }
+}
+
+///|
+/// 采集成功记一笔。单独抽出来，采集本身要真跑 spectacle，这层逻辑可以单测。
+fn Store::record_ok(self : Store, bytes : Bytes, cap_ms : Int64) -> Unit {
+  self.cap_ms = cap_ms
+  self.count += 1
+  self.err = ""
+  self.frame = Some({ bytes, ts: @async.now(), })
+}
+
+///|
+/// 采集失败记一笔，保留失败原因。
+fn Store::record_fail(self : Store, msg : String) -> Unit {
+  self.fails += 1
+  self.err = msg
 }
