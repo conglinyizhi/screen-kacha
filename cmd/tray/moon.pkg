@@ -1,0 +1,12 @@
+import {
+  "conglinyizhi/moonsni/src/tray" @sni,
+  "moonbitlang/core/encoding/utf8",
+}
+
+supported_targets = "+native"
+
+pkgtype(kind: "executable")
+
+options(
+  "native-stub": [ "stub.c" ],
+)
