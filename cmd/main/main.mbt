@@ -39,6 +39,11 @@ fn cli_cmd() -> @argparse.Command {
       default_values=[""],
     ),
     @argparse.OptionArg(
+      "pw-node",
+      about="用 PipeWire 指定 node id 取帧（0 表示不用）",
+      default_values=["0"],
+    ),
+    @argparse.OptionArg(
       "pump",
       about="后台抓帧间隔（毫秒），0 表示不启动后台泵",
       default_values=["500"],
