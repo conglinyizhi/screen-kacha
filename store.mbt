@@ -18,8 +18,12 @@ pub struct Store {
   fake : String?
   /// 运行时目录（/run/user/<uid>），用来确认 Wayland socket 是否已经就绪
   wl_dir : String
-  /// 是否用 PipeWire 取帧（true 时不再起 spectacle）
-  pw : Bool
+  /// 是否用 PipeWire 取帧（true 时不再起 spectacle）；连续失败会自动回落
+  mut pw : Bool
+  /// PipeWire 连续失败次数，到阈值就回落 spectacle
+  mut pw_fails : Int32
+  /// 当前实际使用的取帧来源："pipewire" / "spectacle" / "fake"
+  mut source : String
   /// 最近一次请求的时间戳（毫秒），泵据此决定抓多勤
   mut last_req : Int64
   mut frame : Frame?
@@ -45,6 +49,14 @@ pub fn Store::new(
     fake,
     wl_dir,
     pw,
+    pw_fails: 0,
+    source: if pw {
+      "pipewire"
+    } else if fake is Some(_) {
+      "fake"
+    } else {
+      "spectacle"
+    },
     last_req: 0L,
     frame: None,
     cap_ms: 0L,
@@ -152,7 +164,7 @@ async fn Store::capture(self : Store) -> Unit {
     bytes
   } catch {
     err => {
-      self.record_fail("读帧文件失败: \{err}")
+      self.pw_failed("读帧文件失败: \{err}")
       return
     }
   }
@@ -252,14 +264,30 @@ pub fn Store::idle_ms(self : Store) -> Int64 {
 
 ///|
 /// 用 PipeWire 的常驻流取帧：把最新原始帧落盘，再让 magick 转成 JPEG。
+
+///|
+/// PipeWire 取帧失败：累计到 3 次就切回 spectacle，避免一直报错。
+fn Store::pw_failed(self : Store, why : String) -> Unit {
+  self.pw_fails = self.pw_fails + 1
+  if self.pw_fails >= 3 {
+    self.pw = false
+    self.source = "spectacle"
+    eprintln(
+      "PipeWire 连续失败 \{self.pw_fails} 次，回落到 spectacle: \{why}",
+    )
+  }
+  self.record_fail(why)
+}
+
+///|
 async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
   let (w, h) = pipewire_size()
   if w <= 0 || h <= 0 {
-    self.record_fail("PipeWire 还没协商出画面格式")
+    self.pw_failed("PipeWire 还没协商出画面格式")
     return
   }
   if pipewire_save_raw() <= 0 {
-    self.record_fail("PipeWire 还没有可用帧")
+    self.pw_failed("PipeWire 还没有可用帧")
     return
   }
   let size = "\{w}x\{h}"
@@ -274,12 +302,12 @@ async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
     self.shot,
   ]) catch {
     err => {
-      self.record_fail("magick 转码失败: \{err}")
+      self.pw_failed("magick 转码失败: \{err}")
       return
     }
   }
   if code != 0 {
-    self.record_fail("magick 退出码 \{code}")
+    self.pw_failed("magick 退出码 \{code}")
     return
   }
   let data = try {
@@ -289,9 +317,39 @@ async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
     b
   } catch {
     err => {
-      self.record_fail("读帧文件失败: \{err}")
+      self.pw_failed("读帧文件失败: \{err}")
       return
     }
   }
   self.record_ok(data, @async.now() - t0)
+}
+
+///|
+/// 记录当前实际使用的取帧来源，供 /health 展示。
+pub fn Store::set_source(self : Store, name : String) -> Unit {
+  self.source = name
+}
+
+///|
+pub fn Store::source(self : Store) -> String {
+  self.source
+}
+
+///|
+/// portal 拿到 node 之后切到 PipeWire 取帧。
+pub fn Store::enable_pipewire(self : Store, node : Int32) -> Bool {
+  if pipewire_start(node) != 0 {
+    eprintln("PipeWire 启动失败，继续用 spectacle")
+    return false
+  }
+  self.pw = true
+  self.pw_fails = 0
+  self.source = "pipewire"
+  eprintln("已切到 PipeWire 取帧，node=\{node}")
+  true
+}
+
+///|
+pub fn Store::pipewire_on(self : Store) -> Bool {
+  self.pw
 }

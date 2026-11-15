@@ -37,3 +37,12 @@ pub fn pipewire_seq() -> Int64 {
 pub fn pipewire_save_raw() -> Int32 {
   pw_save_raw()
 }
+
+///|
+extern "c" fn pw_kill(pid : Int32) -> Int32 = "moonbit_pw_kill"
+
+///|
+/// 结束一个残留的 portal 助手进程。
+pub fn pipewire_kill(pid : Int32) -> Int32 {
+  pw_kill(pid)
+}

@@ -13,6 +13,7 @@
 #include <spa/param/video/format-utils.h>
 
 #include <pthread.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -256,4 +257,11 @@ int32_t moonbit_pw_save_raw(void) {
     }
     pthread_mutex_unlock(&g.lock);
     return n;
+}
+
+/* 结束一个残留的 portal 助手进程。 */
+MOONBIT_FFI_EXPORT
+int32_t moonbit_pw_kill(int32_t pid) {
+    if (pid <= 0) return -1;
+    return (int32_t)kill((pid_t)pid, SIGTERM);
 }

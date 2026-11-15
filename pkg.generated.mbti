@@ -7,6 +7,8 @@ import {
 }
 
 // Values
+pub async fn acquire_portal_node(String) -> Int32?
+
 pub fn build_app(Store, Int32) -> @crescent.App
 
 pub fn default_magick_candidates() -> Array[String]
@@ -16,6 +18,8 @@ pub async fn detect_magick() -> String?
 pub async fn find_magick(Array[String]) -> String?
 
 pub fn not_found_text(String) -> String
+
+pub fn pipewire_kill(Int32) -> Int32
 
 pub fn pipewire_save_raw() -> Int32
 
@@ -49,7 +53,9 @@ pub struct Store {
   magick : String?
   fake : String?
   wl_dir : String
-  pw : Bool
+  mut pw : Bool
+  mut pw_fails : Int32
+  mut source : String
   mut last_req : Int64
   mut frame : Frame?
   mut cap_ms : Int64
@@ -62,6 +68,7 @@ pub fn Store::age_ms(Self) -> Int64
 pub fn Store::bytes(Self) -> Bytes?
 pub fn Store::cap_ms(Self) -> Int64
 pub fn Store::count(Self) -> Int32
+pub fn Store::enable_pipewire(Self, Int32) -> Bool
 pub async fn Store::ensure(Self, Int64) -> Unit
 pub fn Store::err(Self) -> String
 pub fn Store::fails(Self) -> Int32
@@ -71,7 +78,10 @@ pub fn Store::magick(Self) -> String?
 pub fn Store::mark_request(Self) -> Unit
 pub fn Store::new(shot~ : String, magick? : String?, fake? : String?, wl_dir? : String, pw? : Bool) -> Self
 pub fn Store::next_tmp(Self, String) -> String
+pub fn Store::pipewire_on(Self) -> Bool
+pub fn Store::set_source(Self, String) -> Unit
 pub fn Store::shot(Self) -> String
+pub fn Store::source(Self) -> String
 
 // Type aliases
 

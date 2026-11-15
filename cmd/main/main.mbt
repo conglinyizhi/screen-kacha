@@ -39,6 +39,11 @@ fn cli_cmd() -> @argparse.Command {
       default_values=[""],
     ),
     @argparse.OptionArg(
+      "source",
+      about="取帧来源：auto / pipewire / spectacle",
+      default_values=["auto"],
+    ),
+    @argparse.OptionArg(
       "pw-node",
       about="用 PipeWire 指定 node id 取帧（0 表示不用）",
       default_values=["0"],
@@ -66,6 +71,11 @@ async fn pump_loop(
 ) -> Unit {
   let mut last_fails = store.fails()
   for ;; {
+    if store.pipewire_on() {
+      // PipeWire 模式下帧由常驻流产出，不需要后台泵
+      @async.sleep(1000)
+      continue
+    }
     store.ensure(0L)
     if store.fails() > last_fails {
       last_fails = store.fails()
@@ -91,6 +101,25 @@ async fn idle_loop(store : @store.Store, seconds : Int32) -> Unit {
 }
 
 ///|
+/// 后台拿 portal 屏幕流：拿到就切 PipeWire，拿不到就保持 spectacle。
+/// portal 首次可能需要人工授权，所以这里允许长时间等待，期间服务照常可用。
+async fn portal_bg(store : @store.Store, shm : String) -> Unit {
+  for round = 0; round < 10; round = round + 1 {
+    if store.pipewire_on() {
+      return
+    }
+    eprintln(
+      "后台尝试通过 portal 获取屏幕流（第 \{round + 1} 次）",
+    )
+    match @store.acquire_portal_node(shm) {
+      Some(id) => if store.enable_pipewire(id) { return }
+      None => eprintln("portal 这次没给出 node")
+    }
+    @async.sleep(30000)
+  }
+}
+
+///|
 async fn main {
   let m = cli_cmd().parse()
   let port = parse_int(pick(m, "port", "18940"), 18940)
@@ -100,6 +129,7 @@ async fn main {
   let pump_idle = parse_int(pick(m, "pump-idle", "3000"), 3000)
   let fake = pick(m, "fake", "")
   let pw_node = parse_int(pick(m, "pw-node", "0"), 0)
+  let source = pick(m, "source", "auto")
   let shm = pick(m, "shm", "/tmp/screenstream-mb")
   let max_conns = parse_int(pick(m, "max-conns", "64"), 64)
   @fs.mkdir(shm, permission=0o700, recursive=true) catch {
@@ -122,8 +152,21 @@ async fn main {
     Some(d) => d
     None => "/run/user/1000"
   }
-  let use_pw = pw_node > 0
-  if use_pw {
+  let mut use_pw = pw_node > 0
+  if pw_node <= 0 && source != "spectacle" {
+    eprintln("尝试通过 portal 获取屏幕流…")
+    match @store.acquire_portal_node(shm) {
+      Some(id) =>
+        if @store.pipewire_start(id) == 0 {
+          eprintln("PipeWire 抓帧已启动，node=\{id}（来自 portal）")
+          use_pw = true
+        } else {
+          eprintln("PipeWire 启动失败，回落到 spectacle")
+        }
+      None => eprintln("portal 没有给出 node，回落到 spectacle")
+    }
+  }
+  if pw_node > 0 {
     let rc = @store.pipewire_start(pw_node)
     if rc != 0 {
       eprintln("PipeWire 启动失败 rc=\{rc}，回落到 spectacle")
@@ -153,6 +196,10 @@ async fn main {
   )
   eprintln("  ImageMagick: \{magick_note}")
   @async.with_task_group() <| group => {
+    if pw_node <= 0 && source != "spectacle" {
+      // 服务先跑起来，portal 在后台拿屏幕流；拿不到就一直按 spectacle 服务
+      group.spawn_bg(no_wait=true) <| async fn() { portal_bg(store, shm) }
+    }
     if pump > 0 && !use_pw {
       group.spawn_bg(no_wait=true) <| async fn() {
         pump_loop(store, pump, pump_idle)

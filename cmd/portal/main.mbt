@@ -118,6 +118,26 @@ fn call_portal(
 }
 
 ///|
+/// 读上次存下的 restore token，没有就返回空串。
+async fn read_token(path : String) -> String {
+  if path == "" {
+    return ""
+  }
+  let f = Some(@fs.open(path, mode=ReadOnly)) catch { _ => None }
+  match f {
+    None => ""
+    Some(file) => {
+      let data = Some(file.read_all()) catch { _ => None }
+      file.close()
+      match data {
+        None => ""
+        Some(r) => @utf8.decode_lossy(r.binary())
+      }
+    }
+  }
+}
+
+///|
 async fn main {
   let args = @env.args()
   let mut out_path = ""
@@ -212,6 +232,7 @@ async fn main {
   eprintln("portal: 会话 \{session}")
 
   // SelectSources：显示器 + 持久会话
+  let saved = read_token(token_path)
   let ss = @dbus.Encoder::new()
   ss.string(session)
   ss.array_with(8, fn(a) {
@@ -235,6 +256,13 @@ async fn main {
       s.signature("u")
       s.u32(2)
     })
+    if saved != "" {
+      a.struct_with_align(8, fn(s) {
+        s.string("restore_token")
+        s.signature("s")
+        s.string(saved)
+      })
+    }
   })
   if !call_portal(conn, "SelectSources", "oa{sv}", ss.finish(), 12) {
     eprintln("portal: SelectSources 调用失败")
