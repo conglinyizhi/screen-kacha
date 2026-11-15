@@ -138,7 +138,7 @@ fn handle_health(store : Store, port : Int32) -> @crescent.HttpResponse {
     Some(_) => store.err() == ""
     None => false
   }
-  let json = "{\"ok\": \{ok}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"err\": \"\{store.err()}\", \"port\": \{port}, \"magick\": \{store.has_magick()}}"
+  let json = "{\"ok\": \{ok}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"err\": \"\{store.err()}\", \"port\": \{port}, \"magick\": \{store.has_magick()}, \"idle_ms\": \{store.idle_ms()}}"
   make_res(@crescent.StatusCode::OK, "application/json", @utf8.encode(json))
 }
 
@@ -183,6 +183,7 @@ async fn handle_snapshot(
   query_w : String?,
   query_age : String?,
 ) -> @crescent.HttpResponse {
+  store.mark_request()
   match parse_snapshot(name) {
     None => not_found("/\{name}")
     Some((path_w, fmt)) => {

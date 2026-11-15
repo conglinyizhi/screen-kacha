@@ -54,14 +54,20 @@ fn cli_cmd() -> @argparse.Command {
 
 ///|
 /// 后台抓帧泵：抓完睡 interval_ms 再抓，请求侧直接读缓存，不必等采集。
-async fn pump_loop(store : @store.Store, interval_ms : Int32) -> Unit {
+async fn pump_loop(
+  store : @store.Store,
+  interval_ms : Int32,
+  idle_interval_ms : Int32,
+) -> Unit {
   let mut last_fails = store.fails()
   for ;; {
     store.ensure(0L)
-    // 抓帧失败（多半是单实例锁被别人占着）就退避，别和对方互相堵
     if store.fails() > last_fails {
       last_fails = store.fails()
       @async.sleep(1000)
+    } else if store.idle_ms() > 10000L {
+      // 十秒内没人取图就别一直烧 CPU，放慢到 idle 间隔
+      @async.sleep(idle_interval_ms)
     } else {
       @async.sleep(interval_ms)
     }
@@ -86,6 +92,7 @@ async fn main {
   let bind = pick(m, "bind", "0.0.0.0")
   let idle = parse_int(pick(m, "idle", "20"), 20)
   let pump = parse_int(pick(m, "pump", "200"), 200)
+  let pump_idle = parse_int(pick(m, "pump-idle", "3000"), 3000)
   let fake = pick(m, "fake", "")
   let shm = pick(m, "shm", "/tmp/screenstream-mb")
   let max_conns = parse_int(pick(m, "max-conns", "64"), 64)
@@ -131,7 +138,9 @@ async fn main {
   eprintln("  ImageMagick: \{magick_note}")
   @async.with_task_group() <| group => {
     if pump > 0 {
-      group.spawn_bg(no_wait=true) <| async fn() { pump_loop(store, pump) }
+      group.spawn_bg(no_wait=true) <| async fn() {
+        pump_loop(store, pump, pump_idle)
+      }
     } else {
       group.spawn_bg(no_wait=true) <| async fn() { idle_loop(store, idle) }
     }

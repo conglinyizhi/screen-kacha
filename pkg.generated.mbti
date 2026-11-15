@@ -41,6 +41,7 @@ pub struct Store {
   magick : String?
   fake : String?
   wl_dir : String
+  mut last_req : Int64
   mut frame : Frame?
   mut cap_ms : Int64
   mut count : Int32
@@ -56,7 +57,9 @@ pub async fn Store::ensure(Self, Int64) -> Unit
 pub fn Store::err(Self) -> String
 pub fn Store::fails(Self) -> Int32
 pub fn Store::has_magick(Self) -> Bool
+pub fn Store::idle_ms(Self) -> Int64
 pub fn Store::magick(Self) -> String?
+pub fn Store::mark_request(Self) -> Unit
 pub fn Store::new(shot~ : String, magick? : String?, fake? : String?, wl_dir? : String) -> Self
 pub fn Store::next_tmp(Self, String) -> String
 pub fn Store::shot(Self) -> String

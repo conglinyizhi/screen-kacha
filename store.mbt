@@ -18,6 +18,8 @@ pub struct Store {
   fake : String?
   /// 运行时目录（/run/user/<uid>），用来确认 Wayland socket 是否已经就绪
   wl_dir : String
+  /// 最近一次请求的时间戳（毫秒），泵据此决定抓多勤
+  mut last_req : Int64
   mut frame : Frame?
   mut cap_ms : Int64
   mut count : Int32
@@ -39,6 +41,7 @@ pub fn Store::new(
     magick,
     fake,
     wl_dir,
+    last_req: 0L,
     frame: None,
     cap_ms: 0L,
     count: 0,
@@ -222,4 +225,19 @@ fn Store::record_ok(self : Store, bytes : Bytes, cap_ms : Int64) -> Unit {
 fn Store::record_fail(self : Store, msg : String) -> Unit {
   self.fails += 1
   self.err = msg
+}
+
+///|
+/// 有人来取图时打点，泵据此判断当前是不是有人在看屏幕。
+pub fn Store::mark_request(self : Store) -> Unit {
+  self.last_req = @async.now()
+}
+
+///|
+/// 距离最近一次取图过去了多久（毫秒）。泵用它决定抓帧频率。
+pub fn Store::idle_ms(self : Store) -> Int64 {
+  if self.last_req == 0L {
+    return 1L << 40
+  }
+  @async.now() - self.last_req
 }
