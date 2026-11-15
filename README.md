@@ -84,3 +84,18 @@ bash scripts/smoke.sh          # 端到端冒烟
 - 缺 ImageMagick 时缩放与 WebP 降级为原图，不会报错。
 - 采集失败时 `/snapshot.jpg` 返回 503 带错误原因。
 - 临时文件落在 `/tmp/screenstream-mb-*.jpg`，退出不清理。
+
+## 取帧来源
+
+默认 `--source auto`：先按 spectacle 提供服务，同时在后台通过 xdg-desktop-portal
+获取一条屏幕流，拿到就切到 PipeWire。
+
+- PipeWire 模式下不再反复启动 spectacle，空闲时 CPU 基本为零
+- 首次需要人工确认一次屏幕共享授权；确认后 portal 会发 restore token，
+  存在帧目录的 `portal.token` 里，之后重启不再询问
+- 会话由 `screenstream-portal` 助手进程保持，node 随会话存活
+- PipeWire 连续失败 3 次会自动切回 spectacle，`/health` 的 `source` 字段
+  标明当前实际来源
+- 已知代价：PipeWire 抓屏期间桌面会一直显示「正在共享屏幕」的指示
+
+只想用老办法就加 `--source spectacle`；想跳过 portal 直接指定节点用 `--pw-node <id>`。
