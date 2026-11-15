@@ -41,7 +41,7 @@ fn cli_cmd() -> @argparse.Command {
     @argparse.OptionArg(
       "pump",
       about="后台抓帧间隔（毫秒），0 表示不启动后台泵",
-      default_values=["200"],
+      default_values=["500"],
     ),
     @argparse.OptionArg("shm", about="帧文件存放目录", default_values=[
       "/tmp/screenstream-mb",
@@ -91,7 +91,7 @@ async fn main {
   let port = parse_int(pick(m, "port", "18940"), 18940)
   let bind = pick(m, "bind", "0.0.0.0")
   let idle = parse_int(pick(m, "idle", "20"), 20)
-  let pump = parse_int(pick(m, "pump", "200"), 200)
+  let pump = parse_int(pick(m, "pump", "500"), 500)
   let pump_idle = parse_int(pick(m, "pump-idle", "3000"), 3000)
   let fake = pick(m, "fake", "")
   let shm = pick(m, "shm", "/tmp/screenstream-mb")
