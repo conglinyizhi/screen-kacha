@@ -17,6 +17,14 @@ pub async fn find_magick(Array[String]) -> String?
 
 pub fn not_found_text(String) -> String
 
+pub fn pipewire_save_raw() -> Int32
+
+pub fn pipewire_seq() -> Int64
+
+pub fn pipewire_size() -> (Int32, Int32)
+
+pub fn pipewire_start(Int32) -> Int32
+
 pub async fn render_file(String, String, String, Int32?) -> Bytes?
 
 pub fn render_plan(Int32?, String, Bool) -> RenderPlan
@@ -41,6 +49,7 @@ pub struct Store {
   magick : String?
   fake : String?
   wl_dir : String
+  pw : Bool
   mut last_req : Int64
   mut frame : Frame?
   mut cap_ms : Int64
@@ -60,7 +69,7 @@ pub fn Store::has_magick(Self) -> Bool
 pub fn Store::idle_ms(Self) -> Int64
 pub fn Store::magick(Self) -> String?
 pub fn Store::mark_request(Self) -> Unit
-pub fn Store::new(shot~ : String, magick? : String?, fake? : String?, wl_dir? : String) -> Self
+pub fn Store::new(shot~ : String, magick? : String?, fake? : String?, wl_dir? : String, pw? : Bool) -> Self
 pub fn Store::next_tmp(Self, String) -> String
 pub fn Store::shot(Self) -> String
 

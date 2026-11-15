@@ -18,6 +18,8 @@ pub struct Store {
   fake : String?
   /// 运行时目录（/run/user/<uid>），用来确认 Wayland socket 是否已经就绪
   wl_dir : String
+  /// 是否用 PipeWire 取帧（true 时不再起 spectacle）
+  pw : Bool
   /// 最近一次请求的时间戳（毫秒），泵据此决定抓多勤
   mut last_req : Int64
   mut frame : Frame?
@@ -34,6 +36,7 @@ pub fn Store::new(
   magick~ : String? = None,
   fake~ : String? = None,
   wl_dir~ : String = "/run/user/1000",
+  pw~ : Bool = false,
 ) -> Store {
   {
     shot,
@@ -41,6 +44,7 @@ pub fn Store::new(
     magick,
     fake,
     wl_dir,
+    pw,
     last_req: 0L,
     frame: None,
     cap_ms: 0L,
@@ -91,6 +95,10 @@ async fn wayland_ready(dir : String) -> Bool {
 ///|
 async fn Store::capture(self : Store) -> Unit {
   let t0 = @async.now()
+  if self.pw {
+    self.capture_pipewire(t0)
+    return
+  }
   if self.fake is None && !wayland_ready(self.wl_dir) {
     self.record_fail("Wayland socket 还没就绪，跳过这次抓帧")
     return
@@ -240,4 +248,50 @@ pub fn Store::idle_ms(self : Store) -> Int64 {
     return 1L << 40
   }
   @async.now() - self.last_req
+}
+
+///|
+/// 用 PipeWire 的常驻流取帧：把最新原始帧落盘，再让 magick 转成 JPEG。
+async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
+  let (w, h) = pipewire_size()
+  if w <= 0 || h <= 0 {
+    self.record_fail("PipeWire 还没协商出画面格式")
+    return
+  }
+  if pipewire_save_raw() <= 0 {
+    self.record_fail("PipeWire 还没有可用帧")
+    return
+  }
+  let size = "\{w}x\{h}"
+  let code = @process.run("/usr/bin/magick", [
+    "-size",
+    size,
+    "-depth",
+    "8",
+    "bgra:/tmp/screenstream-pw.raw",
+    "-quality",
+    "82",
+    self.shot,
+  ]) catch {
+    err => {
+      self.record_fail("magick 转码失败: \{err}")
+      return
+    }
+  }
+  if code != 0 {
+    self.record_fail("magick 退出码 \{code}")
+    return
+  }
+  let data = try {
+    let f = @fs.open(self.shot, mode=ReadOnly)
+    let b = f.read_all().binary()
+    f.close()
+    b
+  } catch {
+    err => {
+      self.record_fail("读帧文件失败: \{err}")
+      return
+    }
+  }
+  self.record_ok(data, @async.now() - t0)
 }

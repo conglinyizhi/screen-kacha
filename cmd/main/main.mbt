@@ -94,6 +94,7 @@ async fn main {
   let pump = parse_int(pick(m, "pump", "500"), 500)
   let pump_idle = parse_int(pick(m, "pump-idle", "3000"), 3000)
   let fake = pick(m, "fake", "")
+  let pw_node = parse_int(pick(m, "pw-node", "0"), 0)
   let shm = pick(m, "shm", "/tmp/screenstream-mb")
   let max_conns = parse_int(pick(m, "max-conns", "64"), 64)
   @fs.mkdir(shm, permission=0o700, recursive=true) catch {
@@ -116,11 +117,21 @@ async fn main {
     Some(d) => d
     None => "/run/user/1000"
   }
+  let use_pw = pw_node > 0
+  if use_pw {
+    let rc = @store.pipewire_start(pw_node)
+    if rc != 0 {
+      eprintln("PipeWire 启动失败 rc=\{rc}，回落到 spectacle")
+    } else {
+      eprintln("PipeWire 抓帧已启动，node=\{pw_node}")
+    }
+  }
   let store = @store.Store::new(
     shot=shot_path,
     magick~,
     fake=fake_source,
     wl_dir~,
+    pw=use_pw,
   )
   let app = @store.build_app(store, port)
   // reuse_addr：服务重启时旧连接还处于 TIME-WAIT，不开这个 bind 会失败
@@ -137,7 +148,7 @@ async fn main {
   )
   eprintln("  ImageMagick: \{magick_note}")
   @async.with_task_group() <| group => {
-    if pump > 0 {
+    if pump > 0 && !use_pw {
       group.spawn_bg(no_wait=true) <| async fn() {
         pump_loop(store, pump, pump_idle)
       }
