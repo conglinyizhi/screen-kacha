@@ -37,9 +37,18 @@ fn parse_node_id(b : Bytes) -> Int32 {
 /// 最多等 90 秒：首次可能需要人工确认授权框。
 pub async fn acquire_portal_node(dir : String) -> Int32? {
   let out = "\{dir}/portal.node"
-  let tok = "\{dir}/portal.token"
+  // token 必须放持久目录：帧目录在 tmpfs 上，重启就没了
+  let home = match @env.get_env_var("HOME") {
+    Some(h) => h
+    None => "/tmp"
+  }
+  let tok = "\{home}/.local/state/screenstream-mb/portal.token"
   // 清掉上一次遗留的助手，避免旧会话一直占着「正在录制」指示
   let _ = Some(@process.run("/usr/bin/pkill", ["-f", "screenstream-portal"])) catch {
+    _ => None
+  }
+  let state_dir = "\{home}/.local/state/screenstream-mb"
+  let _ = Some(@fs.mkdir(state_dir, permission=0o700, recursive=true)) catch {
     _ => None
   }
   let bin = match @env.get_env_var("HOME") {
