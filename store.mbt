@@ -16,6 +16,8 @@ pub struct Store {
   magick : String?
   /// 测试用假帧源：设了就不跑 spectacle，直接读这个文件
   fake : String?
+  /// 运行时目录（/run/user/<uid>），用来确认 Wayland socket 是否已经就绪
+  wl_dir : String
   mut frame : Frame?
   mut cap_ms : Int64
   mut count : Int32
@@ -29,12 +31,14 @@ pub fn Store::new(
   shot~ : String,
   magick~ : String? = None,
   fake~ : String? = None,
+  wl_dir~ : String = "/run/user/1000",
 ) -> Store {
   {
     shot,
     lock: @async.Mutex(),
     magick,
     fake,
+    wl_dir,
     frame: None,
     cap_ms: 0L,
     count: 0,
@@ -68,8 +72,26 @@ pub async fn Store::ensure(self : Store, max_age_ms : Int64) -> Unit {
 }
 
 ///|
+
+///|
+/// 桌面还没起来时 Wayland socket 不存在，这时硬拉 spectacle 会被 Qt 直接 abort
+/// （开机时就会看到崩溃框和 coredump）。先确认 socket 在，再决定要不要抓。
+async fn wayland_ready(dir : String) -> Bool {
+  for name in ["wayland-1", "wayland-0", "wayland-2", "wayland-3"] {
+    if @fs.exists("\{dir}/\{name}") {
+      return true
+    }
+  }
+  false
+}
+
+///|
 async fn Store::capture(self : Store) -> Unit {
   let t0 = @async.now()
+  if self.fake is None && !wayland_ready(self.wl_dir) {
+    self.record_fail("Wayland socket 还没就绪，跳过这次抓帧")
+    return
+  }
   // 假帧源：测试时绕开 spectacle，直接从固定文件读一帧
   if self.fake is Some(path) {
     let data = try {

@@ -105,7 +105,16 @@ async fn main {
     Some(p) => p
     None => "\{shm}/latest.jpg"
   }
-  let store = @store.Store::new(shot=shot_path, magick~, fake=fake_source)
+  let wl_dir = match @env.get_env_var("XDG_RUNTIME_DIR") {
+    Some(d) => d
+    None => "/run/user/1000"
+  }
+  let store = @store.Store::new(
+    shot=shot_path,
+    magick~,
+    fake=fake_source,
+    wl_dir~,
+  )
   let app = @store.build_app(store, port)
   // reuse_addr：服务重启时旧连接还处于 TIME-WAIT，不开这个 bind 会失败
   let server = @http.Server(
