@@ -67,6 +67,39 @@ fn shorten(text : String) -> String {
 }
 
 ///|
+
+///|
+/// 按 /health 的返回挑图标名和一句话说明。
+///
+/// 灯的颜色就是这个函数唯一的输出：绿=正常，黄=刚启动，灰=没响应，红=采集失败。
+fn health_state(body : String) -> (String, String) {
+  if body == "" {
+    return ("screenstream-dead", "服务没响应")
+  }
+  if body.contains("\"ok\": true") {
+    return ("screenstream-ok", "正常")
+  }
+  if body.contains("\"count\": 0") {
+    return ("screenstream-warn", "已启动，还没抓到帧")
+  }
+  ("screenstream-down", "采集失败")
+}
+
+///|
+/// 查一次健康状态，更新图标和标题。
+fn refresh_state(
+  t : @sni.Tray,
+  status : @menu.ItemHandle,
+  base : String,
+  port : Int32,
+) -> Unit {
+  let h = capture("curl -s --max-time 2 '\{base}/health'", 2048)
+  let (icon, say) = health_state(h)
+  t.set_icon_name(icon)
+  status.set_title("端口 \{port} · \{say} · \{shorten(h)}")
+}
+
+///|
 fn main raise {
   let cmd = @argparse.Command(
     "screenstream-tray",
@@ -86,6 +119,7 @@ fn main raise {
 
   })
   status.set_enabled(false)
+  refresh_state(t, status, base, port)
 
   t.on("open", "打开网页", fn(_) { sh("xdg-open '\{base}/'") }) |> ignore
   t.on("copy_url", "复制地址", fn(_) {
@@ -101,10 +135,7 @@ fn main raise {
   })
   |> ignore
   t.separator()
-  t.on("refresh", "刷新状态", fn(_) {
-    let h = capture("curl -s --max-time 2 '\{base}/health'", 2048)
-    status.set_title("端口 \{port} · \{shorten(h)}")
-  })
+  t.on("refresh", "刷新状态", fn(_) { refresh_state(t, status, base, port) })
   |> ignore
   t.on("restart", "重启服务", fn(_) {
     sh("systemctl --user restart screenstream-mb.service")
@@ -112,12 +143,10 @@ fn main raise {
   |> ignore
   t.separator()
   // 左键点图标也刷新一次，顺手重画灯
-  t.on_click(fn(_x, _y) {
-    let h = capture("curl -s --max-time 2 '\{base}/health'", 2048)
-    status.set_title("端口 \{port} · \{shorten(h)}")
-  })
+  t.on_click(fn(_x, _y) { refresh_state(t, status, base, port) })
   t.on("quit", "退出托盘", fn(_) { exit_now(0) }) |> ignore
-  match t.run() {
+  // 每 5 秒查一次，图标跟着健康状态变
+  match t.run_with_tick(fn() { refresh_state(t, status, base, port) }, 5000) {
     Ok(_) => eprintln("托盘事件循环已结束")
     Err(code) => eprintln("托盘启动失败，错误码 \{code}")
   }
