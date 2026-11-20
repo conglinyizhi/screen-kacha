@@ -11,14 +11,17 @@ Linux 上从 PipeWire 取一帧画面的最小 MoonBit 绑定。只在 native �
 import "conglinyizhi/screenstream/moonpipewire" @pipewire
 
 fn main {
-  // node id 由 portal 或 pw-dump 给出来
-  if @pipewire.pipewire_start(42) != 0 {
+  // 构造只是记住配置，不做 I/O；和官方 http 的 Server::Server 一样分两步
+  let pw = @pipewire.PipeWire::new(app_name="my-app")
+  // node id 由 portal 或 pw-dump 给出来；start 立刻返回，底层在 C 线程里跑
+  if pw.start(42) != 0 {
     abort()
   }
-  let (w, h) = @pipewire.pipewire_size()
+  let (w, h) = pw.size()
   // 取最新一帧的原始字节：BGRx，每行 w*4 字节
-  let n = @pipewire.pipewire_save_raw("/tmp/frame.bgra")
+  let n = pw.save_raw("/tmp/frame.bgra")
   println("\{n} 字节，\{w}x\{h}")
+  pw.stop()
 }
 ```
 

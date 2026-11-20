@@ -155,14 +155,6 @@ async fn main {
     None => "/run/user/1000"
   }
   let use_pw = pw_node > 0
-  if pw_node > 0 {
-    let rc = @pipewire.pipewire_start(pw_node, app_name="screenstream-mb")
-    if rc != 0 {
-      eprintln("PipeWire 启动失败 rc=\{rc}，回落到 spectacle")
-    } else {
-      eprintln("PipeWire 抓帧已启动，node=\{pw_node}")
-    }
-  }
   let store = @store.Store::new(
     shot=shot_path,
     magick~,
@@ -179,6 +171,14 @@ async fn main {
   let magick_note = match magick {
     Some(m) => m
     None => "未找到，缩放与 WebP 将退回原图"
+  }
+
+  if pw_node > 0 {
+    if store.enable_pipewire(pw_node) {
+      eprintln("PipeWire 抓帧已启动，node=\{pw_node}")
+    } else {
+      eprintln("PipeWire 启动失败，回落到 spectacle")
+    }
   }
   eprintln(
     "screenstream-mb v0.1 监听 \{bind}:\{port}  帧目录 \{shm}  泵 \{pump}ms  并发上限 \{max_conns}",

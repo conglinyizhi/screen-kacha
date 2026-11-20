@@ -270,3 +270,34 @@ int32_t moonbit_pw_kill(int32_t pid) {
     if (pid <= 0) return -1;
     return (int32_t)kill((pid_t)pid, SIGTERM);
 }
+
+/* 停掉抓帧流：先断流，再退出 main loop 并回收线程。 */
+MOONBIT_FFI_EXPORT
+int32_t moonbit_pw_shim_stop(void) {
+    if (!g.started) return 0;
+    pthread_mutex_lock(&g.lock);
+    struct pw_buffer *held = g.held;
+    g.held = NULL;
+    pthread_mutex_unlock(&g.lock);
+    if (held != NULL) {
+        pw_stream_queue_buffer(g.stream, held);
+    }
+    if (g.stream != NULL) {
+        pw_stream_disconnect(g.stream);
+        pw_stream_destroy(g.stream);
+        g.stream = NULL;
+    }
+    if (g.loop != NULL) {
+        pw_main_loop_quit(g.loop);
+    }
+    if (g.running) {
+        pthread_join(g.thread, NULL);
+        g.running = 0;
+    }
+    if (g.loop != NULL) {
+        pw_main_loop_destroy(g.loop);
+        g.loop = NULL;
+    }
+    g.started = 0;
+    return 0;
+}

@@ -22,6 +22,8 @@ pub struct Store {
   mut pw : Bool
   /// PipeWire 连续失败次数，到阈值就回落 spectacle
   mut pw_fails : Int32
+  /// PipeWire 抓帧句柄
+  pw_stream : @pipewire.PipeWire
   /// 当前实际使用的取帧来源："pipewire" / "spectacle" / "fake"
   mut source : String
   /// 最近一次请求的时间戳（毫秒），泵据此决定抓多勤
@@ -50,6 +52,7 @@ pub fn Store::new(
     wl_dir,
     pw,
     pw_fails: 0,
+    pw_stream: @pipewire.PipeWire::new(app_name="screenstream-mb"),
     source: if pw {
       "pipewire"
     } else if fake is Some(_) {
@@ -281,13 +284,13 @@ fn Store::pw_failed(self : Store, why : String) -> Unit {
 
 ///|
 async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
-  let (w, h) = @pipewire.pipewire_size()
+  let (w, h) = self.pw_stream.size()
   if w <= 0 || h <= 0 {
     self.pw_failed("PipeWire 还没协商出画面格式")
     return
   }
   let raw = "\{self.shot}.bgra"
-  if @pipewire.pipewire_save_raw(raw) <= 0 {
+  if self.pw_stream.save_raw(raw) <= 0 {
     self.pw_failed("PipeWire 还没有可用帧")
     return
   }
@@ -339,7 +342,7 @@ pub fn Store::source(self : Store) -> String {
 ///|
 /// portal 拿到 node 之后切到 PipeWire 取帧。
 pub fn Store::enable_pipewire(self : Store, node : Int32) -> Bool {
-  if @pipewire.pipewire_start(node, app_name="screenstream-mb") != 0 {
+  if self.pw_stream.start(node) != 0 {
     eprintln("PipeWire 启动失败，继续用 spectacle")
     return false
   }

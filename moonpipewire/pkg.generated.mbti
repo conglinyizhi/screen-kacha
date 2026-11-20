@@ -4,17 +4,20 @@ package "conglinyizhi/screenstream/moonpipewire"
 // Values
 pub fn pipewire_kill(Int32) -> Int32
 
-pub fn pipewire_save_raw(String) -> Int32
-
-pub fn pipewire_seq() -> Int64
-
-pub fn pipewire_size() -> (Int32, Int32)
-
-pub fn pipewire_start(Int32, app_name? : String) -> Int32
-
 // Errors
 
 // Types and methods
+pub struct PipeWire {
+  app_name : String
+  mut started : Bool
+}
+pub fn PipeWire::new(app_name? : String) -> Self
+pub fn PipeWire::save_raw(Self, String) -> Int32
+pub fn PipeWire::seq(Self) -> Int64
+pub fn PipeWire::size(Self) -> (Int32, Int32)
+pub fn PipeWire::start(Self, Int32) -> Int32
+pub fn PipeWire::started(Self) -> Bool
+pub fn PipeWire::stop(Self) -> Unit
 
 // Type aliases
 
