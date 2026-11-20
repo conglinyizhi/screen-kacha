@@ -23,6 +23,10 @@ extern "c" fn c_height() -> Int32 = "moonbit_pw_shim_height"
 extern "c" fn c_seq() -> Int64 = "moonbit_pw_shim_seq"
 
 ///|
+#borrow(dst)
+extern "c" fn c_latest(dst : Bytes, cap : Int32) -> Int32 = "moonbit_pw_shim_latest"
+
+///|
 #borrow(path)
 extern "c" fn c_save_raw(path : Bytes) -> Int32 = "moonbit_pw_save_raw"
 
@@ -51,7 +55,7 @@ pub fn PipeWire::new(app_name~ : String = "moonpipewire") -> PipeWire {
 /// 连到指定 node 开始抓帧。返回 0 表示成功；立刻返回，不等第一帧。
 ///
 /// `app_name` 只决定这条流在 pw-dump / pavucontrol 里怎么显示，不影响权限。
-pub fn PipeWire::start(self : PipeWire, node_id : Int32) -> Int32 {
+pub fn PipeWire::connect(self : PipeWire, node_id : Int32) -> Int32 {
   let rc = c_start(node_id, cstr(self.app_name))
   if rc == 0 {
     self.started = true
@@ -61,7 +65,7 @@ pub fn PipeWire::start(self : PipeWire, node_id : Int32) -> Int32 {
 
 ///|
 /// 断开并回收底层线程。没启动时调用是空操作。
-pub fn PipeWire::stop(self : PipeWire) -> Unit {
+pub fn PipeWire::disconnect(self : PipeWire) -> Unit {
   if self.started {
     c_stop() |> ignore
     self.started = false
@@ -88,8 +92,17 @@ pub fn PipeWire::seq(self : PipeWire) -> Int64 {
 }
 
 ///|
+/// 把最新帧拷进调用方的缓冲区，返回写入字节数；还没有帧时返回 0。
+///
+/// 原始像素是 BGRx，每行 `宽 * 4` 字节，所以缓冲区大小至少要 `宽 * 高 * 4`。
+pub fn PipeWire::copy_frame(self : PipeWire, dst : Bytes) -> Int32 {
+  let _ = self
+  c_latest(dst, dst.length())
+}
+
+///|
 /// 把最新帧写成原始 BGRx 文件（每行 width*4 字节），返回字节数。
-pub fn PipeWire::save_raw(self : PipeWire, path : String) -> Int32 {
+pub fn PipeWire::save_frame(self : PipeWire, path : String) -> Int32 {
   let _ = self
   c_save_raw(cstr(path))
 }

@@ -290,7 +290,7 @@ async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
     return
   }
   let raw = "\{self.shot}.bgra"
-  if self.pw_stream.save_raw(raw) <= 0 {
+  if self.pw_stream.save_frame(raw) <= 0 {
     self.pw_failed("PipeWire 还没有可用帧")
     return
   }
@@ -342,7 +342,7 @@ pub fn Store::source(self : Store) -> String {
 ///|
 /// portal 拿到 node 之后切到 PipeWire 取帧。
 pub fn Store::enable_pipewire(self : Store, node : Int32) -> Bool {
-  if self.pw_stream.start(node) != 0 {
+  if self.pw_stream.connect(node) != 0 {
     eprintln("PipeWire 启动失败，继续用 spectacle")
     return false
   }
