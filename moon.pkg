@@ -1,4 +1,5 @@
 import {
+  "conglinyizhi/screenstream/moonpipewire" @pipewire,
   "moonbitlang/async",
   "moonbitlang/async/fs",
   "moonbitlang/async/process",
@@ -10,12 +11,5 @@ import {
 supported_targets = "+native"
 
 options(
-  "native-stub": [ "pw_shim.c" ],
-  link: {
-    "native": {
-      "cc-flags": "-I/usr/include/pipewire-0.3 -I/usr/include/spa-0.2",
-      "stub-cc-flags": "-I/usr/include/pipewire-0.3 -I/usr/include/spa-0.2",
-      "cc-link-flags": "-lpipewire-0.3",
-    },
-  },
+  link: { "native": { "cc-link-flags": "-lpipewire-0.3" } },
 )

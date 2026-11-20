@@ -1,4 +1,5 @@
 import {
+  "conglinyizhi/screenstream/moonpipewire" @pipewire,
   "moonbitlang/core/env",
   "conglinyizhi/screenstream" @store,
   "moonbitlang/async",

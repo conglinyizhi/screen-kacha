@@ -21,16 +21,6 @@ pub async fn forget_portal_node(String) -> Unit
 
 pub fn not_found_text(String) -> String
 
-pub fn pipewire_kill(Int32) -> Int32
-
-pub fn pipewire_save_raw() -> Int32
-
-pub fn pipewire_seq() -> Int64
-
-pub fn pipewire_size() -> (Int32, Int32)
-
-pub fn pipewire_start(Int32) -> Int32
-
 pub async fn render_file(String, String, String, Int32?) -> Bytes?
 
 pub fn render_plan(Int32?, String, Bool) -> RenderPlan

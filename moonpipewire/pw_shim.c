@@ -239,14 +239,14 @@ const char *moonbit_pw_shim_error(void) {
 /* 把最新一帧原始字节写到固定路径，交给 magick 转码用。
  * 返回写入字节数，没有帧返回 0。 */
 MOONBIT_FFI_EXPORT
-int32_t moonbit_pw_save_raw(void) {
+int32_t moonbit_pw_save_raw(const char *path) {
     int32_t n = 0;
     pthread_mutex_lock(&g.lock);
     if (g.held != NULL) {
         struct spa_buffer *buf = g.held->buffer;
         uint32_t size = buf->datas[0].chunk->size;
         if (size > 0) {
-            FILE *f = fopen("/tmp/screenstream-pw.raw", "wb");
+            FILE *f = (path && *path) ? fopen(path, "wb") : NULL;
             if (f != NULL) {
                 if (fwrite(buf->datas[0].data, 1, size, f) == size) {
                     n = (int32_t)size;

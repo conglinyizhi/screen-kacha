@@ -281,12 +281,13 @@ fn Store::pw_failed(self : Store, why : String) -> Unit {
 
 ///|
 async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
-  let (w, h) = pipewire_size()
+  let (w, h) = @pipewire.pipewire_size()
   if w <= 0 || h <= 0 {
     self.pw_failed("PipeWire 还没协商出画面格式")
     return
   }
-  if pipewire_save_raw() <= 0 {
+  let raw = "\{self.shot}.bgra"
+  if @pipewire.pipewire_save_raw(raw) <= 0 {
     self.pw_failed("PipeWire 还没有可用帧")
     return
   }
@@ -296,7 +297,7 @@ async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
     size,
     "-depth",
     "8",
-    "bgra:/tmp/screenstream-pw.raw",
+    "bgra:" + raw,
     "-quality",
     "82",
     self.shot,
@@ -338,7 +339,7 @@ pub fn Store::source(self : Store) -> String {
 ///|
 /// portal 拿到 node 之后切到 PipeWire 取帧。
 pub fn Store::enable_pipewire(self : Store, node : Int32) -> Bool {
-  if pipewire_start(node) != 0 {
+  if @pipewire.pipewire_start(node) != 0 {
     eprintln("PipeWire 启动失败，继续用 spectacle")
     return false
   }
