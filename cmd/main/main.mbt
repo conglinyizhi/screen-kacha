@@ -104,9 +104,11 @@ async fn idle_loop(store : @store.Store, seconds : Int32) -> Unit {
 /// 后台拿 portal 屏幕流：拿到就切 PipeWire，拿不到就保持 spectacle。
 /// portal 首次可能需要人工授权，所以这里允许长时间等待，期间服务照常可用。
 async fn portal_bg(store : @store.Store, shm : String) -> Unit {
-  for round = 0; round < 10; round = round + 1 {
+  for round = 0; ; round = round + 1 {
     if store.pipewire_on() {
-      return
+      // 已经连上就慢慢看着：助手重启、会话过期时流会断，这里负责重新接
+      @async.sleep(15000)
+      continue
     }
     eprintln(
       "后台尝试通过 portal 获取屏幕流（第 \{round + 1} 次）",
@@ -152,20 +154,7 @@ async fn main {
     Some(d) => d
     None => "/run/user/1000"
   }
-  let mut use_pw = pw_node > 0
-  if pw_node <= 0 && source != "spectacle" {
-    eprintln("尝试通过 portal 获取屏幕流…")
-    match @store.acquire_portal_node(shm) {
-      Some(id) =>
-        if @store.pipewire_start(id) == 0 {
-          eprintln("PipeWire 抓帧已启动，node=\{id}（来自 portal）")
-          use_pw = true
-        } else {
-          eprintln("PipeWire 启动失败，回落到 spectacle")
-        }
-      None => eprintln("portal 没有给出 node，回落到 spectacle")
-    }
-  }
+  let use_pw = pw_node > 0
   if pw_node > 0 {
     let rc = @store.pipewire_start(pw_node)
     if rc != 0 {

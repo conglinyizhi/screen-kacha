@@ -17,6 +17,8 @@ pub async fn detect_magick() -> String?
 
 pub async fn find_magick(Array[String]) -> String?
 
+pub async fn forget_portal_node(String) -> Unit
+
 pub fn not_found_text(String) -> String
 
 pub fn pipewire_kill(Int32) -> Int32

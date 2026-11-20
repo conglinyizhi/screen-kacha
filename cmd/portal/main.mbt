@@ -33,8 +33,55 @@ fn find_bytes(hay : Bytes, needle : Bytes) -> Int32 {
 }
 
 ///|
-/// 从 marker 之后抠一个 NUL 结尾的字符串（值里的字符串都以 NUL 收尾）。
-fn string_after(b : Bytes, marker : String, want : Char) -> String? {
+/// 在字节里找 marker 之后的一段 base64 样式的串（restore_token 就是这种）。
+fn token_after(b : Bytes, marker : String) -> String? {
+  let at = find_bytes(b, @utf8.encode(marker))
+  if at < 0 {
+    return None
+  }
+  let limit = if at + 300 < b.length() { at + 300 } else { b.length() }
+  let mut best_start = -1
+  let mut best_len = 0
+  let mut i = at + marker.length()
+  while i < limit {
+    let c = b[i].to_int()
+    let ok = (c >= 48 && c <= 57) ||
+      (c >= 65 && c <= 90) ||
+      (c >= 97 && c <= 122) ||
+      c == 95 ||
+      c == 45
+    if ok {
+      let start = i
+      while i < limit {
+        let d = b[i].to_int()
+        let ok2 = (d >= 48 && d <= 57) ||
+          (d >= 65 && d <= 90) ||
+          (d >= 97 && d <= 122) ||
+          d == 95 ||
+          d == 45
+        if !ok2 {
+          break
+        }
+        i = i + 1
+      }
+      let len = i - start
+      if len > best_len {
+        best_len = len
+        best_start = start
+      }
+    } else {
+      i = i + 1
+    }
+  }
+  if best_len < 8 || best_start < 0 {
+    return None
+  }
+  Some(@utf8.decode_lossy(Bytes::makei(best_len, fn(k) { b[best_start + k] })))
+}
+
+///|
+/// 从 marker 之后抠一个以 want 开头的路径串（session_handle 是 /org/... 这种）。
+fn path_after(b : Bytes, marker : String, want : Char) -> String? {
   let at = find_bytes(b, @utf8.encode(marker))
   if at < 0 {
     return None
@@ -50,9 +97,63 @@ fn string_after(b : Bytes, marker : String, want : Char) -> String? {
   while end < b.length() && b[end].to_int() != 0 {
     end = end + 1
   }
-  let n = end - start
-  let slice = Bytes::makei(n, fn(i) { b[start + i] })
-  Some(@utf8.decode_lossy(slice))
+  Some(@utf8.decode_lossy(Bytes::makei(end - start, fn(i) { b[start + i] })))
+}
+
+///|
+/// 在 a{sv} 里按 key 取字符串值。results 里的 session_handle / restore_token 都是这样存的。
+fn dict_string(b : Bytes, key : String) -> String? {
+  if b.length() < 4 {
+    return None
+  }
+  let len = u32_at(b, 0)
+  let mut p = (4 + 7) / 8 * 8
+  let end = p + len
+  while p < end && p < b.length() {
+    // key
+    p = (p + 3) / 4 * 4
+    if p + 4 > b.length() {
+      return None
+    }
+    let klen = u32_at(b, p)
+    let kstart = p + 4
+    let kend = kstart + klen
+    if kend + 1 > b.length() {
+      return None
+    }
+    let name = Bytes::makei(klen, fn(i) { b[kstart + i] })
+    p = kend + 1
+    // variant 签名
+    let slen = b[p].to_int()
+    let sig = Bytes::makei(slen, fn(i) { b[p + 1 + i] })
+    p = p + 1 + slen + 1
+    let sig_s = @utf8.decode_lossy(sig)
+    if sig_s == "s" || sig_s == "o" {
+      p = (p + 3) / 4 * 4
+      if p + 4 > b.length() {
+        return None
+      }
+      let vlen = u32_at(b, p)
+      let vstart = p + 4
+      if vstart + vlen > b.length() {
+        return None
+      }
+      let val = Bytes::makei(vlen, fn(i) { b[vstart + i] })
+      let val_s = @utf8.decode_lossy(val)
+      p = vstart + vlen + 1
+      if @utf8.decode_lossy(name) == key {
+        return Some(val_s)
+      }
+    } else if sig_s == "u" {
+      p = (p + 3) / 4 * 4 + 4
+    } else if sig_s == "b" {
+      p = (p + 3) / 4 * 4 + 4
+    } else {
+      // 其它类型不处理，退出避免错位
+      return None
+    }
+  }
+  None
 }
 
 ///|
@@ -222,7 +323,7 @@ async fn main {
     eprintln("portal: CreateSession 被拒，码 \{code1}")
     return
   }
-  let session = match string_after(res1, "session_handle", '/') {
+  let session = match path_after(res1, "session_handle", '/') {
     Some(s) => s
     None => {
       eprintln("portal: 响应里没有 session_handle")
@@ -308,7 +409,7 @@ async fn main {
   }
 
   if token_path != "" {
-    match string_after(res3, "restore_token", 'e') {
+    match token_after(res3, "restore_token") {
       Some(t) => {
         let f = @fs.create(token_path, allow_existing=true) catch {
           _ => {

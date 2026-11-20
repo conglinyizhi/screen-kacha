@@ -31,22 +31,41 @@ fn parse_node_id(b : Bytes) -> Int32 {
 }
 
 ///|
-/// 拉起 portal 助手并等它写出 node id。
+/// 删掉 node 文件，下次重新拿。
+pub async fn forget_portal_node(dir : String) -> Unit {
+  let _ = Some(@fs.remove("\{dir}/portal.node")) catch { _ => None }
+}
+
+///|
+/// 拿 portal 给出来的 pipewire node id。
 ///
-/// 助手是独立进程，它把会话一直挂着，node 才存在。
-/// 最多等 90 秒：首次可能需要人工确认授权框。
+/// 正常情况是 autostart 那个助手（跑在 app-...@autostart.service 里，portal 认得出
+/// app id，授权记得住）把 node 写进文件，这里只读文件，不碰它。
+/// 只有在没人写文件时才自己拉一个助手 —— 那种身份 portal 认不出来，会弹授权框。
 pub async fn acquire_portal_node(dir : String) -> Int32? {
   let out = "\{dir}/portal.node"
-  // token 必须放持久目录：帧目录在 tmpfs 上，重启就没了
   let home = match @env.get_env_var("HOME") {
     Some(h) => h
     None => "/tmp"
   }
   let tok = "\{home}/.local/state/screenstream-mb/portal.token"
-  // 清掉上一次遗留的助手，避免旧会话一直占着「正在录制」指示
-  let _ = Some(@process.run("/usr/bin/pkill", ["-f", "screenstream-portal"])) catch {
-    _ => None
+
+  // ① 已经有人写了就直接用
+  let first = parse_node_id(read_bytes_or_empty(out))
+  if first > 0 {
+    return Some(first)
   }
+
+  // ② 等 autostart 助手写它（它开机比服务稍晚，重连时也会重写）
+  for k = 0; k < 60; k = k + 1 {
+    @async.sleep(500)
+    let id = parse_node_id(read_bytes_or_empty(out))
+    if id > 0 {
+      return Some(id)
+    }
+  }
+
+  // ③ 没人管：自己拉一个
   let state_dir = "\{home}/.local/state/screenstream-mb"
   let _ = Some(@fs.mkdir(state_dir, permission=0o700, recursive=true)) catch {
     _ => None
@@ -65,15 +84,12 @@ pub async fn acquire_portal_node(dir : String) -> Int32? {
     }
     Some(_) => ()
   }
-  for i = 0; i < 180; i = i + 1 {
-    let exists = @fs.exists(out) catch { _ => false }
-    if exists {
-      let id = parse_node_id(read_bytes_or_empty(out))
-      if id > 0 {
-        return Some(id)
-      }
-    }
+  for k = 0; k < 180; k = k + 1 {
     @async.sleep(500)
+    let id = parse_node_id(read_bytes_or_empty(out))
+    if id > 0 {
+      return Some(id)
+    }
   }
   None
 }
