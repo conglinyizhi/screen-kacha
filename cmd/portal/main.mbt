@@ -101,62 +101,6 @@ fn path_after(b : Bytes, marker : String, want : Char) -> String? {
 }
 
 ///|
-/// 在 a{sv} 里按 key 取字符串值。results 里的 session_handle / restore_token 都是这样存的。
-fn dict_string(b : Bytes, key : String) -> String? {
-  if b.length() < 4 {
-    return None
-  }
-  let len = u32_at(b, 0)
-  let mut p = (4 + 7) / 8 * 8
-  let end = p + len
-  while p < end && p < b.length() {
-    // key
-    p = (p + 3) / 4 * 4
-    if p + 4 > b.length() {
-      return None
-    }
-    let klen = u32_at(b, p)
-    let kstart = p + 4
-    let kend = kstart + klen
-    if kend + 1 > b.length() {
-      return None
-    }
-    let name = Bytes::makei(klen, fn(i) { b[kstart + i] })
-    p = kend + 1
-    // variant 签名
-    let slen = b[p].to_int()
-    let sig = Bytes::makei(slen, fn(i) { b[p + 1 + i] })
-    p = p + 1 + slen + 1
-    let sig_s = @utf8.decode_lossy(sig)
-    if sig_s == "s" || sig_s == "o" {
-      p = (p + 3) / 4 * 4
-      if p + 4 > b.length() {
-        return None
-      }
-      let vlen = u32_at(b, p)
-      let vstart = p + 4
-      if vstart + vlen > b.length() {
-        return None
-      }
-      let val = Bytes::makei(vlen, fn(i) { b[vstart + i] })
-      let val_s = @utf8.decode_lossy(val)
-      p = vstart + vlen + 1
-      if @utf8.decode_lossy(name) == key {
-        return Some(val_s)
-      }
-    } else if sig_s == "u" {
-      p = (p + 3) / 4 * 4 + 4
-    } else if sig_s == "b" {
-      p = (p + 3) / 4 * 4 + 4
-    } else {
-      // 其它类型不处理，退出避免错位
-      return None
-    }
-  }
-  None
-}
-
-///|
 /// results 里 "streams" 是 a(ua{sv})：跳过键名与变体签名后，第一个 u32 就是 node id。
 fn stream_node(b : Bytes) -> Int32? {
   let at = find_bytes(b, @utf8.encode("streams"))
