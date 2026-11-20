@@ -116,7 +116,7 @@ static void *thread_main(void *arg) {
 
 /* 启动抓帧流。返回 0 成功，负数是 -errno 或自定义错误码。 */
 MOONBIT_FFI_EXPORT
-int32_t moonbit_pw_shim_start(int32_t node_id) {
+int32_t moonbit_pw_shim_start(int32_t node_id, const char *app_name) {
     if (g.started) {
         return 0;
     }
@@ -138,10 +138,15 @@ int32_t moonbit_pw_shim_start(int32_t node_id) {
 
     char node[16];
     snprintf(node, sizeof(node), "%d", (int)node_id);
+    // 应用名只影响这条流在 pw-dump / pavucontrol 里怎么显示，不影响权限
+    const char *app = (app_name && *app_name) ? app_name : "moonpipewire";
+    char stream_name[128];
+    snprintf(stream_name, sizeof(stream_name), "%s-capture", app);
     g.stream = pw_stream_new_simple(
-        pw_main_loop_get_loop(g.loop), "screenstream-pipewire",
+        pw_main_loop_get_loop(g.loop), stream_name,
         pw_properties_new(PW_KEY_MEDIA_TYPE, "Video", PW_KEY_MEDIA_CATEGORY, "Capture",
-                          PW_KEY_MEDIA_ROLE, "Screen", PW_KEY_TARGET_OBJECT, node, NULL),
+                          PW_KEY_MEDIA_ROLE, "Screen", PW_KEY_TARGET_OBJECT, node,
+                          PW_KEY_APP_NAME, app, NULL),
         &stream_events, &g);
     if (g.stream == NULL) {
         return -4;

@@ -156,7 +156,7 @@ async fn main {
   }
   let use_pw = pw_node > 0
   if pw_node > 0 {
-    let rc = @pipewire.pipewire_start(pw_node)
+    let rc = @pipewire.pipewire_start(pw_node, app_name="screenstream-mb")
     if rc != 0 {
       eprintln("PipeWire 启动失败 rc=\{rc}，回落到 spectacle")
     } else {

@@ -10,7 +10,7 @@ pub fn pipewire_seq() -> Int64
 
 pub fn pipewire_size() -> (Int32, Int32)
 
-pub fn pipewire_start(Int32) -> Int32
+pub fn pipewire_start(Int32, app_name? : String) -> Int32
 
 // Errors
 
