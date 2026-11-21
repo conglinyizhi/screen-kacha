@@ -66,6 +66,36 @@ test "next_tmp 带时间戳和 pid，不撞名" {
 }
 
 ///|
+/// 临时文件列表滚动：超过上限就丢最旧的，而不是无限涨。
+///
+/// 三个调用点都是「建文件 → 写 → 读 → 返回」，读完从不删，
+/// 所以每次请求都会在 /tmp 留一个。没有这个滚动，请求一多就一直涨。
+test "临时文件列表滚动，不超过上限" {
+  let store = Store::new(shot="/tmp/none.jpg")
+  let mut first = ""
+  for i = 0; i < 40; i = i + 1 {
+    let p = store.next_tmp("jpg")
+    if i == 0 {
+      first = p
+    }
+  }
+  // 列表长度被压在上限以内
+  assert_true(store.tmp_ring.length() <= 10)
+  // 最早那个已经被滚出去了
+  assert_false(store.tmp_ring.contains(first))
+}
+
+///|
+/// 刚建的那个绝不能被自己的滚动删掉 —— 返回路径之后调用方还要往里写。
+test "滚动不会删掉刚返回的路径" {
+  let store = Store::new(shot="/tmp/none.jpg")
+  for i = 0; i < 30; i = i + 1 {
+    let p = store.next_tmp("jpg")
+    assert_true(store.tmp_ring.contains(p))
+  }
+}
+
+///|
 test "health 初始状态字段齐全" {
   let store = Store::new(shot="/tmp/none.jpg")
   let res = handle_health(store, 18940)

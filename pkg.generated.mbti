@@ -100,6 +100,7 @@ pub struct Store {
   mut fails : Int32
   mut err : String
   mut seq : Int32
+  mut tmp_ring : Array[String]
 }
 pub fn Store::access_note(Self) -> String
 pub fn Store::age_ms(Self) -> Int64

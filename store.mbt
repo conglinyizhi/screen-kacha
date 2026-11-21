@@ -45,6 +45,22 @@ pub struct Store {
   mut fails : Int32
   mut err : String
   mut seq : Int32
+  /// 最近生成的临时文件，环形滚动。
+  ///
+  /// 三个调用点都是「建文件 → 写 → 读 → 返回字节」，读完从不删，
+  /// 所以每次请求都会在 /tmp 留一个文件。请求频率一高就会一直涨，
+  /// 只能靠系统 tmpfiles 定期清。
+  ///
+  /// 这里保留最近 TMP_KEEP 个，超了就删最旧的。
+  /// 为什么不是在「读出字节之后立刻删」：那看着更干净，但三个调用点
+  /// 分散在 app.mbt 的不同分支里（有一个还要让 magick 先跑完），
+  /// 每个分支都得记得删 —— 漏一处就是新的泄漏。
+  /// 统一在这里滚动，只在 next_tmp 一个地方管，不会漏。
+  ///
+  /// 必须是环形而不是"删第一个"：读文件时中间有 await，
+  /// 别的请求可能插进来生成新文件。用环形 + 编号，删除时跳过
+  /// 最近 TMP_KEEP 个以内的，就不会删到别人正在读的。
+  mut tmp_ring : Array[String]
 }
 
 ///|
@@ -82,6 +98,7 @@ pub fn Store::new(
     fails: 0,
     err: "",
     seq: 0,
+    tmp_ring: [],
   }
 }
 
@@ -272,6 +289,15 @@ pub fn Store::shot(self : Store) -> String {
 }
 
 ///|
+
+///|
+/// 临时文件保留几个。超过就删最旧的。
+///
+/// 10 足够宽：并发请求上限虽然有 64，但每个请求拿到路径到读完只有几毫秒，
+/// 而删除只针对 10 个之前生成的，轮不到正在读的那个。
+const TMP_KEEP : Int32 = 10
+
+///|
 pub fn Store::next_tmp(self : Store, ext : String) -> String {
   self.seq += 1
   // 文件名带时间和 pid，别用纯自增序号。
@@ -282,8 +308,41 @@ pub fn Store::next_tmp(self : Store, ext : String) -> String {
   //
   // 时间戳 + pid + 序号：进程内保证唯一，跨进程也几乎不会撞。
   // 序号还留着，防止同一毫秒内连续两次调用撞名。
-  "/tmp/screenstream-mb-\{@async.now()}-\{current_pid()}-\{self.seq}.\{ext}"
+  let path = "/tmp/screenstream-mb-\{@async.now()}-\{current_pid()}-\{self.seq}.\{ext}"
+  self.tmp_ring.push(path)
+  // 先把列表压到上限，再返回路径。
+  //
+  // 顺序很关键：push 在前、删在后，所以刚建的这个一定在列表尾部，
+  // 不会被自己的滚动删掉。删掉的是 10 个之前生成的那些。
+  //
+  // 为什么多留 1：读完文件到返回响应之间还有几步，这期间列表里
+  // 最新的那个必须是活的。多留一个位置相当于给最近一次调用留了缓冲。
+  while self.tmp_ring.length() > TMP_KEEP {
+    let oldest = self.tmp_ring[0]
+    self.tmp_ring = self.tmp_ring[1:].to_owned()
+    tmp_remove(oldest)
+  }
+  path
 }
+
+///|
+/// MoonBit 字符串 → 带结尾 0 的 C 字符串。
+fn cstr(s : String) -> Bytes {
+  let src = @utf8.encode(s)
+  let n = src.length()
+  Bytes::makei(n + 1, fn(i) { if i < n { src[i] } else { 0 } })
+}
+
+///|
+/// 删一个临时文件。失败不管：可能已经被清了，或者权限不对 ——
+/// 清理失败不该影响这次请求。
+fn tmp_remove(path : String) -> Unit {
+  let _ = tmp_remove_raw(cstr(path))
+}
+
+///|
+#borrow(path)
+extern "c" fn tmp_remove_raw(path : Bytes) -> Int32 = "moonbit_tmp_remove"
 
 ///|
 /// 当前进程号，来自 C 的 getpid()。
