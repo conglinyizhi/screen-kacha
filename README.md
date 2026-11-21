@@ -4,28 +4,52 @@
 
 ## 状态
 
-v0.1 骨架：全路由 + 采集状态机已经跑通，可以自己用起来。托盘、systemd 注入、状态文件尚未移植。
+v0.1，自己日常在用。核心链路（PipeWire 取帧 → HTTP 快照）、托盘指示灯、
+访问控制、systemd 集成都已落地；有单元测试和端到端冒烟，CI 跑同样的命令。
+
+还没做的：Windows / macOS 从未验证（代码只支持 native + Linux），
+也没有打包成发行版包。
 
 ## 端点
 
 | 路径 | 返回 |
 | --- | --- |
 | `GET /` | 网页，2 秒刷新 |
-| `GET /health` | 采集状态 JSON |
+| `GET /health` | 采集状态 JSON，含 `source`、`cap_ms`、`fails`、`access` |
 | `GET /skill.md` | 用法说明（读当前目录的 skill.md，缺失用内置兜底） |
+| `GET /error.md` | 出错排查步骤 |
+| `GET /llms.txt` | 给模型看的端点索引 |
+| `GET /robots.txt` | 全站禁止索引 |
 | `GET /snapshot.jpg` | 原图 |
 | `GET /snapshot-1280.jpg` | 缩到宽 1280，160 到 3840 之外会被夹住 |
 | `GET /snapshot-1280.webp` | 输出 WebP |
+| `GET /ui/err?code=xxx` | 出错兜底页，正文由服务端按代号给出 |
 | 其它 | 404 纯文本，指向 `/skill.md` |
 
-## 构建与运行
+## 安装
 
 ```bash
-moon build cmd/main --target native --release
-WAYLAND_DISPLAY=wayland-1 ./_build/native/release/build/cmd/main/main.exe
+moon build --target native --release cmd/main cmd/tray cmd/portal
+./install.sh --start
 ```
 
-端口写死在 `cmd/main/main.mbt` 的 `18940`，v0.1 不做参数解析。
+`install.sh` 只动用户目录，不需要 sudo。它装二进制到 `~/.local/bin`、
+文档到 `~/.local/share/screenstream-mb`、图标到 hicolor 主题，
+并生成 systemd unit 和 portal 自启项。`--uninstall` 反向卸载，
+保留配置和缓存。
+
+unit 模板在 `contrib/`，安装时替换 `BIN`、`DATA`、`PORT`、`BIND`、`WAYLAND`。
+`WAYLAND_DISPLAY` 从当前会话探测，端口默认 8930，都可以用环境变量覆盖：
+
+```bash
+PORT=9000 BIND=127.0.0.1 ./install.sh
+```
+
+### 不装 systemd，直接跑
+
+```bash
+WAYLAND_DISPLAY=wayland-1 ./_build/native/release/build/cmd/main/main.exe --port 8930
+```
 
 ## 实现要点
 
@@ -35,8 +59,8 @@ WAYLAND_DISPLAY=wayland-1 ./_build/native/release/build/cmd/main/main.exe
 
 ## 静态文件
 
-`/skill.md`、`/robots.txt`、`/llms.txt` 优先读工作目录下的同名文件（可以改，改完不用重编），
-读不到就用编进二进制的兜底内容。所以单文件部署也能用。
+`/skill.md`、`/error.md`、`/robots.txt`、`/llms.txt` 优先读工作目录下的同名文件
+（可以改，改完不用重编），读不到就用编进二进制的兜底内容。所以单文件部署也能用。
 
 `robots.txt` 是 `Disallow: /`：这套服务只给本地 agent 用，画面是桌面内容，不该被任何爬虫索引。
 
@@ -47,13 +71,19 @@ WAYLAND_DISPLAY=wayland-1 ./_build/native/release/build/cmd/main/main.exe
 ## 测试
 
 ```bash
-moon test --target native      # 单元测试
-bash scripts/smoke.sh          # 端到端冒烟
+moon fmt --check
+moon check --target native --deny-warn
+moon test --target native          # 单元测试
+bash scripts/smoke.sh              # 端到端冒烟（默认监听路径）
+ACCESS_CONF=/tmp/only-local.conf bash scripts/smoke.sh   # 受限监听路径
 ```
 
-冒烟脚本用 `--fake` 指定一张图片当帧源，绕开 spectacle，自己挑一个空闲端口起临时实例，
-把路由、类型、缩放、WebP、帧龄缓存、并发合并都走一遍，跑完就退出。
+冒烟脚本用 `--fake` 指定一张图片当帧源，绕开 spectacle 和 portal，自己挑一个空闲端口
+起临时实例，把路由、类型、缩放、WebP、帧龄缓存、并发合并、慢连接、并发压力都走一遍。
 不需要显示器，也不碰正在运行的服务。
+
+`serve_with_access`（启用访问限制时的监听循环）和 `serve_on` 是两条代码路径，
+所以冒烟要跑两遍。CI 里也是两遍。
 
 ## 后台抓帧泵
 
@@ -80,9 +110,13 @@ bash scripts/smoke.sh          # 端到端冒烟
 
 ## 已知限制
 
-- 没有托盘、没有 systemd 单元，需要手动起。
+- 只在 Linux + KDE Wayland 上验证过。代码走 native 目标，其它平台没试，
+  `moonpipewire` 的 C shim 依赖 PipeWire。
 - 缺 ImageMagick 时缩放与 WebP 降级为原图，不会报错。
 - 采集失败时 `/snapshot.jpg` 返回 503 带错误原因。
+- 启用访问控制后走 `serve_with_access`（自己写的 accept 循环），它和
+  `serve_on` 行为基本对齐，但少了请求体大小上限——本服务只收 GET，
+  不影响使用，换成支持 POST 时要补。
 - 临时文件落在 `/tmp/screenstream-mb-*.jpg`，退出不清理。
 
 ## 取帧来源

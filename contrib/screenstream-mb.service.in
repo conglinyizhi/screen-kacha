@@ -1,0 +1,24 @@
+[Unit]
+Description=screenstream 本机屏幕快照服务（MoonBit）
+Documentation=file://@DATA@/error.md
+# 挂在桌面会话目标上：等 compositor 起来、Wayland socket 建好再启动。
+# 写成 WantedBy=default.target 会在 Wayland 就绪前拉起抓屏工具，
+# Qt 找不到 wl_display 直接 abort，还会弹崩溃框、留 coredump。
+After=graphical-session.target plasma-kwin_wayland.service
+PartOf=graphical-session.target
+Wants=plasma-kwin_wayland.service
+
+[Service]
+Type=simple
+WorkingDirectory=@DATA@
+Environment=XDG_RUNTIME_DIR=%t
+Environment=WAYLAND_DISPLAY=@WAYLAND@
+Environment=PATH=@BIN@:/usr/local/bin:/usr/bin
+ExecStart=@BIN@/screenstream-mb --port @PORT@ --bind @BIND@ --source auto --shm %t/screenstream
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=graphical-session.target

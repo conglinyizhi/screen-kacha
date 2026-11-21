@@ -1,0 +1,19 @@
+#!/bin/sh
+# screenstream 的屏幕共享助手：portal 会话断了就自己重连。
+#
+# 必须由 autostart（.desktop）拉起，不要塞进 screenstream-mb.service：
+# 走 autostart 时 systemd 会给它一个 `app-<id>@autostart.service` 的单元名，
+# xdg-desktop-portal 才能解析出 app id，授权才能被记住、下次静默恢复。
+# 塞进服务单元里跑，portal 拿不到 app id，每次开机都要重新点授权。
+set -u
+
+TOKEN="${XDG_STATE_HOME:-$HOME/.local/state}/screenstream-mb/portal.token"
+OUT="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/screenstream/portal.node"
+BIN="${SCREENSTREAM_BIN:-$HOME/.local/bin}"
+
+mkdir -p "$(dirname "$OUT")" "$(dirname "$TOKEN")"
+
+while :; do
+  "$BIN/screenstream-portal" --out "$OUT" --token "$TOKEN"
+  sleep 5
+done

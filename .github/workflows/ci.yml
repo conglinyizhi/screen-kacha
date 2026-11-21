@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: 检查、测试、冒烟
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 编译 moonpipewire 要 pipewire 的头文件和库；
+      # 冒烟脚本要 magick 造假帧、要 curl 打接口。
+      - name: 装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpipewire-0.3-dev \
+            imagemagick \
+            curl \
+            python3
+
+      - name: 装 MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: 工具链版本
+        run: |
+          moon version
+          cc --version | head -1
+
+      - name: 拉依赖
+        run: moon update
+
+      - name: 格式
+        run: moon fmt --check
+
+      - name: 类型检查（警告即失败）
+        run: moon check --target native --deny-warn
+
+      - name: 单元测试
+        run: moon test --target native
+
+      - name: 构建三个可执行文件
+        run: moon build --target native --release cmd/main cmd/tray cmd/portal
+
+      # 冒烟用 --fake 假帧源，不需要显示器，也不会碰 portal。
+      # 两条监听路径都要过：默认走 serve_on，受限走 serve_with_access。
+      - name: 端到端冒烟（默认路径）
+        run: bash scripts/smoke.sh
+
+      - name: 端到端冒烟（受限路径）
+        run: |
+          printf 'local_only = true\n' > /tmp/restricted.conf
+          ACCESS_CONF=/tmp/restricted.conf bash scripts/smoke.sh
+
+      - name: 失败时打印服务日志
+        if: failure()
+        run: |
+          echo "--- 若冒烟失败，日志在上面步骤的输出里 ---"
+          ls -la /tmp | head -20

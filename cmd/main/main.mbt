@@ -203,8 +203,10 @@ async fn main {
   )
   eprintln("  ImageMagick: \{magick_note}")
   @async.with_task_group() <| group => {
-    if pw_node <= 0 && source != "spectacle" {
+    if pw_node <= 0 && source != "spectacle" && fake_source is None {
       // 服务先跑起来，portal 在后台拿屏幕流；拿不到就一直按 spectacle 服务
+      // 假帧源不碰 portal：有固定图可用，没必要去抢真实屏幕，
+      // 否则每跑一次冒烟都会弹一次「屏幕共享权限请求」。
       group.spawn_bg(no_wait=true) <| async fn() { portal_bg(store, shm) }
     }
     if pump > 0 && !use_pw {
