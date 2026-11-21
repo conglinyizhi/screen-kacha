@@ -260,6 +260,31 @@ fn main raise {
   )
   let _ = (cb_lan, cb_public, cb_boot)
   t.separator()
+  // 光标跟踪：临时挂一个 KWin 脚本 + 一个收坐标的小进程，勾掉就全撤
+  let helper = match @env.get_env_var("HOME") {
+    Some(h) => "\{h}/.local/bin/screenstream-cursor"
+    None => "screenstream-cursor"
+  }
+  let cb_cursor = t.checkbox(
+    "cursor_track",
+    "在截图里标出鼠标位置",
+    cursor_helper_alive(),
+    fn(item) {
+      if item.checked() {
+        if !cursor_tracking_on(helper) {
+          alert(
+            "开不了鼠标坐标跟踪", "写脚本或加载 KWin 脚本失败。可以用 journalctl --user -u screenstream-mb-tray 看原因。",
+            "cursor",
+          )
+          item.set_checked(false)
+        }
+      } else {
+        cursor_tracking_off()
+      }
+    },
+  )
+  let _ = cb_cursor
+  t.separator()
   t.on("restart", "重启服务", fn(_) {
     if !restart_service() {
       alert(

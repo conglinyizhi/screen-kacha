@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>screenstream</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --line: #262b36;
+    --text: #d6dae3;
+    --dim: #8b93a3;
+    --accent: #5cc8a0;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f7f9; --panel: #fff; --line: #e2e5ea;
+      --text: #1d2129; --dim: #656c7a; --accent: #1a8f6a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 20px 56px;
+    background: var(--bg); color: var(--text);
+    font: 15px/1.65 system-ui, -apple-system, "Noto Sans CJK SC", sans-serif;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; }
+
+  h1 { font-size: 1.35rem; margin: 0 0 4px; letter-spacing: .01em; }
+  .lede { color: var(--dim); margin: 0 0 24px; }
+
+  /* 预览压小，把版面让给链接和说明 */
+  .top { display: grid; grid-template-columns: 1fr; gap: 22px; }
+  @media (min-width: 760px) {
+    .top { grid-template-columns: 380px minmax(0, 1fr); gap: 32px; }
+  }
+
+  figure { margin: 0; }
+  figure img {
+    display: block; width: 100%; max-width: 380px; height: auto;
+    border: 1px solid var(--line); border-radius: 10px;
+    background: var(--panel);
+  }
+  figcaption { color: var(--dim); font-size: .8rem; margin-top: 8px; max-width: 380px; }
+
+  .side { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+  @media (max-width: 560px) { .side { grid-template-columns: 1fr; } }
+  .side h2 { font-size: .75rem; text-transform: uppercase;
+             letter-spacing: .07em; color: var(--dim);
+             margin: 0 0 8px; font-weight: 600; }
+  .side ul { list-style: none; margin: 0; padding: 0; }
+  .side li { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: .88rem; }
+  .side li:last-child { border-bottom: 0; }
+  .side a { color: var(--text); text-decoration: none; }
+  .side a:hover { color: var(--accent); }
+  .side code { color: var(--dim); font-size: .78rem;
+               font-family: ui-monospace, "JetBrains Mono", monospace; }
+
+  section { margin-top: 34px; }
+  h2.sec { font-size: 1rem; margin: 0 0 12px;
+           padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line);
+           vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; font-size: .8rem;
+       text-transform: uppercase; letter-spacing: .05em; }
+  td code, p code { font-family: ui-monospace, "JetBrains Mono", monospace;
+                    font-size: .85em; background: var(--panel);
+                    padding: 1px 5px; border-radius: 4px; }
+
+  pre { background: var(--panel); border: 1px solid var(--line);
+        border-radius: 8px; padding: 12px 14px; overflow-x: auto;
+        font-size: .84rem; line-height: 1.5; margin: 0; }
+  pre code { background: none; padding: 0; }
+
+  .note { color: var(--dim); font-size: .85rem; margin: 10px 0 0; }
+  a.inline { color: var(--accent); text-decoration: none; }
+  a.inline:hover { text-decoration: underline; }
+
+  /* 参数实验 */
+  .lab { display: grid; gap: 14px; }
+  @media (min-width: 700px) {
+    .lab { grid-template-columns: 200px minmax(0, 1fr); align-items: start; }
+  }
+  .lab-controls { display: grid; gap: 10px; }
+  .lab-controls label {
+    display: grid; gap: 4px; font-size: .8rem; color: var(--dim);
+  }
+  .lab-controls input, .lab-controls select {
+    width: 100%; padding: 6px 8px; font: inherit; font-size: .85rem;
+    color: var(--text); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 6px;
+  }
+  .lab-controls input:focus, .lab-controls select:focus {
+    outline: 2px solid var(--accent); outline-offset: -1px;
+  }
+  .lab-main { display: grid; gap: 10px; min-width: 0; }
+  .lab-url {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .lab-url code {
+    flex: 1 1 auto; min-width: 0; overflow-x: auto; white-space: nowrap;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 10px; font-size: .82rem;
+  }
+  .lab-url button {
+    flex: 0 0 auto; padding: 7px 12px; font: inherit; font-size: .82rem;
+    color: var(--text); background: var(--panel); cursor: pointer;
+    border: 1px solid var(--line); border-radius: 6px;
+  }
+  .lab-url button:hover { border-color: var(--accent); color: var(--accent); }
+  .lab-preview { display: grid; gap: 8px; justify-items: start; }
+  .lab-preview img {
+    display: block; max-width: 100%; height: auto;
+    border: 1px solid var(--line); border-radius: 8px;
+    background: var(--panel); min-height: 40px;
+  }
+  .lab-info { font-size: .82rem; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .lab-info b { color: var(--text); font-weight: 600; }
+
+  dialog {
+    max-width: 34em; padding: 0; color: var(--text);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.55); }
+  .dlg-body { padding: 20px 22px; }
+  .dlg-body h3 { margin: 0 0 12px; font-size: 1rem; }
+  .dlg-body p { margin: 0 0 10px; font-size: .9rem; }
+  .dlg-body ul { margin: 0 0 14px; padding-left: 1.2em; font-size: .9rem; }
+  .dlg-body li { margin: 4px 0; }
+  .dlg-foot { padding: 0 22px 18px; display: flex; gap: 8px; justify-content: flex-end; }
+  .dlg-foot button {
+    padding: 7px 14px; font: inherit; font-size: .85rem; cursor: pointer;
+    color: var(--text); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 6px;
+  }
+  .dlg-foot button.primary { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>screenstream</h1>
+  <p class="lede">本机屏幕的 HTTP 快照服务。取一张 JPEG 就能看见现在屏幕上是什么，给本地 agent 用。</p>
+
+  <div class="top">
+    <figure>
+      <img id="v" alt="屏幕画面，每两秒刷新">
+      <figcaption>当前主屏，每 2 秒刷新。含鼠标指针。</figcaption>
+    </figure>
+
+    <div class="side">
+      <div>
+        <h2>直接拿图</h2>
+        <ul>
+          <li><a href="/snapshot.jpg">原分辨率 JPEG</a><br><code>/snapshot.jpg</code></li>
+          <li><a href="/snapshot-1280.jpg">缩到 1280 宽</a><br><code>/snapshot-1280.jpg</code></li>
+          <li><a href="/snapshot-1280.webp">WebP 版</a><br><code>/snapshot-1280.webp</code></li>
+        </ul>
+      </div>
+      <div>
+        <h2>状态与说明</h2>
+        <ul>
+          <li><a href="/health">健康状态</a><br><code>/health</code></li>
+          <li><a href="/skill.md">使用说明</a><br><code>/skill.md</code></li>
+          <li><a href="/error.md">出错了怎么查</a><br><code>/error.md</code></li>
+          <li><a href="/llms.txt">给模型的索引</a><br><code>/llms.txt</code></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <section id="lab">
+    <h2 class="sec">参数实验</h2>
+    <p class="note" style="margin-top:0">
+      这些参数发给图片端点会得到不同的图。改一改，右边立刻看到实际返回的那一张。</p>
+
+    <div class="lab">
+      <div class="lab-controls">
+        <label>宽度 w
+          <input id="pw" type="number" min="160" max="3840" step="10" placeholder="原图 1920">
+        </label>
+        <label>帧龄 age（秒）
+          <input id="pa" type="number" min="0" step="0.1" placeholder="默认 1">
+        </label>
+        <label>格式
+          <select id="pf">
+            <option value="jpg">JPEG</option>
+            <option value="webp">WebP</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="lab-main">
+        <div class="lab-url">
+          <code id="purl">/snapshot.jpg</code>
+          <button id="pcopy" type="button">复制</button>
+        </div>
+        <div class="lab-preview">
+          <img id="pimg" alt="按当前参数取到的图">
+          <div class="lab-info" id="pinfo">等着取图…</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec">怎么用</h2>
+    <p>地址都相对于本服务根，下面这些直接能用：</p>
+    <pre><code># 拿一张图，存成文件
+curl -s -o screen.jpg http://127.0.0.1:8930/snapshot.jpg
+
+# 省 token：缩到 1280 宽的 WebP
+curl -s -o screen.webp http://127.0.0.1:8930/snapshot-1280.webp
+
+# 只要最新的，最多容忍 50 毫秒的旧帧
+curl -s -o screen.jpg 'http://127.0.0.1:8930/snapshot.jpg?age=0.05'
+
+# 服务还好吗
+curl -s http://127.0.0.1:8930/health</code></pre>
+    <p class="note">服务在后台持续抓帧，请求直接返回缓存，通常一到两毫秒。
+      <code>?age=</code> 是能接受的最大帧龄（秒），想要更新鲜就写小一点，
+      代价是当场触发一次抓取。</p>
+  </section>
+
+  <section>
+    <h2 class="sec">端点</h2>
+    <table>
+      <thead><tr><th>路径</th><th>返回</th></tr></thead>
+      <tbody>
+        <tr><td><code>/snapshot.jpg</code></td><td>当前画面，原分辨率</td></tr>
+        <tr><td><code>/snapshot-1280.jpg</code></td><td>宽度缩到 1280，省 token</td></tr>
+        <tr><td><code>/snapshot-1280.webp</code></td><td>同样尺寸，体积更小</td></tr>
+        <tr><td><code>/health</code></td><td>采集状态 JSON，含帧龄、耗时、失败计数、取帧来源、访问策略</td></tr>
+        <tr><td><code>/skill.md</code></td><td>完整用法，端点、参数与限制</td></tr>
+        <tr><td><code>/error.md</code></td><td>服务或托盘不正常时的排查步骤</td></tr>
+        <tr><td><code>/llms.txt</code></td><td>给模型看的端点索引</td></tr>
+      </tbody>
+    </table>
+    <p class="note">宽度也可以写进文件名，160 到 3840，超出会被夹到边界：
+      <code>/snapshot-640.jpg</code> 等价于 <code>/snapshot.jpg?w=640</code>。</p>
+  </section>
+
+  <section>
+    <h2 class="sec">给 agent</h2>
+    <p>程序访问 <code>/</code> 时（请求头里没有 <code>text/html</code>）会直接拿到
+      <a class="inline" href="/llms.txt">llms.txt</a> 的纯文本，不带 HTML 噪音。
+      浏览器访问才看到这个页面。</p>
+    <p class="note">这个服务只抓主屏，只读，画面里能看到鼠标指针。访问控制默认放行局域网、拒绝公网，
+      见 <a class="inline" href="/error.md">/error.md</a>。</p>
+  </section>
+
+</div>
+
+<dialog id="pdialog">
+  <div class="dlg-body">
+    <h3>这些参数发给图片端点会怎样</h3>
+    <p>你把这个地址的参数带到了本页。本页自己不消费它们，但如果发给图片端点：</p>
+    <ul id="pdlist"></ul>
+    <p class="note" id="pdnote"></p>
+  </div>
+  <div class="dlg-foot">
+    <button type="button" id="pdclose">知道了</button>
+    <button type="button" class="primary" id="pdtry">按这个参数看一张</button>
+  </div>
+</dialog>
+
+<script>
+  // 只在页面可见时刷新，切到后台就别浪费采集
+  var img = document.getElementById('v');
+  function tick() {
+    if (document.hidden) return;
+    img.src = '/snapshot.jpg?t=' + Date.now();
+  }
+  img.addEventListener('load', function () { setTimeout(tick, 2000); });
+  img.addEventListener('error', function () { setTimeout(tick, 5000); });
+  tick();
+</script>
+
+<script>
+(function () {
+  var pw = document.getElementById('pw');
+  var pa = document.getElementById('pa');
+  var pf = document.getElementById('pf');
+  var purl = document.getElementById('purl');
+  var pimg = document.getElementById('pimg');
+  var pinfo = document.getElementById('pinfo');
+  var pcopy = document.getElementById('pcopy');
+
+  // 服务端把宽度夹在这个范围里，页面上先说清楚
+  var W_MIN = 160, W_MAX = 3840;
+
+  function fmtBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1024 / 1024).toFixed(2) + ' MB';
+  }
+
+  // 宽度既支持 ?w= 也支持写进文件名；这里用 ?w=，因为页面上说的是「参数」
+  function buildUrl(extra) {
+    var parts = [];
+    var w = pw.value.trim();
+    var a = pa.value.trim();
+    if (w) parts.push('w=' + encodeURIComponent(w));
+    if (a) parts.push('age=' + encodeURIComponent(a));
+    if (extra) parts.push(extra);
+    return '/snapshot.' + pf.value + (parts.length ? '?' + parts.join('&') : '');
+  }
+
+  var seq = 0;          // 丢弃过期请求的结果，免得慢的盖掉快的
+  var objUrl = null;
+
+  function load() {
+    var base = buildUrl(null);
+    purl.textContent = base;
+    var my = ++seq;
+    // 破缓存：同一 URL 的 img/fetch 浏览器可能复用已解码的结果
+    var url = buildUrl('t=' + Date.now());
+    var t0 = performance.now();
+
+    fetch(url, { cache: 'no-store' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.blob();
+      })
+      .then(function (blob) {
+        if (my !== seq) return null;
+        var ms = Math.round(performance.now() - t0);
+        return createImageBitmap(blob).then(function (bmp) {
+          if (my !== seq) { bmp.close(); return; }
+          var w = bmp.width, h = bmp.height;
+          bmp.close();
+          if (objUrl) URL.revokeObjectURL(objUrl);
+          objUrl = URL.createObjectURL(blob);
+          pimg.src = objUrl;
+          var note = '';
+          var want = parseInt(pw.value.trim(), 10);
+          if (want && want !== w) {
+            note = want < W_MIN ? '（夹到下限 ' + W_MIN + '）'
+                 : want > W_MAX ? '（夹到上限 ' + W_MAX + '）' : '';
+          }
+          pinfo.innerHTML = '<b>' + w + '×' + h + '</b> · ' +
+            fmtBytes(blob.size) + ' · ' + ms + ' ms ' + note;
+        });
+      })
+      .catch(function (e) {
+        if (my !== seq) return;
+        pinfo.textContent = '取图失败：' + e.message;
+      });
+  }
+
+  // 输入防抖，别每敲一下就抓一次
+  var timer = null;
+  function schedule() {
+    clearTimeout(timer);
+    timer = setTimeout(load, 350);
+  }
+  pw.addEventListener('input', schedule);
+  pa.addEventListener('input', schedule);
+  pf.addEventListener('change', load);
+
+  pcopy.addEventListener('click', function () {
+    var text = location.origin + buildUrl(null);
+    var done = function () {
+      pcopy.textContent = '已复制';
+      setTimeout(function () { pcopy.textContent = '复制'; }, 1200);
+    };
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(done, function () {
+        pinfo.textContent = '复制失败，手动选吧：' + text;
+      });
+    } else {
+      pinfo.textContent = '这个浏览器不给剪贴板权限：' + text;
+    }
+  });
+
+  // ---- 带了参数访问本页：解释这些参数对图片端点意味着什么 ----
+
+  var dlg = document.getElementById('pdialog');
+  var pdlist = document.getElementById('pdlist');
+  var pdnote = document.getElementById('pdnote');
+
+  function parseParams() {
+    var q = new URLSearchParams(location.search);
+    var out = { w: null, age: null };
+    if (q.has('w')) {
+      var w = parseInt(q.get('w'), 10);
+      if (!isNaN(w)) out.w = w;
+    }
+    if (q.has('age')) {
+      var a = parseFloat(q.get('age'));
+      if (!isNaN(a)) out.age = a;
+    }
+    return out;
+  }
+
+  var incoming = parseParams();
+  if (incoming.w !== null || incoming.age !== null) {
+    if (incoming.w !== null) pw.value = String(incoming.w);
+    if (incoming.age !== null) pa.value = String(incoming.age);
+
+    var items = [];
+    if (incoming.w !== null) {
+      var clamped = Math.min(Math.max(incoming.w, W_MIN), W_MAX);
+      var text = '<li>宽度 <b>' + clamped + ' px</b>';
+      if (clamped !== incoming.w) {
+        text += '（你写的 ' + incoming.w + ' 超出 ' + W_MIN + '–' + W_MAX +
+                '，服务端会夹到这个值）';
+      }
+      text += '</li>';
+      items.push(text);
+    }
+    if (incoming.age !== null) {
+      var howFresh = incoming.age <= 0.1
+        ? '几乎等于「立刻抓一张新的」'
+        : incoming.age >= 5
+          ? '挺宽松，通常直接命中缓存'
+          : '允许返回这个年纪以内的缓存帧';
+      items.push('<li>最大帧龄 <b>' + incoming.age + ' 秒</b>（' + howFresh + '）</li>');
+    }
+    pdlist.innerHTML = items.join('');
+    pdnote.textContent =
+      '换算成地址就是 ' + buildUrl(null) + '。本页只是演示，真正取图要打图片端点。';
+
+    document.getElementById('pdclose').addEventListener('click', function () {
+      dlg.close();
+    });
+    document.getElementById('pdtry').addEventListener('click', function () {
+      dlg.close();
+      load();
+      document.getElementById('lab').scrollIntoView({ behavior: 'smooth' });
+    });
+    // 框弹出的同时就把图取回来，关掉框就能看到，不用再点一次
+    load();
+    dlg.showModal();
+  } else {
+    load();
+  }
+})();
+</script>
+</body>
+</html>

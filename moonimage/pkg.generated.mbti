@@ -1,0 +1,15 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "conglinyizhi/screenstream/moonimage"
+
+// Values
+pub fn bgra_to_jpeg(String, Int32, Int32, Int32, Int32, String) -> Bool
+
+pub fn bgra_to_webp(String, Int32, Int32, Int32, Int32, String) -> Bool
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

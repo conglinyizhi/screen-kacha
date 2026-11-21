@@ -1,5 +1,6 @@
 import {
   "conglinyizhi/screenstream/moonpipewire" @pipewire,
+  "conglinyizhi/screenstream/moonimage" @image,
   "moonbitlang/async",
   "moonbitlang/async/fs",
   "moonbitlang/async/process",
@@ -12,5 +13,5 @@ import {
 supported_targets = "+native"
 
 options(
-  link: { "native": { "cc-link-flags": "-lpipewire-0.3" } },
+  link: { "native": { "cc-link-flags": "-lpipewire-0.3 -ljpeg -lwebp" } },
 )

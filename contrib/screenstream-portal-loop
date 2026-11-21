@@ -13,7 +13,52 @@ BIN="${SCREENSTREAM_BIN:-$HOME/.local/bin}"
 
 mkdir -p "$(dirname "$OUT")" "$(dirname "$TOKEN")"
 
+# 退避重连。原来的写法是固定 sleep 5，用户点「取消」或关掉授权框以后
+# 会每 5 秒重新弹一次，无限轰炸 —— 这是最毁体验的地方。
+#
+# 现在的规则：
+#   - 拿不到 node（多半是被拒）就退避：5 → 10 → 30 → 60 秒封顶
+#   - 中途成功过（写到了 node）就重置回 5 秒
+#   - 连续失败 6 次以后不再弹窗，只留一条日志，直到服务重启或用户手动开
+BACKOFF="5 5 10 30 60 60"
+MAX_FAILS=6
+fail=0
+
+sleep_for() {
+  # $1 = 第几次失败（从 1 开始）
+  idx=$(( $1 < 1 ? 1 : ($1 > 6 ? 6 : $1) ))
+  set -- $BACKOFF
+  eval "echo \${$idx}"
+}
+
+# 读 node 文件的指纹：内容是「10621」这样的数字。
+# 用 mtime + 内容一起当指纹，能看出这次有没有真的换到新流。
+sum_node() {
+  if [ -f "$1" ]; then
+    printf '%s:%s' "$(cat "$1" 2>/dev/null)" "$(stat -c %Y "$1" 2>/dev/null || echo 0)"
+  fi
+}
+
 while :; do
+  before=$(sum_node "$OUT")
   "$BIN/screenstream-portal" --out "$OUT" --token "$TOKEN"
-  sleep 5
+  after=$(sum_node "$OUT")
+
+  if [ -n "$after" ] && [ "$after" != "$before" -o "$fail" -eq 0 ]; then
+    # 拿到了（或刷新的）node：这次是好的，退避归零
+    fail=0
+    sleep 5
+  else
+    fail=$((fail + 1))
+    if [ "$fail" -gt "$MAX_FAILS" ]; then
+      # 反复被拒就安静下来，别再弹窗烦人
+      echo "portal: 连续 $fail 次没拿到屏幕流，停止重试。手动运行 $BIN/screenstream-portal-loop 可恢复。" >&2
+      sleep 3600
+      fail=0
+      continue
+    fi
+    wait=$(sleep_for "$fail")
+    echo "portal: 没拿到屏幕流（第 $fail 次），${wait}s 后重试" >&2
+    sleep "$wait"
+  fi
 done

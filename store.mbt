@@ -139,12 +139,16 @@ async fn Store::capture(self : Store) -> Unit {
   }
   // spectacle 是单实例的：别的抓帧客户端占着锁时它会一直等。
   // 没有超时就会永久卡住并一直握着采集锁，所以用 timeout 兜住。
+  //
+  // -p 是把鼠标指针画进画面。不带的话截出来没有光标，
+  // 「看看屏幕上是什么」就少了「现在指着哪」这条信息。
   let code = @process.run("/usr/bin/timeout", [
     "3",
     "/usr/bin/spectacle",
     "-f",
     "-b",
     "-n",
+    "-p",
     "-o",
     self.shot,
   ]) catch {
@@ -297,24 +301,10 @@ async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
     self.pw_failed("PipeWire 还没有可用帧")
     return
   }
-  let size = "\{w}x\{h}"
-  let code = @process.run("/usr/bin/magick", [
-    "-size",
-    size,
-    "-depth",
-    "8",
-    "bgra:" + raw,
-    "-quality",
-    "82",
-    self.shot,
-  ]) catch {
-    err => {
-      self.pw_failed("magick 转码失败: \{err}")
-      return
-    }
-  }
-  if code != 0 {
-    self.pw_failed("magick 退出码 \{code}")
+  // 用自带的 moonimage 转码，不再走 magick：
+  // 实测 19ms vs 53ms，而且不再依赖外部程序。
+  if !@image.bgra_to_jpeg(raw, w, h, 0, 82, self.shot) {
+    self.pw_failed("moonimage 转码失败")
     return
   }
   let data = try {
@@ -370,4 +360,32 @@ pub fn Store::set_access_note(self : Store, note : String) -> Unit {
 ///|
 pub fn Store::access_note(self : Store) -> String {
   self.access_note
+}
+
+///|
+/// 光标坐标文件的位置。由 `screenstream-cursor` 写，这里只读。
+/// 用 runtime 目录：重启就清掉，本来就是瞬时状态。
+pub fn Store::cursor_pos_path(self : Store) -> String {
+  let _ = self
+  let rt = match @env.get_env_var("XDG_RUNTIME_DIR") {
+    Some(v) => v
+    None => "/tmp"
+  }
+  "\{rt}/screenstream/cursor.pos"
+}
+
+///|
+/// PipeWire 原始帧（BGRA）的路径和尺寸。
+///
+/// 缩放请求可以直接从原始像素重新编码，省掉「先编码成 JPEG、
+/// 再解码回来缩放」这一来一回。
+pub fn Store::pw_raw(self : Store) -> (String, Int32, Int32)? {
+  if !self.pw {
+    return None
+  }
+  let (w, h) = self.pw_stream.size()
+  if w <= 0 || h <= 0 {
+    return None
+  }
+  Some(("\{self.shot}.bgra", w, h))
 }

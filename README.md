@@ -26,6 +26,12 @@ v0.1，自己日常在用。核心链路（PipeWire 取帧 → HTTP 快照）、
 | `GET /ui/err?code=xxx` | 出错兜底页，正文由服务端按代号给出 |
 | 其它 | 404 纯文本，指向 `/skill.md` |
 
+`GET /` 按 `Accept` 分叉：带 `text/html` 给 `human.html`（页面），
+不带就给 `llms.txt` 原文（agent 拿到的没有 HTML 噪音）。
+`human.html` 上有「参数实验」：改 `w`、`age`、格式会实时显示实际返回的图、
+尺寸、体积和耗时；带参数访问（如 `/human.html?w=640&age=0.5`）会弹框说明
+这些参数发给图片端点意味着什么。
+
 ## 安装
 
 ```bash
@@ -98,11 +104,42 @@ ACCESS_CONF=/tmp/only-local.conf bash scripts/smoke.sh   # 受限监听路径
 抓帧带超时（3 秒）和失败退避：spectacle 是单实例的，被别的抓帧客户端占着时会一直等，
 没有超时就会永久卡住并一直握着采集锁。
 
+## moonimage：自带的图像编解码
+
+`moonimage` 子库把「BGRA 原始帧 → 缩放 → JPEG/WebP」这套做进进程内，
+不再为每帧 fork 一个 ImageMagick。
+
+| 场景 | moonimage | ImageMagick |
+| --- | --- | --- |
+| 原尺寸重编码 | 19 ms | 53 ms |
+| 缩到 640 宽 | 13 ms | 60 ms |
+| 缩到 1280 宽 | 22 ms | 78 ms |
+
+抓帧耗时从 62 ms 降到 23 ms。内存峰值从 magick 的 83 MB 降到 18 MB。
+
+缩小用的是自写的**面积平均**，不是 Lanczos：截图里全是小字，
+面积平均不会像 Lanczos 那样加锐化光晕。代价是和大尺寸输出对比
+PSNR 在 33–37（原尺寸 49），视觉上基本看不出，文件反而略大几 KB。
+
+依赖只有 libjpeg（BSD/IJG）和 libwebp（BSD-3），都不传染。
+**没有用 libswscale**：部分发行版的 ffmpeg 是 GPL-3.0，会带来许可证问题，
+那点像素算术自己写更省心。详见 `THIRD-PARTY.md`。
+
 ## 依赖
 
-`bobzhang/crescent` 锁在 0.11.2，它依赖 `moonbitlang/async@0.20.3`。0.20.3 没有 `shell` 包，所以调 magick 走文件而不是管道。
+编译需要：
 
-### ImageMagick 是可选的
+- MoonBit 工具链
+- libpipewire 头文件（`pipewire-0.3`、`spa-0.2`）
+- **libjpeg** 和 **libwebp**（moonimage 用）
+
+运行需要：
+
+- PipeWire（取帧）
+- xdg-desktop-portal + KDE 后端（屏幕共享授权）
+- ImageMagick：**可选**，只在少数后备路径用到
+
+## ImageMagick 是可选的
 
 启动时按 `/usr/bin/magick`、`/usr/bin/convert`、`/usr/bin/gm` 的顺序探测一次，结果写进 `/health` 的 `magick` 字段。
 

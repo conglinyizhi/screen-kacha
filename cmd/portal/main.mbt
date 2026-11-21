@@ -301,6 +301,14 @@ async fn main {
       s.signature("u")
       s.u32(2)
     })
+    // 光标画进画面：0=隐藏 1=嵌入 2=单独给元数据。
+    // 不传的话由 portal 实现自己定，KDE 下拿到的画面里没有光标，
+    // 对「看看屏幕上现在是什么」这个用途来说少了一半信息。
+    a.struct_with_align(8, fn(s) {
+      s.string("cursor_mode")
+      s.signature("u")
+      s.u32(1)
+    })
     if saved != "" {
       a.struct_with_align(8, fn(s) {
         s.string("restore_token")

@@ -69,12 +69,34 @@ test "health 初始状态字段齐全" {
 }
 
 ///|
-async test "路由：首页返回 HTML" {
+/// 根路径按 Accept 分叉：浏览器拿到页面，其它拿到 llms.txt 原文。
+/// 这里两种请求都走一遍，锁住「agent 不该看到 HTML」这条。
+async test "路由：首页按 Accept 分叉" {
   let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930)
-  let (code, headers, body) = app.dispatch("GET", "/", {}, b"")
+
+  // 浏览器
+  let (code, headers, body) = app.dispatch(
+    "GET",
+    "/",
+    { "accept": "text/html,application/xhtml+xml,*/*;q=0.8" },
+    b"",
+  )
   assert_true(code is @crescent.StatusCode::OK)
   expect_header(headers, "Content-Type", "text/html; charset=utf-8")
   assert_true(@utf8.decode(body).contains("<!doctype html>"))
+
+  // curl / agent：不带 Accept
+  let (code2, headers2, body2) = app.dispatch("GET", "/", {}, b"")
+  assert_true(code2 is @crescent.StatusCode::OK)
+  expect_header(headers2, "Content-Type", "text/plain; charset=utf-8")
+  let text = @utf8.decode(body2)
+  assert_true(text.contains("/snapshot.jpg"))
+  assert_false(text.contains("<html"))
+
+  // /human.html 永远给页面，不管 Accept
+  let (code3, headers3, _) = app.dispatch("GET", "/human.html", {}, b"")
+  assert_true(code3 is @crescent.StatusCode::OK)
+  expect_header(headers3, "Content-Type", "text/html; charset=utf-8")
 }
 
 ///|
@@ -188,7 +210,7 @@ test "health 里带 magick 标志" {
 async test "缺 magick 时缩放请求退回原图，并带标记头" {
   let store = Store::new(shot="/tmp/none.jpg")
   store.record_ok(b"ORIGINAL", 1L)
-  let res = build_image_response(store, b"ORIGINAL", Some(640), "jpg")
+  let res = build_image_response(store, b"ORIGINAL", Some(640), "jpg", None)
   assert_true(res.status_code is @crescent.StatusCode::OK)
   expect_header(res.headers, "Content-Type", "image/jpeg")
   expect_header(res.headers, "X-Screenstream-Fallback", "no-magick")
@@ -198,7 +220,7 @@ async test "缺 magick 时缩放请求退回原图，并带标记头" {
 ///|
 async test "缺 magick 时 WebP 请求同样退回 JPEG" {
   let store = Store::new(shot="/tmp/none.jpg")
-  let res = build_image_response(store, b"RAW", None, "webp")
+  let res = build_image_response(store, b"RAW", None, "webp", None)
   expect_header(res.headers, "Content-Type", "image/jpeg")
   expect_header(res.headers, "X-Screenstream-Fallback", "no-magick")
   assert_eq(res.raw_body, b"RAW")
@@ -207,7 +229,7 @@ async test "缺 magick 时 WebP 请求同样退回 JPEG" {
 ///|
 async test "不需要换算时直通原字节，不带降级头" {
   let store = Store::new(shot="/tmp/none.jpg", magick=Some("/usr/bin/magick"))
-  let res = build_image_response(store, b"RAW", None, "jpg")
+  let res = build_image_response(store, b"RAW", None, "jpg", None)
   assert_true(res.status_code is @crescent.StatusCode::OK)
   expect_header(res.headers, "Content-Type", "image/jpeg")
   match res.headers.get("X-Screenstream-Fallback") {
@@ -215,4 +237,26 @@ async test "不需要换算时直通原字节，不带降级头" {
     None => assert_true(true)
   }
   assert_eq(res.raw_body, b"RAW")
+}
+
+///|
+test "wants_html 按 Accept 判断是不是浏览器" {
+  // 浏览器
+  assert_true(
+    wants_html(
+      Some("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
+    ),
+  )
+  assert_true(wants_html(Some("TEXT/HTML")))
+  // curl 默认、agent 常见、完全不带头
+  assert_false(wants_html(Some("*/*")))
+  assert_false(wants_html(Some("application/json")))
+  assert_false(wants_html(None))
+}
+
+///|
+test "ascii_lower 只动字母" {
+  assert_eq(ascii_lower("TEXT/HTML"), "text/html")
+  assert_eq(ascii_lower("aBc-123"), "abc-123")
+  assert_eq(ascii_lower(""), "")
 }

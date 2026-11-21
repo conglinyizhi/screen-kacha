@@ -53,7 +53,15 @@ dims() { curl -s --max-time 10 "$1" -o "$WORK/out.bin" && magick identify -forma
 
 echo "== 路由与类型 =="
 check "/ 状态" 200 "$(code $B/)"
-check "/ 类型" "text/html; charset=utf-8" "$(ctype $B/)"
+# curl 不带 Accept: text/html，所以 / 应该回 llms.txt 原文而不是页面
+check "/ 给 agent 的类型" "text/plain; charset=utf-8" "$(ctype $B/)"
+curl -s --max-time 5 $B/ | grep -q "/snapshot.jpg" && ok || bad "/ 没给出端点索引"
+curl -s --max-time 5 $B/ | grep -q "<html" && bad "/ 给 agent 回了 HTML" || ok
+check "/human.html 状态" 200 "$(code $B/human.html)"
+check "/human.html 类型" "text/html; charset=utf-8" "$(ctype $B/human.html)"
+# 模拟浏览器
+check "带 Accept 的 / 回 HTML" "text/html; charset=utf-8" \
+  "$(curl -s -o /dev/null -w '%{content_type}' --max-time 5 -H 'Accept: text/html,*/*' $B/)"
 check "/health 状态" 200 "$(code $B/health)"
 check "/health 类型" "application/json" "$(ctype $B/health)"
 check "/skill.md 类型" "text/markdown; charset=utf-8" "$(ctype $B/skill.md)"

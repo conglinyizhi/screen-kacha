@@ -149,8 +149,103 @@ async fn build_image_response(
   data : Bytes,
   width : Int32?,
   fmt : String,
+  cursor : CursorStyle?,
 ) -> @crescent.HttpResponse {
   let ctype = if fmt == "webp" { "image/webp" } else { "image/jpeg" }
+  // 要在图上画光标：一律走 magick，哪怕原始尺寸直出也要多跑一趟。
+  //
+  // 缺 magick 时**明确告知**，不要静默返回一张没有光标的图：
+  // 调用方要的是「带光标」，悄悄给张没光标的比报错更难查。
+  // 但坐标拿不到（跟踪没开）算正常情况，那种就安静地退回去。
+  if cursor is Some(_style) && !store.has_magick() {
+    return make_res_extra(
+      @crescent.StatusCode::ServiceUnavailable,
+      "application/json",
+      @utf8.encode(
+        "{\"error\":\"画光标需要 ImageMagick，这台机器上没有\"}",
+      ),
+      { "X-Screenstream-Fallback": "no-magick" },
+    )
+  }
+  if cursor is Some(style) {
+    match read_cursor_pos(store.cursor_pos_path()) {
+      Some((cx, cy)) => {
+        let (arrow, mask) = match style {
+          Soft => ("cursor-arrow.png", "cursor-mask.png")
+          Neg => ("cursor-mask.png", "cursor-mask.png")
+        }
+        let out = store.next_tmp(fmt)
+        let magick = match store.magick() {
+          Some(m) => m
+          None => ""
+        }
+        let args = cursor_args(
+          style,
+          store.shot(),
+          out,
+          cx,
+          cy,
+          arrow,
+          mask,
+          width,
+        )
+        let ok = @process.run(magick, args) catch { _ => 1 }
+        if ok == 0 {
+          let got = try {
+            let f = @fs.open(out, mode=ReadOnly)
+            let b = f.read_all().binary()
+            f.close()
+            Some(b)
+          } catch {
+            _ => None
+          }
+          match got {
+            Some(b) => return make_res(@crescent.StatusCode::OK, ctype, b)
+            None => ()
+          }
+        }
+      }
+      None => ()
+    }
+  }
+  // 有 PipeWire 原始帧时直接从 BGRA 出图：省掉「编码成 JPEG 再解码回来缩放」
+  // 这一来一回，实测比 magick 快 3~4 倍。光标那步已经在上面的分支处理过，
+  // 走到这里说明不需要画光标。
+  let need_work = match width {
+    Some(_) => true
+    None => fmt != "jpg"
+  }
+  if need_work {
+    match store.pw_raw() {
+      Some((raw, w, h)) => {
+        let out = store.next_tmp(fmt)
+        let dst_w = match width {
+          Some(x) => x
+          None => 0
+        }
+        let ok = if fmt == "webp" {
+          @image.bgra_to_webp(raw, w, h, dst_w, 82, out)
+        } else {
+          @image.bgra_to_jpeg(raw, w, h, dst_w, 82, out)
+        }
+        if ok {
+          let got = try {
+            let f = @fs.open(out, mode=ReadOnly)
+            let b = f.read_all().binary()
+            f.close()
+            Some(b)
+          } catch {
+            _ => None
+          }
+          match got {
+            Some(b) => return make_res(@crescent.StatusCode::OK, ctype, b)
+            None => ()
+          }
+        }
+      }
+      None => ()
+    }
+  }
   match render_plan(width, fmt, store.has_magick()) {
     Passthrough => make_res(@crescent.StatusCode::OK, ctype, data)
     Downgrade =>
@@ -182,6 +277,7 @@ async fn handle_snapshot(
   name : StringView,
   query_w : String?,
   query_age : String?,
+  query_cursor : String?,
 ) -> @crescent.HttpResponse {
   store.mark_request()
   match parse_snapshot(name) {
@@ -214,7 +310,14 @@ async fn handle_snapshot(
             "application/json",
             @utf8.encode("{\"error\":\"还没有可用帧\"}"),
           )
-        Some(data) => build_image_response(store, data, clamp_width(w), fmt)
+        Some(data) =>
+          build_image_response(
+            store,
+            data,
+            clamp_width(w),
+            fmt,
+            parse_cursor(query_cursor),
+          )
       }
     }
   }
@@ -240,13 +343,23 @@ async fn handle_skill() -> @crescent.HttpResponse {
 ///|
 pub fn build_app(store : Store, port : Int32) -> @crescent.App {
   let app = @crescent.App()
-  app.get("/", fn(_ev) {
-    make_res(
-      @crescent.StatusCode::OK,
-      "text/html; charset=utf-8",
-      @utf8.encode(page_html),
-    ).to_responder()
+  // 根路径分叉：浏览器给人看的页面，其它（curl、agent）直接给 llms.txt 原文。
+  //
+  // 判断用 Accept 而不是 User-Agent：浏览器一定会带 text/html，curl 默认是
+  // `*/*`，agent 通常什么都不带。User-Agent 谁都能改，而且 agent 的名字
+  // 五花八门，靠它分类只会漏。
+  //
+  // 也不做 meta refresh 跳转：那样 agent 拿到的仍是 HTML 原文，
+  // `<meta>`、`<style>`、脚本会一起进它的 context。分叉在服务端做，
+  // 两边各拿到干净的东西。
+  app.get("/", async fn(ev) {
+    if wants_html(ev.req.get_header("accept")) {
+      handle_human_page().to_responder()
+    } else {
+      handle_text_file("llms.txt", "text/plain; charset=utf-8", fallback_llms).to_responder()
+    }
   })
+  app.get("/human.html", async fn(_ev) { handle_human_page().to_responder() })
   app.get("/health", fn(_ev) { handle_health(store, port).to_responder() })
   // 出错兜底页：只认代号，正文从固定表里查
   app.get("/ui/err", fn(ev) {
@@ -274,6 +387,7 @@ pub fn build_app(store : Store, port : Int32) -> @crescent.App {
           name,
           ev.req.get_query("w"),
           ev.req.get_query("age"),
+          ev.req.get_query("cursor"),
         ).to_responder()
       None => not_found("/").to_responder()
     }

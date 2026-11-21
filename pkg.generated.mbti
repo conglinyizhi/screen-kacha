@@ -13,6 +13,8 @@ pub async fn acquire_portal_node(String) -> Int32?
 
 pub fn build_app(Store, Int32) -> @crescent.App
 
+pub fn cursor_args(CursorStyle, String, String, Int32, Int32, String, String, Int32?) -> Array[String]
+
 pub fn default_magick_candidates() -> Array[String]
 
 pub async fn detect_magick() -> String?
@@ -31,13 +33,19 @@ pub fn not_found_text(String) -> String
 
 pub fn parse_access(String) -> Access
 
+pub fn parse_cursor(String?) -> CursorStyle?
+
 pub fn peer_ip(String) -> String
+
+pub async fn read_cursor_pos(String) -> (Int32, Int32)?
 
 pub async fn render_file(String, String, String, Int32?) -> Bytes?
 
 pub fn render_plan(Int32?, String, Bool) -> RenderPlan
 
 pub async fn serve_with_access(@crescent.App, @http.Server, Access, Int32) -> Unit
+
+pub fn wants_html(String?) -> Bool
 
 // Errors
 
@@ -52,6 +60,11 @@ pub fn Access::default() -> Self
 pub fn Access::describe(Self) -> String
 pub fn Access::open() -> Self
 pub fn Access::restricted(Self) -> Bool
+
+pub enum CursorStyle {
+  Soft
+  Neg
+}
 
 pub struct Frame {
   bytes : Bytes
@@ -88,6 +101,7 @@ pub fn Store::age_ms(Self) -> Int64
 pub fn Store::bytes(Self) -> Bytes?
 pub fn Store::cap_ms(Self) -> Int64
 pub fn Store::count(Self) -> Int32
+pub fn Store::cursor_pos_path(Self) -> String
 pub fn Store::enable_pipewire(Self, Int32) -> Bool
 pub async fn Store::ensure(Self, Int64) -> Unit
 pub fn Store::err(Self) -> String
@@ -99,6 +113,7 @@ pub fn Store::mark_request(Self) -> Unit
 pub fn Store::new(shot~ : String, magick? : String?, fake? : String?, wl_dir? : String, pw? : Bool) -> Self
 pub fn Store::next_tmp(Self, String) -> String
 pub fn Store::pipewire_on(Self) -> Bool
+pub fn Store::pw_raw(Self) -> (String, Int32, Int32)?
 pub fn Store::set_access_note(Self, String) -> Unit
 pub fn Store::set_source(Self, String) -> Unit
 pub fn Store::shot(Self) -> String

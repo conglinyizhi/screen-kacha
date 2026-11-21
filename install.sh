@@ -52,8 +52,10 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
   fi
   rm -f "$UNITS/screenstream-mb.service" "$UNITS/screenstream-mb-tray.service"
   rm -f "$AUTOSTART/screenstream-portal.desktop"
+  pkill -f screenstream-cursor 2>/dev/null || true
   rm -f "$BIN/screenstream-mb" "$BIN/screenstream-mb-tray" \
-        "$BIN/screenstream-portal" "$BIN/screenstream-portal-loop"
+        "$BIN/screenstream-portal" "$BIN/screenstream-portal-loop" \
+        "$BIN/screenstream-cursor"
   # 图标
   for sz in 22 44; do
     rm -f "$PREFIX/share/icons/hicolor/${sz}x${sz}/apps/screenstream-"*.png
@@ -104,7 +106,7 @@ say "Wayland 显示 $WAYLAND"
 # ---------------------------------------------------------------------------
 echo "== 装二进制 =="
 mkdir -p "$BIN" "$DATA" "$UNITS" "$AUTOSTART"
-for exe in main:screenstream-mb tray:screenstream-mb-tray portal:screenstream-portal; do
+for exe in main:screenstream-mb tray:screenstream-mb-tray portal:screenstream-portal cursor:screenstream-cursor; do
   src="${exe%%:*}"
   dst="${exe##*:}"
   install -m 0755 "$BUILD/$src/$(basename "$src").exe" "$BIN/$dst"
@@ -116,6 +118,11 @@ say "screenstream-portal-loop"
 echo "== 装文档 =="
 for f in README.md error.md skill.md llms.txt robots.txt; do
   [ -f "$ROOT/$f" ] && install -m 0644 "$ROOT/$f" "$DATA/$f" && say "$f"
+done
+
+echo "== 装光标素材 =="
+for f in cursor-arrow.png cursor-mask.png; do
+  [ -f "$ROOT/contrib/$f" ] && install -m 0644 "$ROOT/contrib/$f" "$DATA/$f" && say "$f"
 done
 
 echo "== 装图标 =="
