@@ -99,3 +99,20 @@ bash scripts/smoke.sh          # 端到端冒烟
 - 已知代价：PipeWire 抓屏期间桌面会一直显示「正在共享屏幕」的指示
 
 只想用老办法就加 `--source spectacle`；想跳过 portal 直接指定节点用 `--pw-node <id>`。
+
+## 托盘图标
+
+图标是「显示器 + 右下角指示灯」，四态：
+
+| 图标 | 灯色 | 含义 |
+|---|---|---|
+| `screenstream-ok` | 绿 | 服务正常 |
+| `screenstream-warn` | 黄 | 已启动，还没抓到帧 |
+| `screenstream-dead` | 灰 | 服务没响应 |
+| `screenstream-down` | 红 | 采集失败并记了错 |
+
+托盘每 5 秒查一次 `/health`，按结果换图标名。
+
+安装：`./install-icons.sh`。三个必踩的坑——文件名必须是 `<图标名>.png`
+（不能带 `-22` 这种尺寸后缀，否则主题按名找不到）、PNG 必须是 8 位深
+（16 位 KDE 加载不了，图标位置会留空）、用户 hicolor 目录要有 `index.theme`。
