@@ -202,11 +202,27 @@ fn main raise {
       write_access(cur_lan, item.checked())
     },
   )
+  // 退出项的文案取决于托盘是否开机自启：先占位，勾选时同步改
+  let quit_ref : Ref[@menu.ItemHandle?] = Ref(None)
   let cb_boot = t.checkbox(
     "boot",
     "开机启动（使用 systemd）",
     boot_enabled(),
-    fn(item) { set_boot(item.checked()) },
+    fn(item) {
+      let on = item.checked()
+      set_boot(on)
+      match quit_ref.val {
+        Some(q) =>
+          q.set_title(
+            if on {
+              "退出托盘（直到下次开机）"
+            } else {
+              "退出托盘"
+            },
+          )
+        None => ()
+      }
+    },
   )
   let _ = (cb_lan, cb_public, cb_boot)
   t.separator()
@@ -222,7 +238,8 @@ fn main raise {
   } else {
     "退出托盘"
   }
-  t.on("quit", quit_label, fn(_) { exit_now(0) }) |> ignore
+  let quit_item = t.on("quit", quit_label, fn(_) { exit_now(0) })
+  quit_ref.val = Some(quit_item)
   // 每 5 秒查一次，图标跟着健康状态变
   match t.run_with_tick(fn() { poll_icon(t, base) }, 5000) {
     Ok(_) => eprintln("托盘事件循环已结束")
