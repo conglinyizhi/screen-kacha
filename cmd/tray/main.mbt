@@ -100,24 +100,6 @@ fn access_path() -> String {
 }
 
 ///|
-/// 取路径的目录部分。
-fn dir_of(path : String) -> String {
-  let mut cut = -1
-  let mut i = 0
-  while i < path.length() {
-    if path[i] == '/' {
-      cut = i
-    }
-    i = i + 1
-  }
-  if cut <= 0 {
-    "."
-  } else {
-    path[:cut].to_owned()
-  }
-}
-
-///|
 /// 从配置文本里读一个布尔项，缺省用 dflt。
 fn read_flag(text : String, key : String, dflt : Bool) -> Bool {
   for line in text.split("\n") {
