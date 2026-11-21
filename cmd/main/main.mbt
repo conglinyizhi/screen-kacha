@@ -29,6 +29,11 @@ fn cli_cmd() -> @argparse.Command {
     ]),
     @argparse.OptionArg("bind", about="监听地址", default_values=["0.0.0.0"]),
     @argparse.OptionArg(
+      "access",
+      about="访问控制配置文件；留空用 ~/.config/screenstream-mb/access.conf",
+      default_values=[""],
+    ),
+    @argparse.OptionArg(
       "idle",
       about="无人请求时的保活间隔（秒），0 表示不保活",
       default_values=["20"],
@@ -173,6 +178,19 @@ async fn main {
     None => "未找到，缩放与 WebP 将退回原图"
   }
 
+  let access_path = match pick(m, "access", "") {
+    "" =>
+      match @env.get_env_var("HOME") {
+        Some(h) => "\{h}/.config/screenstream-mb/access.conf"
+        None => "/etc/screenstream-mb/access.conf"
+      }
+    p => p
+  }
+  let access = @store.load_access(access_path)
+  store.set_access_note(access.describe())
+  eprintln(
+    "访问控制：\{if access.restricted() { "启用（\{access.describe()}）" } else { "未启用" }}  配置 \{access_path}",
+  )
   if pw_node > 0 {
     if store.enable_pipewire(pw_node) {
       eprintln("PipeWire 抓帧已启动，node=\{pw_node}")
@@ -196,14 +214,19 @@ async fn main {
     } else {
       group.spawn_bg(no_wait=true) <| async fn() { idle_loop(store, idle) }
     }
-    app.serve_on(
-      server,
-      options=@crescent.NativeServeOptions(
-        max_connections=max_conns,
-        // 单连接读写超时对齐 Python 版的 15 秒
-        request_body_read_timeout_ms=15000,
-        handler_timeout_ms=15000,
-      ),
-    )
+    if access.restricted() {
+      // 有访问限制时自己收连接：crescent 的 serve_on 拿不到对端地址
+      @store.serve_with_access(app, server, access, max_conns)
+    } else {
+      app.serve_on(
+        server,
+        options=@crescent.NativeServeOptions(
+          max_connections=max_conns,
+          // 单连接读写超时对齐 Python 版的 15 秒
+          request_body_read_timeout_ms=15000,
+          handler_timeout_ms=15000,
+        ),
+      )
+    }
   }
 }

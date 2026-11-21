@@ -32,7 +32,8 @@ magick -size 800x600 xc:'#2b6cb0' -fill white -pointsize 48 -gravity center -ann
 echo "== 起实例（端口 $PORT，假帧源）=="
 ./_build/native/debug/build/cmd/main/main.exe \
   --port "$PORT" --bind 127.0.0.1 --pump 100 \
-  --shm "$WORK/shm" --fake "$WORK/frame.png" >"$PORT_LOG" 2>&1 &
+  --shm "$WORK/shm" --fake "$WORK/frame.png" \
+  ${ACCESS_CONF:+--access "$ACCESS_CONF"} >"$PORT_LOG" 2>&1 &
 SERVER_PID=$!
 
 for _ in $(seq 1 50); do

@@ -5,6 +5,7 @@ import {
   "bobzhang/crescent",
   "conglinyizhi/screenstream/moonpipewire",
   "moonbitlang/async",
+  "moonbitlang/async/http",
 }
 
 // Values
@@ -20,15 +21,34 @@ pub async fn find_magick(Array[String]) -> String?
 
 pub async fn forget_portal_node(String) -> Unit
 
+pub fn is_loopback(String) -> Bool
+
+pub async fn load_access(String) -> Access
+
 pub fn not_found_text(String) -> String
+
+pub fn parse_access(String) -> Access
+
+pub fn peer_ip(String) -> String
 
 pub async fn render_file(String, String, String, Int32?) -> Bytes?
 
 pub fn render_plan(Int32?, String, Bool) -> RenderPlan
 
+pub async fn serve_with_access(@crescent.App, @http.Server, Access, Int32) -> Unit
+
 // Errors
 
 // Types and methods
+pub struct Access {
+  local_only : Bool
+  allow : Array[String]
+}
+pub fn Access::allows(Self, String) -> Bool
+pub fn Access::describe(Self) -> String
+pub fn Access::open() -> Self
+pub fn Access::restricted(Self) -> Bool
+
 pub struct Frame {
   bytes : Bytes
   ts : Int64
@@ -50,6 +70,7 @@ pub struct Store {
   mut pw_fails : Int32
   pw_stream : @moonpipewire.PipeWire
   mut source : String
+  mut access_note : String
   mut last_req : Int64
   mut frame : Frame?
   mut cap_ms : Int64
@@ -58,6 +79,7 @@ pub struct Store {
   mut err : String
   mut seq : Int32
 }
+pub fn Store::access_note(Self) -> String
 pub fn Store::age_ms(Self) -> Int64
 pub fn Store::bytes(Self) -> Bytes?
 pub fn Store::cap_ms(Self) -> Int64
@@ -73,6 +95,7 @@ pub fn Store::mark_request(Self) -> Unit
 pub fn Store::new(shot~ : String, magick? : String?, fake? : String?, wl_dir? : String, pw? : Bool) -> Self
 pub fn Store::next_tmp(Self, String) -> String
 pub fn Store::pipewire_on(Self) -> Bool
+pub fn Store::set_access_note(Self, String) -> Unit
 pub fn Store::set_source(Self, String) -> Unit
 pub fn Store::shot(Self) -> String
 pub fn Store::source(Self) -> String

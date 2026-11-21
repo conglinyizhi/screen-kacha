@@ -26,6 +26,8 @@ pub struct Store {
   pw_stream : @pipewire.PipeWire
   /// 当前实际使用的取帧来源："pipewire" / "spectacle" / "fake"
   mut source : String
+  /// 访问控制的描述，给 /health 用
+  mut access_note : String
   /// 最近一次请求的时间戳（毫秒），泵据此决定抓多勤
   mut last_req : Int64
   mut frame : Frame?
@@ -53,6 +55,7 @@ pub fn Store::new(
     pw,
     pw_fails: 0,
     pw_stream: @pipewire.PipeWire::new(app_name="screenstream-mb"),
+    access_note: "不限",
     source: if pw {
       "pipewire"
     } else if fake is Some(_) {
@@ -356,4 +359,15 @@ pub fn Store::enable_pipewire(self : Store, node : Int32) -> Bool {
 ///|
 pub fn Store::pipewire_on(self : Store) -> Bool {
   self.pw
+}
+
+///|
+/// 记录访问控制策略，供 /health 展示。
+pub fn Store::set_access_note(self : Store, note : String) -> Unit {
+  self.access_note = note
+}
+
+///|
+pub fn Store::access_note(self : Store) -> String {
+  self.access_note
 }

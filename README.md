@@ -116,3 +116,21 @@ bash scripts/smoke.sh          # 端到端冒烟
 安装：`./install-icons.sh`。三个必踩的坑——文件名必须是 `<图标名>.png`
 （不能带 `-22` 这种尺寸后缀，否则主题按名找不到）、PNG 必须是 8 位深
 （16 位 KDE 加载不了，图标位置会留空）、用户 hicolor 目录要有 `index.theme`。
+
+## 访问控制
+
+默认不限制。要限制，写法是把配置放到 `~/.config/screenstream-mb/access.conf`
+（或用 `--access <path>` 指定）：
+
+```text
+local_only = true          # 只允许本机
+allow = 192.168.1.20       # 额外放行；末尾 . 表示前缀
+```
+
+回环地址永远放行。被拒的连接会读到 403 和一行说明，日志里记一条「拒绝 <peer>」。
+
+实现上，一旦启用限制，服务就自己收连接（crescent 的 `serve_on` 在 accept 之后
+把对端地址丢了，拿不到 IP），每条连接处理一个请求就关。没启用时仍走原来的
+`serve_on`，行为不变。
+
+`/health` 里的 `access` 字段会写明当前策略。

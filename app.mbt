@@ -138,7 +138,7 @@ fn handle_health(store : Store, port : Int32) -> @crescent.HttpResponse {
     Some(_) => store.err() == ""
     None => false
   }
-  let json = "{\"ok\": \{ok}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"err\": \"\{store.err()}\", \"port\": \{port}, \"magick\": \{store.has_magick()}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{store.source()}\"}"
+  let json = "{\"ok\": \{ok}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"err\": \"\{store.err()}\", \"port\": \{port}, \"magick\": \{store.has_magick()}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{store.source()}\", \"access\": \"\{store.access_note()}\"}"
   make_res(@crescent.StatusCode::OK, "application/json", @utf8.encode(json))
 }
 
