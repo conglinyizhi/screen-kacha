@@ -163,7 +163,8 @@ fn set_boot(on : Bool) -> Bool {
   let verb = if on { "enable" } else { "disable" }
   run_status(
     "systemctl --user \{verb} screenstream-mb.service screenstream-mb-tray.service",
-  ) == 0
+  ) ==
+  0
 }
 
 ///|
@@ -198,8 +199,7 @@ fn main raise {
     let (_, cur_public) = read_access()
     if !write_access(item.checked(), cur_public) {
       alert(
-        "访问控制设置失败",
-        "写配置或重启服务失败了。可以检查 ~/.config/screenstream-mb/ 是否可写，或用 journalctl --user -xe 看原因。",
+        "访问控制设置失败", "写配置或重启服务失败了。可以检查 ~/.config/screenstream-mb/ 是否可写，或用 journalctl --user -xe 看原因。",
         "access",
       )
       item.set_checked(!item.checked())
@@ -213,8 +213,7 @@ fn main raise {
       let (cur_lan, _) = read_access()
       if !write_access(cur_lan, item.checked()) {
         alert(
-          "访问控制设置失败",
-          "写配置或重启服务失败了。可以检查 ~/.config/screenstream-mb/ 是否可写，或用 journalctl --user -xe 看原因。",
+          "访问控制设置失败", "写配置或重启服务失败了。可以检查 ~/.config/screenstream-mb/ 是否可写，或用 journalctl --user -xe 看原因。",
           "access",
         )
         item.set_checked(!item.checked())
@@ -240,8 +239,7 @@ fn main raise {
       let on = item.checked()
       if !set_boot(on) {
         alert(
-          "开机启动设置失败",
-          "调用 systemctl 失败了。可以用 journalctl --user -xe 看看具体原因。",
+          "开机启动设置失败", "调用 systemctl 失败了。可以用 journalctl --user -xe 看看具体原因。",
           "boot",
         )
         item.set_checked(!on)
@@ -265,8 +263,7 @@ fn main raise {
   t.on("restart", "重启服务", fn(_) {
     if !restart_service() {
       alert(
-        "重启服务失败",
-        "systemctl 调用返回了非零退出码。可以用 systemctl --user status screenstream-mb 看看状态。",
+        "重启服务失败", "systemctl 调用返回了非零退出码。可以用 systemctl --user status screenstream-mb 看看状态。",
         "service",
       )
     }

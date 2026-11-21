@@ -258,9 +258,7 @@ pub fn build_app(store : Store, port : Int32) -> @crescent.App {
   })
   app.get("/skill.md", async fn(_ev) { handle_skill().to_responder() })
   app.get("/error.md", async fn(_ev) {
-    handle_text_file(
-      "error.md", "text/markdown; charset=utf-8", fallback_error,
-    ).to_responder()
+    handle_text_file("error.md", "text/markdown; charset=utf-8", fallback_error).to_responder()
   })
   app.get("/robots.txt", async fn(_ev) {
     handle_text_file("robots.txt", "text/plain; charset=utf-8", fallback_robots).to_responder()
