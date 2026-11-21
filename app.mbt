@@ -248,7 +248,20 @@ pub fn build_app(store : Store, port : Int32) -> @crescent.App {
     ).to_responder()
   })
   app.get("/health", fn(_ev) { handle_health(store, port).to_responder() })
+  // 出错兜底页：只认代号，正文从固定表里查
+  app.get("/ui/err", fn(ev) {
+    let code = match ev.req.get_query("code") {
+      Some(c) => c
+      None => ""
+    }
+    @crescent.html(err_page(code))
+  })
   app.get("/skill.md", async fn(_ev) { handle_skill().to_responder() })
+  app.get("/error.md", async fn(_ev) {
+    handle_text_file(
+      "error.md", "text/markdown; charset=utf-8", fallback_error,
+    ).to_responder()
+  })
   app.get("/robots.txt", async fn(_ev) {
     handle_text_file("robots.txt", "text/plain; charset=utf-8", fallback_robots).to_responder()
   })

@@ -72,3 +72,11 @@ int moonbit_screenstream_write_file(const char *path, const char *data) {
   fclose(f);
   return 0;
 }
+
+/* 同步跑一条命令并返回退出码（-1 表示根本起不来）。 */
+int moonbit_screenstream_run_status(const char *cmd) {
+  int rc = system(cmd);
+  if (rc == -1) return -1;
+  if (WIFEXITED(rc)) return WEXITSTATUS(rc);
+  return -2;
+}

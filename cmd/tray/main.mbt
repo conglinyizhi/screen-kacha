@@ -127,15 +127,15 @@ fn read_access() -> (Bool, Bool) {
 }
 
 ///|
-/// 把两档开关写回配置并重启服务让它生效。
-fn write_access(lan : Bool, public : Bool) -> Unit {
+/// 把两档开关写回配置并重启服务让它生效。失败返回 false。
+fn write_access(lan : Bool, public : Bool) -> Bool {
   let body = "# screenstream 访问控制（托盘菜单会改写这个文件）\n" +
     "allow_lan = \{lan}\n" +
     "allow_public = \{public}\n"
-  let path = access_path()
-  if write_file(path, body) {
-    sh("systemctl --user restart screenstream-mb.service")
+  if !write_file(access_path(), body) {
+    return false
   }
+  run_status("systemctl --user restart screenstream-mb.service") == 0
 }
 
 ///|
@@ -158,12 +158,18 @@ fn boot_enabled() -> Bool {
 }
 
 ///|
-/// 开/关两个 unit 的开机启动。
-fn set_boot(on : Bool) -> Unit {
+/// 开/关两个 unit 的开机启动。失败返回 false。
+fn set_boot(on : Bool) -> Bool {
   let verb = if on { "enable" } else { "disable" }
-  sh(
+  run_status(
     "systemctl --user \{verb} screenstream-mb.service screenstream-mb-tray.service",
-  )
+  ) == 0
+}
+
+///|
+/// 重启服务。失败返回 false。
+fn restart_service() -> Bool {
+  run_status("systemctl --user restart screenstream-mb.service") == 0
 }
 
 ///|
@@ -185,13 +191,19 @@ fn main raise {
   t.on("open", "打开 :\{port} 页面", fn(_) { sh("xdg-open '\{base}/'") })
   |> ignore
   t.separator()
-  t.separator()
   let (lan_on, public_on) = read_access()
   let cb_lan = t.checkbox("allow_lan", "放行局域网请求", lan_on, fn(
     item,
   ) {
     let (_, cur_public) = read_access()
-    write_access(item.checked(), cur_public)
+    if !write_access(item.checked(), cur_public) {
+      alert(
+        "访问控制设置失败",
+        "写配置或重启服务失败了。可以检查 ~/.config/screenstream-mb/ 是否可写，或用 journalctl --user -xe 看原因。",
+        "access",
+      )
+      item.set_checked(!item.checked())
+    }
   })
   let cb_public = t.checkbox(
     "allow_public",
@@ -199,7 +211,14 @@ fn main raise {
     public_on,
     fn(item) {
       let (cur_lan, _) = read_access()
-      write_access(cur_lan, item.checked())
+      if !write_access(cur_lan, item.checked()) {
+        alert(
+          "访问控制设置失败",
+          "写配置或重启服务失败了。可以检查 ~/.config/screenstream-mb/ 是否可写，或用 journalctl --user -xe 看原因。",
+          "access",
+        )
+        item.set_checked(!item.checked())
+      }
     },
   )
   // 退出项的文案取决于托盘是否开机自启：先占位，勾选时同步改
@@ -209,8 +228,25 @@ fn main raise {
     "开机启动（使用 systemd）",
     boot_enabled(),
     fn(item) {
+      if system_unit_conflict() {
+        alert(
+          "无法用托盘管理开机启动", "检测到系统级（非 --user）的同名 systemd unit。\n托盘只能用 systemctl --user 管理用户级 unit，对系统级无效。\n\n请自行用 sudo systemctl disable screenstream-mb 处理，或先删掉系统级 unit。",
+          "sysunit",
+        )
+        // 勾选状态以真实状态为准，避免看起来像生效了
+        item.set_checked(!item.checked())
+        return
+      }
       let on = item.checked()
-      set_boot(on)
+      if !set_boot(on) {
+        alert(
+          "开机启动设置失败",
+          "调用 systemctl 失败了。可以用 journalctl --user -xe 看看具体原因。",
+          "boot",
+        )
+        item.set_checked(!on)
+        return
+      }
       match quit_ref.val {
         Some(q) =>
           q.set_title(
@@ -227,7 +263,13 @@ fn main raise {
   let _ = (cb_lan, cb_public, cb_boot)
   t.separator()
   t.on("restart", "重启服务", fn(_) {
-    sh("systemctl --user restart screenstream-mb.service")
+    if !restart_service() {
+      alert(
+        "重启服务失败",
+        "systemctl 调用返回了非零退出码。可以用 systemctl --user status screenstream-mb 看看状态。",
+        "service",
+      )
+    }
   })
   |> ignore
   t.separator()

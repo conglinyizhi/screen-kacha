@@ -16,6 +16,16 @@ let fallback_skill : String =
   $|
   $|GET /snapshot.jpg 原图，GET /snapshot-1280.jpg 缩到宽 1280，
   $|GET /snapshot-1280.webp 输出 WebP，GET /health 采集状态。
+  $|出错排查见 /error.md。
+
+///|
+let fallback_error : String =
+  $|# 出错了怎么查
+  $|
+  $|先看服务活着没有：curl -s http://127.0.0.1:8930/health
+  $|托盘的问题看：cat ~/.local/state/screenstream-mb/last-error.txt
+  $|日志：journalctl --user -u screenstream-mb -u screenstream-mb-tray -n 100 --no-pager
+  $|完整的排查步骤在磁盘上的 error.md。
 
 ///|
 /// 文本类静态文件：磁盘上有就用磁盘的（可改），没有就用编进二进制的兜底。
