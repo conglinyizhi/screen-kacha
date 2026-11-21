@@ -119,18 +119,20 @@ bash scripts/smoke.sh          # 端到端冒烟
 
 ## 访问控制
 
-默认不限制。要限制，写法是把配置放到 `~/.config/screenstream-mb/access.conf`
-（或用 `--access <path>` 指定）：
+配置放在 `~/.config/screenstream-mb/access.conf`（或 `--access <path>`）：
 
 ```text
-local_only = true          # 只允许本机
-allow = 192.168.1.20       # 额外放行；末尾 . 表示前缀
+allow_lan    = true    # 局域网放行
+allow_public = false   # 非局域网放行 —— 危险
+allow =                # 预留：显式放行名单
 ```
 
 回环地址永远放行。被拒的连接会读到 403 和一行说明，日志里记一条「拒绝 <peer>」。
 
-实现上，一旦启用限制，服务就自己收连接（crescent 的 `serve_on` 在 accept 之后
-把对端地址丢了，拿不到 IP），每条连接处理一个请求就关。没启用时仍走原来的
-`serve_on`，行为不变。
+托盘菜单里有两个开关直接改这个文件并重启服务：**放行局域网请求**（默认开）、
+**[危险] 放行非局域网请求**（默认关）。`/health` 的 `access` 字段写明当前策略。
 
-`/health` 里的 `access` 字段会写明当前策略。
+实现上，公网不放行时服务自己收连接（crescent 的 `serve_on` 把对端地址丢了，
+拿不到 IP），每条连接处理一个请求就关；公网放行时仍走原来的 `serve_on`。
+
+

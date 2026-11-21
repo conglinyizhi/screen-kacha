@@ -10,6 +10,16 @@ extern "c" fn capture_shell(cmd : Bytes, buf : Bytes, len : Int32) -> Int32 = "m
 extern "c" fn exit_now(code : Int32) -> Unit = "moonbit_screenstream_exit"
 
 ///|
+#borrow(path, data)
+extern "c" fn write_file_raw(path : Bytes, data : Bytes) -> Int32 = "moonbit_screenstream_write_file"
+
+///|
+/// 写配置文件。同步调用，托盘菜单里用。
+fn write_file(path : String, data : String) -> Bool {
+  write_file_raw(cstr(path), cstr(data)) == 0
+}
+
+///|
 fn cstr(s : String) -> Bytes {
   let src = @utf8.encode(s)
   let n = src.length()
@@ -54,19 +64,6 @@ fn pick(m : @argparse.Matches, name : String, dflt : String) -> String {
 }
 
 ///|
-/// 菜单标题只放短提示，完整 JSON 走「复制健康 JSON」。
-fn shorten(text : String) -> String {
-  if text.length() == 0 {
-    return "服务未响应"
-  }
-  if text.length() > 46 {
-    text[0:46].to_owned() + "…"
-  } else {
-    text
-  }
-}
-
-///|
 
 ///|
 /// 按 /health 的返回挑图标名和一句话说明。
@@ -87,16 +84,104 @@ fn health_state(body : String) -> (String, String) {
 
 ///|
 /// 查一次健康状态，更新图标和标题。
-fn refresh_state(
-  t : @sni.Tray,
-  status : @menu.ItemHandle,
-  base : String,
-  port : Int32,
-) -> Unit {
+fn poll_icon(t : @sni.Tray, base : String) -> Unit {
   let h = capture("curl -s --max-time 2 '\{base}/health'", 2048)
-  let (icon, say) = health_state(h)
+  let (icon, _say) = health_state(h)
   t.set_icon_name(icon)
-  status.set_title("端口 \{port} · \{say} · \{shorten(h)}")
+}
+
+///|
+/// 访问控制配置文件路径。
+fn access_path() -> String {
+  match @env.get_env_var("HOME") {
+    Some(h) => "\{h}/.config/screenstream-mb/access.conf"
+    None => "/etc/screenstream-mb/access.conf"
+  }
+}
+
+///|
+/// 取路径的目录部分。
+fn dir_of(path : String) -> String {
+  let mut cut = -1
+  let mut i = 0
+  while i < path.length() {
+    if path[i] == '/' {
+      cut = i
+    }
+    i = i + 1
+  }
+  if cut <= 0 {
+    "."
+  } else {
+    path[:cut].to_owned()
+  }
+}
+
+///|
+/// 从配置文本里读一个布尔项，缺省用 dflt。
+fn read_flag(text : String, key : String, dflt : Bool) -> Bool {
+  for line in text.split("\n") {
+    let s : String = line.trim().to_owned()
+    if s.has_prefix("#") {
+      continue
+    }
+    match s.find("=") {
+      None => ()
+      Some(eq) =>
+        if s[:eq].trim().to_owned() == key {
+          let v : String = s[eq + 1:].trim().to_owned()
+          return v == "true" || v == "1" || v == "yes"
+        }
+    }
+  }
+  dflt
+}
+
+///|
+/// 读当前访问策略：返回 (局域网放行, 公网放行)。
+fn read_access() -> (Bool, Bool) {
+  let text = capture("cat '\{access_path()}' 2>/dev/null", 4096)
+  (read_flag(text, "allow_lan", true), read_flag(text, "allow_public", false))
+}
+
+///|
+/// 把两档开关写回配置并重启服务让它生效。
+fn write_access(lan : Bool, public : Bool) -> Unit {
+  let body = "# screenstream 访问控制（托盘菜单会改写这个文件）\n" +
+    "allow_lan = \{lan}\n" +
+    "allow_public = \{public}\n"
+  let path = access_path()
+  if write_file(path, body) {
+    sh("systemctl --user restart screenstream-mb.service")
+  }
+}
+
+///|
+/// 托盘自己是不是开机启动的。决定「退出」这句话怎么说才不误解。
+fn tray_autostart() -> Bool {
+  let out = capture(
+    "systemctl --user is-enabled screenstream-mb-tray.service 2>/dev/null", 64,
+  )
+  out.trim().to_owned() == "enabled"
+}
+
+///|
+/// 服务与托盘是否都开机启动。
+fn boot_enabled() -> Bool {
+  let out = capture(
+    "systemctl --user is-enabled screenstream-mb.service screenstream-mb-tray.service 2>/dev/null | grep -c enabled",
+    64,
+  )
+  parse_int(out.trim(), 0) >= 2
+}
+
+///|
+/// 开/关两个 unit 的开机启动。
+fn set_boot(on : Bool) -> Unit {
+  let verb = if on { "enable" } else { "disable" }
+  sh(
+    "systemctl --user \{verb} screenstream-mb.service screenstream-mb-tray.service",
+  )
 }
 
 ///|
@@ -115,38 +200,49 @@ fn main raise {
     "screenstream", "screenstream 屏幕快照", "video-display",
   )
   let t = @sni.tray(cfg)
-  let status = t.on("status", "端口 \{port} · 点「刷新状态」", fn(_) {
-
-  })
-  status.set_enabled(false)
-  refresh_state(t, status, base, port)
-
-  t.on("open", "打开网页", fn(_) { sh("xdg-open '\{base}/'") }) |> ignore
-  t.on("copy_url", "复制地址", fn(_) {
-    sh("printf %s '\{base}/' | wl-copy")
-  })
-  |> ignore
-  t.on("copy_health", "复制健康 JSON", fn(_) {
-    sh("curl -s --max-time 2 '\{base}/health' | wl-copy")
-  })
-  |> ignore
-  t.on("copy_skill", "复制 skill.md 地址", fn(_) {
-    sh("printf %s '\{base}/skill.md' | wl-copy")
-  })
+  t.on("open", "打开 :\{port} 页面", fn(_) { sh("xdg-open '\{base}/'") })
   |> ignore
   t.separator()
-  t.on("refresh", "刷新状态", fn(_) { refresh_state(t, status, base, port) })
-  |> ignore
+  t.separator()
+  let (lan_on, public_on) = read_access()
+  let cb_lan = t.checkbox("allow_lan", "放行局域网请求", lan_on, fn(
+    item,
+  ) {
+    let (_, cur_public) = read_access()
+    write_access(item.checked(), cur_public)
+  })
+  let cb_public = t.checkbox(
+    "allow_public",
+    "[危险] 放行非局域网请求",
+    public_on,
+    fn(item) {
+      let (cur_lan, _) = read_access()
+      write_access(cur_lan, item.checked())
+    },
+  )
+  let cb_boot = t.checkbox(
+    "boot",
+    "开机启动（使用 systemd）",
+    boot_enabled(),
+    fn(item) { set_boot(item.checked()) },
+  )
+  let _ = (cb_lan, cb_public, cb_boot)
+  t.separator()
   t.on("restart", "重启服务", fn(_) {
     sh("systemctl --user restart screenstream-mb.service")
   })
   |> ignore
   t.separator()
-  // 左键点图标也刷新一次，顺手重画灯
-  t.on_click(fn(_x, _y) { refresh_state(t, status, base, port) })
-  t.on("quit", "退出托盘", fn(_) { exit_now(0) }) |> ignore
+  // 左键点图标直接开页面
+  t.on_click(fn(_x, _y) { sh("xdg-open '\{base}/'") })
+  let quit_label = if tray_autostart() {
+    "退出托盘（直到下次开机）"
+  } else {
+    "退出托盘"
+  }
+  t.on("quit", quit_label, fn(_) { exit_now(0) }) |> ignore
   // 每 5 秒查一次，图标跟着健康状态变
-  match t.run_with_tick(fn() { refresh_state(t, status, base, port) }, 5000) {
+  match t.run_with_tick(fn() { poll_icon(t, base) }, 5000) {
     Ok(_) => eprintln("托盘事件循环已结束")
     Err(code) => eprintln("托盘启动失败，错误码 \{code}")
   }

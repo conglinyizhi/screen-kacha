@@ -1,39 +1,46 @@
 ///|
 /// 谁能访问这个服务。
 ///
-/// 配置是纯文本，一行一项，`#` 开头是注释：
+/// 两级开关 + 一份预留名单。配置是纯文本，一行一项，`#` 开头是注释：
 ///
-///   local_only = true          # 只允许本机（回环地址）访问
-///   allow = 192.168.1.20, .21  # 额外放行；留空表示不放行任何外部地址
+///   allow_lan    = true    # 局域网放行
+///   allow_public = false   # 非局域网放行 —— 危险，默认关
+///   allow        =         # 预留：显式放行的地址，优先于上面两档
 ///
-/// 白名单现在是「精确 IP 或前缀」，以后要扩成网段/令牌只要改这里。
+/// 回环地址永远放行。
 pub struct Access {
-  local_only : Bool
+  mut allow_lan : Bool
+  mut allow_public : Bool
   allow : Array[String]
 }
 
 ///|
-/// 默认：允许所有地址（保持原有行为）。
+/// 默认：局域网放行、公网不放行、没有额外名单。
+pub fn Access::default() -> Access {
+  { allow_lan: true, allow_public: false, allow: [], }
+}
+
+///|
+/// 完全放开。
 pub fn Access::open() -> Access {
-  { local_only: false, allow: [], }
+  { allow_lan: true, allow_public: true, allow: [], }
 }
 
 ///|
-/// 有没有启用任何限制。
+/// 要不要走带过滤的监听循环。公网都放行就等于不限制。
 pub fn Access::restricted(self : Access) -> Bool {
-  self.local_only || self.allow.length() > 0
+  !self.allow_public
 }
 
 ///|
-/// 去掉端口，只留地址部分。`[::1]:8930` → `::1`，`1.2.3.4:80` → `1.2.3.4`
+/// 去掉端口，只留地址。`[::1]:8930` → `::1`，`1.2.3.4:80` → `1.2.3.4`
 pub fn peer_ip(peer : String) -> String {
   if peer.has_prefix("[") {
     match peer.find("]") {
-      Some(i) => return peer[i + 1:].to_owned()
+      Some(i) => return peer[1:i].to_owned()
       None => return peer
     }
   }
-  // 从右往左找最后一个冒号（IPv6 没有端口时不该截断，这里只处理带端口的常见情形）
   let mut cut = -1
   let mut i = 0
   while i < peer.length() {
@@ -42,32 +49,95 @@ pub fn peer_ip(peer : String) -> String {
     }
     i = i + 1
   }
-  if cut > 0 && peer[:cut].find(":") is None {
-    return peer[:cut].to_owned()
+  // 只有一个冒号才当成 IPv4:port
+  if cut > 0 {
+    let head : String = peer[:cut].to_owned()
+    if head.find(":") is None {
+      return head
+    }
   }
   peer
 }
 
 ///|
-/// 回环地址：IPv4 的 127.0.0.0/8 与 IPv6 的 ::1。
+/// 回环：127.0.0.0/8 与 ::1
 pub fn is_loopback(ip : String) -> Bool {
-  if ip == "::1" || ip == "0:0:0:0:0:0:0:1" {
+  ip == "::1" || ip == "0:0:0:0:0:0:0:1" || ip.has_prefix("127.")
+}
+
+///|
+/// 解析 IPv4 的一段；非法或越界返回 -1。
+fn parse_octet(s : String) -> Int32 {
+  if s.length() == 0 || s.length() > 3 {
+    return -1
+  }
+  let mut n = 0
+  for i = 0; i < s.length(); i = i + 1 {
+    let c = s[i].to_int()
+    if c < 48 || c > 57 {
+      return -1
+    }
+    n = n * 10 + (c - 48)
+  }
+  if n > 255 {
+    return -1
+  }
+  n
+}
+
+///|
+/// 局域网：10/8、172.16/12、192.168/16、169.254/16；IPv6 的 fc00::/7 与 fe80::/10。
+pub fn is_lan(ip : String) -> Bool {
+  if ip.contains(":") {
+    if ip.has_prefix("fc") || ip.has_prefix("FC") {
+      return true
+    }
+    if ip.has_prefix("fd") || ip.has_prefix("FD") {
+      return true
+    }
+    if ip.has_prefix("fe80") || ip.has_prefix("FE80") {
+      return true
+    }
+    return false
+  }
+  // split 返回的迭代器只能走一遍：先落成数组，再数长度、再遍历
+  let parts : Array[String] = ip
+    .split(".")
+    .map(fn(x) { x.to_owned() })
+    .to_array()
+  if parts.length() != 4 {
+    return false
+  }
+  let nums : Array[Int32] = []
+  for p in parts {
+    let n = parse_octet(p)
+    if n < 0 {
+      return false
+    }
+    nums.push(n)
+  }
+  if nums[0] == 10 {
     return true
   }
-  ip.has_prefix("127.")
+  if nums[0] == 172 && nums[1] >= 16 && nums[1] <= 31 {
+    return true
+  }
+  if nums[0] == 192 && nums[1] == 168 {
+    return true
+  }
+  if nums[0] == 169 && nums[1] == 254 {
+    return true
+  }
+  false
 }
 
 ///|
 /// 这条连接能不能访问。
 pub fn Access::allows(self : Access, peer : String) -> Bool {
-  if !self.restricted() {
-    return true
-  }
   let ip = peer_ip(peer)
   if is_loopback(ip) {
     return true
   }
-  // 白名单：完整地址，或 `.` 结尾/开头的短前缀
   for rule in self.allow {
     let r : String = rule.trim().to_owned()
     if r == "" {
@@ -77,16 +147,18 @@ pub fn Access::allows(self : Access, peer : String) -> Bool {
       return true
     }
   }
-  false
+  if is_lan(ip) {
+    return self.allow_lan
+  }
+  self.allow_public
 }
 
 ///|
-/// 解析配置文件内容。坏行直接忽略，不让配置把服务拦死。
+/// 解析配置。坏行忽略；老配置里的 `local_only = true` 仍然认。
 pub fn parse_access(text : String) -> Access {
-  let mut local_only = false
-  let allow : Array[String] = []
+  let a = Access::default()
   for line in text.split("\n") {
-    let s = line.trim()
+    let s : String = line.trim().to_owned()
     if s == "" || s.has_prefix("#") {
       continue
     }
@@ -95,28 +167,34 @@ pub fn parse_access(text : String) -> Access {
       Some(eq) => {
         let key : String = s[:eq].trim().to_owned()
         let value : String = s[eq + 1:].trim().to_owned()
-        if key == "local_only" {
-          local_only = value == "true" || value == "1" || value == "yes"
+        let on = value == "true" || value == "1" || value == "yes"
+        if key == "allow_lan" {
+          a.allow_lan = on
+        } else if key == "allow_public" {
+          a.allow_public = on
+        } else if key == "local_only" {
+          a.allow_lan = false
+          a.allow_public = false
         } else if key == "allow" {
           for item in value.split(",") {
             let t : String = item.trim().to_owned()
             if t != "" {
-              allow.push(t)
+              a.allow.push(t)
             }
           }
         }
       }
     }
   }
-  { local_only, allow, }
+  a
 }
 
 ///|
-/// 读配置文件；文件不存在就用默认（不限制）。
+/// 读配置；文件不存在就用默认（局域网放行、公网不放行）。
 pub async fn load_access(path : String) -> Access {
   let exists = @fs.exists(path) catch { _ => false }
   if !exists {
-    return Access::open()
+    return Access::default()
   }
   let text = try {
     let f = @fs.open(path, mode=ReadOnly)
@@ -132,15 +210,16 @@ pub async fn load_access(path : String) -> Access {
 ///|
 /// 一句话描述当前策略，给启动日志和 /health 用。
 pub fn Access::describe(self : Access) -> String {
-  if !self.restricted() {
-    return "不限"
-  }
   let parts : Array[String] = []
-  if self.local_only {
+  if self.allow_public {
+    parts.push("全部放行")
+  } else if self.allow_lan {
+    parts.push("局域网放行")
+  } else {
     parts.push("仅本机")
   }
   if self.allow.length() > 0 {
-    parts.push("白名单 " + self.allow.join(","))
+    parts.push("名单 " + self.allow.join(","))
   }
   parts.join(" + ")
 }

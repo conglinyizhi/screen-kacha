@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
@@ -49,4 +50,25 @@ int moonbit_screenstream_capture(const char *cmd, uint8_t *buf, int32_t len) {
 MOONBIT_FFI_EXPORT
 void moonbit_screenstream_exit(int32_t code) {
   _exit(code);
+}
+
+/* 写一个小文本文件（配置文件用）。成功返回 0。 */
+int moonbit_screenstream_write_file(const char *path, const char *data) {
+  // 先把父目录逐级建好：调用方可能在目录还不存在时就写
+  char buf[1024];
+  size_t n = strlen(path);
+  if (n >= sizeof(buf)) return -1;
+  memcpy(buf, path, n + 1);
+  for (size_t i = 1; i < n; i++) {
+    if (buf[i] == '/') {
+      buf[i] = 0;
+      mkdir(buf, 0700);
+      buf[i] = '/';
+    }
+  }
+  FILE *f = fopen(path, "w");
+  if (f == NULL) return -1;
+  fputs(data, f);
+  fclose(f);
+  return 0;
 }

@@ -21,6 +21,8 @@ pub async fn find_magick(Array[String]) -> String?
 
 pub async fn forget_portal_node(String) -> Unit
 
+pub fn is_lan(String) -> Bool
+
 pub fn is_loopback(String) -> Bool
 
 pub async fn load_access(String) -> Access
@@ -41,10 +43,12 @@ pub async fn serve_with_access(@crescent.App, @http.Server, Access, Int32) -> Un
 
 // Types and methods
 pub struct Access {
-  local_only : Bool
+  mut allow_lan : Bool
+  mut allow_public : Bool
   allow : Array[String]
 }
 pub fn Access::allows(Self, String) -> Bool
+pub fn Access::default() -> Self
 pub fn Access::describe(Self) -> String
 pub fn Access::open() -> Self
 pub fn Access::restricted(Self) -> Bool
