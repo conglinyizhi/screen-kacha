@@ -393,8 +393,15 @@ async fn main {
       }
       f.close()
       eprintln("portal: node=\{id}，会话保持中")
-      for k = 0; k < 86400; k = k + 1 {
-        @async.sleep(1000)
+      // 一直睡着，直到进程被外部干掉（systemd 停服务、用户注销、机器关机）。
+      //
+      // 这里原来是 `for k = 0; k < 86400` —— 正好 24 小时，睡满就正常返回、
+      // 退出码 0。后果非常隐蔽：服务跑一天后 node 静默消失，因为退出码是 0，
+      // systemd 的 Restart=on-failure 不会拉起它；而 portal.node 文件还留着
+      // 旧 id，主服务照用不误 → 「开机好好的，跑一天截图就永久坏掉」。
+      // 用「睡 N 次」来表达「永远挂着」，本身就是个坑。
+      for ;; {
+        @async.sleep(3600000)
       }
     }
   }

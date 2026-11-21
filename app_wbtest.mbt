@@ -50,10 +50,19 @@ test "Store 初始状态为空" {
 }
 
 ///|
-test "next_tmp 依次递增" {
+test "next_tmp 带时间戳和 pid，不撞名" {
   let store = Store::new(shot="/tmp/none.jpg")
-  assert_eq(store.next_tmp("jpg"), "/tmp/screenstream-mb-1.jpg")
-  assert_eq(store.next_tmp("webp"), "/tmp/screenstream-mb-2.webp")
+  let a = store.next_tmp("jpg")
+  let b = store.next_tmp("webp")
+  // 同一进程内两次调用不能撞
+  assert_true(a != b)
+  // 扩展名对
+  assert_true(a.has_suffix(".jpg"))
+  assert_true(b.has_suffix(".webp"))
+  // 前缀对，中间是时间戳-pid-序号这种结构化名字
+  assert_true(a.has_prefix("/tmp/screenstream-mb-"))
+  // 不能再是纯序号那套（那种重启就撞名）
+  assert_false(a == "/tmp/screenstream-mb-1.jpg")
 }
 
 ///|

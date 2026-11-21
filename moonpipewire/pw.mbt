@@ -31,6 +31,21 @@ extern "c" fn c_latest(dst : Bytes, cap : Int32) -> Int32 = "moonbit_pw_shim_lat
 extern "c" fn c_save_raw(path : Bytes) -> Int32 = "moonbit_pw_save_raw"
 
 ///|
+/// 写一帧，返回写入字节数。
+///
+/// 尺寸不通过出参回传 —— MoonBit 的 Bytes 是它自己管理的内存，
+/// C 侧直接写会踩坏（实测 SEGV）。改由 C 的静态变量暂存，
+/// 紧接着用下面两个 getter 取走。抓帧是串行的，没有竞态。
+#borrow(path)
+extern "c" fn c_save_consistent(path : Bytes) -> Int32 = "moonbit_pw_save_raw_consistent"
+
+///|
+extern "c" fn c_saved_w() -> Int32 = "moonbit_pw_saved_w"
+
+///|
+extern "c" fn c_saved_h() -> Int32 = "moonbit_pw_saved_h"
+
+///|
 extern "c" fn c_kill(pid : Int32) -> Int32 = "moonbit_pw_kill"
 
 ///|
@@ -105,6 +120,25 @@ pub fn PipeWire::copy_frame(self : PipeWire, dst : Bytes) -> Int32 {
 pub fn PipeWire::save_frame(self : PipeWire, path : String) -> Int32 {
   let _ = self
   c_save_raw(cstr(path))
+}
+
+///|
+/// 一次调用同时拿到这一帧的像素和尺寸，返回写入字节数（失败 -1）。
+///
+/// 用它替代「先 size() 再 save_frame()」：那两步是两次独立调用，
+/// 中间可以换帧甚至换分辨率，拿到的尺寸和像素可能不是同一帧 ——
+/// 解码按错的尺寸走就是花屏。
+///
+/// 实现上开一块 2 个 Int32 的缓冲当出参，C 侧在同一把锁里填。
+pub fn PipeWire::save_frame_consistent(
+  self : PipeWire,
+  path : String,
+) -> (Int32, Int32, Int32) {
+  let _ = self
+  let n = c_save_consistent(cstr(path))
+  // 这两个 getter 必须在同一次抓帧里紧跟着调用：
+  // C 侧只保留「最后一次写出的那一帧」的尺寸。
+  (n, c_saved_w(), c_saved_h())
 }
 
 ///|

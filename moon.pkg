@@ -13,5 +13,6 @@ import {
 supported_targets = "+native"
 
 options(
+  "native-stub": [ "pid_stub.c" ],
   link: { "native": { "cc-link-flags": "-lpipewire-0.3 -ljpeg -lwebp" } },
 )

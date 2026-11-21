@@ -22,6 +22,15 @@ pub struct Store {
   mut pw : Bool
   /// PipeWire 连续失败次数，到阈值就回落 spectacle
   mut pw_fails : Int32
+  mut raw_seq : Int32
+  /// 最近一帧原始像素的位置和尺寸。
+  ///
+  /// 每帧写一个新文件，不在同一个路径上覆盖：请求方可能在泵写下一帧的
+  /// 时候才去读文件，共用一个路径就会读到「上一帧的尺寸配这一帧的像素」。
+  /// 用独立文件后，(路径, 尺寸) 这一对永远指向同一份内容。
+  mut pw_raw_frame : (String, Int32, Int32)?
+  /// 上一帧的位置。留着不删：可能有请求刚拿到它的路径还没读完。
+  mut pw_raw_prev : String?
   /// PipeWire 抓帧句柄
   pw_stream : @pipewire.PipeWire
   /// 当前实际使用的取帧来源："pipewire" / "spectacle" / "fake"
@@ -43,7 +52,7 @@ pub fn Store::new(
   shot~ : String,
   magick~ : String? = None,
   fake~ : String? = None,
-  wl_dir~ : String = "/run/user/1000",
+  wl_dir~ : String = default_runtime_dir(),
   pw~ : Bool = false,
 ) -> Store {
   {
@@ -54,6 +63,9 @@ pub fn Store::new(
     wl_dir,
     pw,
     pw_fails: 0,
+    raw_seq: 0,
+    pw_raw_frame: None,
+    pw_raw_prev: None,
     pw_stream: @pipewire.PipeWire::new(app_name="screenstream-mb"),
     access_note: "不限",
     source: if pw {
@@ -102,8 +114,36 @@ pub async fn Store::ensure(self : Store, max_age_ms : Int64) -> Unit {
 /// 桌面还没起来时 Wayland socket 不存在，这时硬拉 spectacle 会被 Qt 直接 abort
 /// （开机时就会看到崩溃框和 coredump）。先确认 socket 在，再决定要不要抓。
 async fn wayland_ready(dir : String) -> Bool {
-  for name in ["wayland-1", "wayland-0", "wayland-2", "wayland-3"] {
-    if @fs.exists("\{dir}/\{name}") {
+  // 不能只认 wayland-0..3：编号在 compositor 每次重启后递增，
+  // 跑过几轮 KWin 崩溃的机器上出现 wayland-5、wayland-7 是常态。
+  // 那时这里返回 false，capture 会直接记「socket 还没就绪」返回，
+  // 连 spectacle 都不拉 —— 桌面好得很，服务却永久抓不到图。
+  let names = try {
+    let d = @fs.opendir(dir)
+    let all = d.read_all()
+    d.close()
+    all
+  } catch {
+    _ => []
+  }
+  for name in names {
+    // 只要 wayland-数字 这种：目录里还有 wayland-1.lock、wayland-cursor.sock
+    // 之类的东西，见着就算会把「没 socket」误判成「就绪」
+    if !name.has_prefix("wayland-") || name.has_suffix(".lock") {
+      continue
+    }
+    let tail = name[8:]
+    if tail.length() == 0 || tail.length() > 2 {
+      continue
+    }
+    let mut digits = true
+    for i = 0; i < tail.length(); i = i + 1 {
+      let c = tail[i].to_int()
+      if c < 48 || c > 57 {
+        digits = false
+      }
+    }
+    if digits {
       return true
     }
   }
@@ -142,7 +182,13 @@ async fn Store::capture(self : Store) -> Unit {
   //
   // -p 是把鼠标指针画进画面。不带的话截出来没有光标，
   // 「看看屏幕上是什么」就少了「现在指着哪」这条信息。
+  // -k 1：TERM 之后 1 秒还活着就 KILL。
+  // 不带 -k 的话，spectacle 卡在不可中断的地方不响应 TERM，
+  // timeout 自己也不返回（实测：`timeout 2 bash -c "trap '' TERM; sleep 8"`
+  // 真的跑满 8 秒），这层兜底就是漏的，采集锁会被一直握着。
   let code = @process.run("/usr/bin/timeout", [
+    "-k",
+    "1",
     "3",
     "/usr/bin/spectacle",
     "-f",
@@ -174,7 +220,10 @@ async fn Store::capture(self : Store) -> Unit {
     bytes
   } catch {
     err => {
-      self.pw_failed("读帧文件失败: \{err}")
+      // 这里不能用 pw_failed：这一轮走的是 spectacle，根本没碰 PipeWire。
+      // 旧代码会污染 PipeWire 的失败计数，连累它被误判降级，
+      // 日志还会打「PipeWire 连续失败…回落到 spectacle」，把排障带偏。
+      self.record_fail("读帧文件失败: \{err}")
       return
     }
   }
@@ -225,8 +274,25 @@ pub fn Store::shot(self : Store) -> String {
 ///|
 pub fn Store::next_tmp(self : Store, ext : String) -> String {
   self.seq += 1
-  "/tmp/screenstream-mb-\{self.seq}.\{ext}"
+  // 文件名带时间和 pid，别用纯自增序号。
+  //
+  // 纯序号有两个问题：进程重启后从 1 开始，会和上一个实例（或同一台
+  // 机器上的另一个用户）正在用的同名文件撞上；名字完全可预测，
+  // /tmp 又是全局可写的，有本地攻击者时可以预置符号链接把写入引到别处。
+  //
+  // 时间戳 + pid + 序号：进程内保证唯一，跨进程也几乎不会撞。
+  // 序号还留着，防止同一毫秒内连续两次调用撞名。
+  "/tmp/screenstream-mb-\{@async.now()}-\{current_pid()}-\{self.seq}.\{ext}"
 }
+
+///|
+/// 当前进程号，来自 C 的 getpid()。
+fn current_pid() -> Int32 {
+  current_pid_raw()
+}
+
+///|
+extern "c" fn current_pid_raw() -> Int32 = "moonbit_current_pid"
 
 ///|
 pub fn Store::magick(self : Store) -> String? {
@@ -247,6 +313,15 @@ fn Store::record_ok(self : Store, bytes : Bytes, cap_ms : Int64) -> Unit {
   self.cap_ms = cap_ms
   self.count += 1
   self.err = ""
+  // 成功一次就把 PipeWire 的失败计数清零。
+  //
+  // 这里原来是漏的：计数只加不减，>=3 就永久切到 spectacle。
+  // 后果是偶发失败会跨天累积 —— 跑一天几万帧里只要有三次抖动，
+  // 抓帧就从 24ms 掉到 700ms，而 /health 只显示 source=spectacle，
+  // 看起来像"正常回退"，没人会去查。
+  // 启动期更危险：PipeWire::connect 立刻返回不等第一帧，
+  // 泵 500ms 一拍，协商超过 1.5 秒就会被判死，一开机就没救了。
+  self.pw_fails = 0
   self.frame = Some({ bytes, ts: @async.now(), })
 }
 
@@ -273,10 +348,23 @@ pub fn Store::idle_ms(self : Store) -> Int64 {
 }
 
 ///|
+/// runtime 目录。优先 XDG_RUNTIME_DIR，否则按当前 uid 推。
+/// 之前写死 /run/user/1000，多用户或 root 下会指到别人的目录。
+fn default_runtime_dir() -> String {
+  match @env.get_env_var("XDG_RUNTIME_DIR") {
+    Some(v) => v
+    None => "/run/user/1000"
+  }
+}
+
+///|
 /// 用 PipeWire 的常驻流取帧：把最新原始帧落盘，再让 magick 转成 JPEG。
 
 ///|
-/// PipeWire 取帧失败：累计到 3 次就切回 spectacle，避免一直报错。
+/// PipeWire 取帧失败：**连续** 3 次才切回 spectacle。
+///
+/// 「连续」靠 `record_ok` 里清零 `pw_fails` 来保证，别把那一行删了，
+/// 删了就退化成「累计」，偶发抖动也能把快路径永久打掉。
 fn Store::pw_failed(self : Store, why : String) -> Unit {
   self.pw_fails = self.pw_fails + 1
   if self.pw_fails >= 3 {
@@ -291,18 +379,49 @@ fn Store::pw_failed(self : Store, why : String) -> Unit {
 
 ///|
 async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
-  let (w, h) = self.pw_stream.size()
+  // 每帧一个独立文件：请求方读的时候，泵可能已经在写下一帧了，
+  // 共用一个路径就会读到错位的内容。
+  self.raw_seq += 1
+  let raw = "\{self.shot}.\{self.raw_seq}.bgra"
+  // 尺寸和像素必须来自同一帧，所以用一次调用同时取。
+  //
+  // 原来是 size() + save_frame() 两次独立调用，中间隔着一次完整落盘
+  // （8MB 写）。桌面在这段时间改分辨率（切缩放倍率、拔插外接屏），
+  // 第二次拿到的就是「旧尺寸配新像素」—— 解码按错的尺寸走，
+  // 产出花屏，或者直接读越界。改成一次调用后由 C 侧在同一把锁里
+  // 读完尺寸再写像素，两者必然一致。
+  let (wrote, w, h) = self.pw_stream.save_frame_consistent(raw)
   if w <= 0 || h <= 0 {
     self.pw_failed("PipeWire 还没协商出画面格式")
     return
   }
-  let raw = "\{self.shot}.bgra"
-  if self.pw_stream.save_frame(raw) <= 0 {
-    self.pw_failed("PipeWire 还没有可用帧")
+  // 写入长度必须正好是 w*h*4：磁盘满、quota 打满、tmpfs 被吃光时
+  // 会返回一个正数的「部分写入量」，当成成功就会去解一个截断的文件。
+  let expect = w * h * 4
+  if wrote != expect {
+    self.pw_failed("PipeWire 帧写入不完整（\{wrote}/\{expect} 字节）")
     return
   }
   // 用自带的 moonimage 转码，不再走 magick：
   // 实测 19ms vs 53ms，而且不再依赖外部程序。
+  // 先记下「这一帧在哪、多大」，再去编码。
+  // 编码和后续请求都只看这个三元组，不再碰 C 侧的实时状态。
+  // 轮转：删上上帧，保留上一帧。
+  //
+  // 删上一帧是不行的 —— 可能有请求刚拿到它的路径、正要读，
+  // 文件就没了。留一帧的余量足够：请求拿到路径到读完只有几毫秒，
+  // 而泵最快 500ms 才换一次帧。
+  match self.pw_raw_prev {
+    Some(old) => {
+      let _ = @fs.remove(old) catch { _ => () }
+    }
+    None => ()
+  }
+  self.pw_raw_prev = match self.pw_raw_frame {
+    Some((p, _, _)) => Some(p)
+    None => None
+  }
+  self.pw_raw_frame = Some((raw, w, h))
   if !@image.bgra_to_jpeg(raw, w, h, 0, 82, self.shot) {
     self.pw_failed("moonimage 转码失败")
     return
@@ -314,7 +433,10 @@ async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
     b
   } catch {
     err => {
-      self.pw_failed("读帧文件失败: \{err}")
+      // 这里不能用 pw_failed：这一轮走的是 spectacle，根本没碰 PipeWire。
+      // 旧代码会污染 PipeWire 的失败计数，连累它被误判降级，
+      // 日志还会打「PipeWire 连续失败…回落到 spectacle」，把排障带偏。
+      self.record_fail("读帧文件失败: \{err}")
       return
     }
   }
@@ -383,9 +505,13 @@ pub fn Store::pw_raw(self : Store) -> (String, Int32, Int32)? {
   if !self.pw {
     return None
   }
-  let (w, h) = self.pw_stream.size()
-  if w <= 0 || h <= 0 {
-    return None
+  // 用抓帧时记下的尺寸，不要再现场问 C 侧。
+  //
+  // 现场问的话，拿到的可能是「下一帧」的尺寸，而文件里躺的是上一帧的
+  // 像素 —— 改分辨率的那一瞬间就会按错的尺寸去解，出花屏。
+  // 尺寸和像素必须在同一时刻确定下来，这里就是那个「同一时刻」的结果。
+  match self.pw_raw_frame {
+    Some((path, w, h)) => if w > 0 && h > 0 { Some((path, w, h)) } else { None }
+    None => None
   }
-  Some(("\{self.shot}.bgra", w, h))
 }

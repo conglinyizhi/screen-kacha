@@ -264,6 +264,58 @@ int32_t moonbit_pw_save_raw(const char *path) {
     return n;
 }
 
+/* 一次调用同时拿到「尺寸」和「像素」，返回写入字节数。
+ *
+ * 为什么要有这个函数：原来 MoonBit 侧是先 size() 再 save_raw()，
+ * 两次独立加锁，中间隔着一次完整落盘（8MB 写）。桌面在这段时间改分辨率
+ * （切缩放倍率、拔插外接屏），第二次拿到的就是「旧尺寸配新像素」——
+ * 解码按错误尺寸走，产出花屏，或者干脆读越界。
+ *
+ * 现在「读尺寸 + 写像素」放在同一把锁里，两者必然来自同一帧。
+ *
+ * 尺寸通过 saved_w/saved_h 这两个静态变量回传，调用方紧接着用
+ * moonbit_pw_saved_w/h 取走。
+ *
+ * 为什么不用出参指针：MoonBit 的 Bytes 是它自己管理的内存，
+ * 从 C 侧直接往里写会踩坏（实测直接 SEGV）。静态变量最简单也最安全 ——
+ * 抓帧是串行的，同一时刻只有一个人在调这个函数。
+ */
+static int32_t saved_w = 0;
+static int32_t saved_h = 0;
+
+MOONBIT_FFI_EXPORT
+int32_t moonbit_pw_save_raw_consistent(const char *path) {
+  if (path == NULL || *path == 0) return -1;
+  int32_t n = -1;
+  pthread_mutex_lock(&g.lock);
+  if (g.held != NULL) {
+    struct spa_buffer *buf = g.held->buffer;
+    uint32_t size = buf->datas[0].chunk->size;
+    if (size > 0) {
+      FILE *f = fopen(path, "wb");
+      if (f != NULL) {
+        if (fwrite(buf->datas[0].data, 1, size, f) == size) {
+          /* 尺寸也在这把锁里读，保证和刚写出去的像素是同一帧 */
+          saved_w = g.width;
+          saved_h = g.height;
+          n = (int32_t)size;
+        }
+        fclose(f);
+      }
+    }
+  }
+  pthread_mutex_unlock(&g.lock);
+  return n;
+}
+
+/* 上一次 save_raw_consistent 写出的那一帧的宽度。0 表示没写过。 */
+MOONBIT_FFI_EXPORT
+int32_t moonbit_pw_saved_w(void) { return saved_w; }
+
+/* 上一次 save_raw_consistent 写出的那一帧的高度。 */
+MOONBIT_FFI_EXPORT
+int32_t moonbit_pw_saved_h(void) { return saved_h; }
+
 /* 结束一个残留的 portal 助手进程。 */
 MOONBIT_FFI_EXPORT
 int32_t moonbit_pw_kill(int32_t pid) {

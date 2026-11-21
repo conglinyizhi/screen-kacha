@@ -51,6 +51,25 @@ pub async fn read_cursor_pos(path : String) -> (Int32, Int32)? {
   if !exists {
     return None
   }
+  // 坐标文件太旧就当作没有。
+  //
+  // 助手进程自己有 tick 心跳会删过期文件，但那只在它活着的时候有效：
+  // 被 SIGKILL、OOM、崩溃时文件会一直留着，主服务无条件相信它，
+  // 箭头就定格在最后一次的位置，再也不动。这里补一道兜底。
+  //
+  // 3 秒：脚本是 200ms 一拍，助手 tick 是 500ms，
+  // 3 秒足够宽松（不会因为短暂卡顿误判），又能及时让死掉的跟踪消失。
+  let fresh = try {
+    let (secs, _nanos) = @fs.mtime(path)
+    let now = @async.now() / 1000L
+    now - secs <= 3L
+  } catch {
+    // stat 不了（文件刚被删）就当过期
+    _ => false
+  }
+  if !fresh {
+    return None
+  }
   let text = try {
     let f = @fs.open(path, mode=ReadOnly)
     let b = f.read_all().binary()
@@ -59,27 +78,61 @@ pub async fn read_cursor_pos(path : String) -> (Int32, Int32)? {
   } catch {
     _ => return None
   }
+  parse_cursor_pos_text(text)
+}
+
+///|
+/// 解析坐标文件的文本内容。抽成纯函数是为了能直接单测 ——
+/// 这层逻辑踩过坑（负号被吃掉），不能再靠"看起来对"。
+pub fn parse_cursor_pos_text(text : String) -> (Int32, Int32)? {
+  // 负号必须单独处理。
+  //
+  // 之前把 `-` 当普通分隔符，`-300 400` 会解析成 (300, 400) ——
+  // 箭头画到镜像位置，比不画更误导。而多屏时副屏在主屏左边/上边，
+  // KWin 给的坐标必然是负数，这是常态不是异常。
+  // 现在见到负号就整条拒绝：宁可这次不画，也不画错地方。
+  if text.contains("-") {
+    return None
+  }
+  // 只接受「数字 空白 数字」这种形状，别的一律拒绝。
+  //
+  // 之前只要非数字就当分隔符，`12x 34` 会被解析成 (12, 34) ——
+  // 文件被写坏时不是报错，而是画到莫名其妙的地方。
   let nums : Array[Int32] = []
   let mut cur = -1
+  let mut last_sep_ok = false
   for i = 0; i <= text.length(); i = i + 1 {
-    let is_digit = if i < text.length() {
-      let c = text[i].to_int()
-      c >= 48 && c <= 57
-    } else {
-      false
-    }
-    if is_digit {
-      let d = text[i].to_int() - 48
-      if cur < 0 {
-        cur = d
-      } else {
-        cur = cur * 10 + d
+    // 走到字符串末尾：把手上这个数交出去就收工，别再往下判
+    if i == text.length() {
+      if cur >= 0 {
+        nums.push(cur)
       }
-    } else if cur >= 0 {
-      nums.push(cur)
-      cur = -1
+      break
+    }
+    let c = text[i].to_int()
+    if c >= 48 && c <= 57 {
+      let d = c - 48
+      cur = if cur < 0 {
+        d
+      } else if cur > 100000 {
+        // 明显不可能是坐标，别再乘下去（防 Int32 溢出回绕成正数）
+        return None
+      } else {
+        cur * 10 + d
+      }
+      last_sep_ok = false
+    } else if c == 32 || c == 9 || c == 10 || c == 13 {
+      if cur >= 0 {
+        nums.push(cur)
+        cur = -1
+      }
+      last_sep_ok = true
+    } else {
+      // 数字和数字（或开头）之间夹了非空白字符：内容不对
+      return None
     }
   }
+  let _ = last_sep_ok
   if nums.length() < 2 {
     return None
   }

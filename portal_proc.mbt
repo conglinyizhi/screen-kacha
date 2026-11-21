@@ -50,10 +50,20 @@ pub async fn acquire_portal_node(dir : String) -> Int32? {
   }
   let tok = "\{home}/.local/state/screenstream-mb/portal.token"
 
-  // ① 已经有人写了就直接用
-  let first = parse_node_id(read_bytes_or_empty(out))
-  if first > 0 {
-    return Some(first)
+  // ① 已经有人写了就直接用 —— 但必须先确认写它的助手还活着。
+  //
+  // 原来是无条件信任：只要文件里有个正数就返回。助手一旦死掉
+  // （崩溃、被 kill、会话被外部关闭），文件内容不变，于是这里
+  // 每次都直接返回那个死 id，② 和 ③ 永远不会执行 ——
+  // 没有任何自愈路径，只能人工删文件或重启服务。
+  let cached = parse_node_id(read_bytes_or_empty(out))
+  if cached > 0 {
+    if portal_helper_alive() {
+      return Some(cached)
+    }
+    // 助手没了，缓存作废：删掉再走下面的重新拉起流程
+    eprintln("portal: 助手进程不在了，作废缓存的 node=\{cached}")
+    remove_file(out)
   }
 
   // ② 等 autostart 助手写它（它开机比服务稍晚，重连时也会重写）
@@ -65,7 +75,26 @@ pub async fn acquire_portal_node(dir : String) -> Int32? {
     }
   }
 
-  // ③ 没人管：自己拉一个
+  // ③ 没有可用的 node。
+  //
+  // 先看是不是已经有助手在跑（比如 autostart 拉起的 loop，它只是还没
+  // 拿到 node 而已）。已经在跑就只等它，绝不能再拉一个 ——
+  // 一个进程同时只能持有一条 screencast 会话，两个助手会互相抢，
+  // 两边都拿不到 node，还各自弹一次授权框。
+  if portal_helper_alive() {
+    eprintln("portal: 已有助手在跑，等它拿 node")
+    for k = 0; k < 180; k = k + 1 {
+      @async.sleep(500)
+      let id = parse_node_id(read_bytes_or_empty(out))
+      if id > 0 {
+        return Some(id)
+      }
+    }
+    eprintln("portal: 助手在跑但一直没写出 node")
+    return None
+  }
+
+  // 真的没人管：自己拉一个
   let state_dir = "\{home}/.local/state/screenstream-mb"
   let _ = Some(@fs.mkdir(state_dir, permission=0o700, recursive=true)) catch {
     _ => None
@@ -92,4 +121,33 @@ pub async fn acquire_portal_node(dir : String) -> Int32? {
     }
   }
   None
+}
+
+///|
+/// 写 portal.node 的那个助手进程还在不在。
+///
+/// 这里有个坑：`pgrep -x screenstream-portal` **永远匹配不到**。
+/// Linux 的进程名（comm）上限是 15 个字符，`screenstream-portal` 有 18 个，
+/// 内核会把它截成 `screenstream-po`，pgrep 还会明确警告
+/// 「模式要搜索的进程名的长度超过 15 个字符」。
+/// 所以只能用 `-f` 匹配完整命令行。
+///
+/// `-f` 不会杀自己（这里是 pgrep 不是 pkill），模式里带路径前缀
+/// 也避免了误伤命令行里恰好含这串的别的进程。
+async fn portal_helper_alive() -> Bool {
+  let (code, out) = @process.collect_stdout("/usr/bin/pgrep", [
+    "-f", "/screenstream-portal --out",
+  ]) catch {
+    _ => return false
+  }
+  if code != 0 {
+    return false
+  }
+  let text = out.text() catch { _ => return false }
+  text.trim() != ""
+}
+
+///|
+async fn remove_file(path : String) -> Unit {
+  let _ = @process.run("/usr/bin/rm", ["-f", path]) catch { _ => 1 }
 }

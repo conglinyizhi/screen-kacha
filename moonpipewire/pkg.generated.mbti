@@ -16,6 +16,7 @@ pub fn PipeWire::copy_frame(Self, Bytes) -> Int32
 pub fn PipeWire::disconnect(Self) -> Unit
 pub fn PipeWire::new(app_name? : String) -> Self
 pub fn PipeWire::save_frame(Self, String) -> Int32
+pub fn PipeWire::save_frame_consistent(Self, String) -> (Int32, Int32, Int32)
 pub fn PipeWire::seq(Self) -> Int64
 pub fn PipeWire::size(Self) -> (Int32, Int32)
 pub fn PipeWire::started(Self) -> Bool

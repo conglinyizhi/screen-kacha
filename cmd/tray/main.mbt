@@ -121,21 +121,90 @@ fn read_flag(text : String, key : String, dflt : Bool) -> Bool {
 
 ///|
 /// 读当前访问策略：返回 (局域网放行, 公网放行)。
+///
+/// 上限放到 64KB 且要求读满：原来是 4096，配置一旦超过就会被截断，
+/// 后半个文件里的真实值读不到，`read_flag` 只能退回默认值 ——
+/// 然后 `write_access` 拿这个默认值把用户的配置覆盖掉，
+/// 等于「点一次菜单，设置被静默重置」。
 fn read_access() -> (Bool, Bool) {
-  let text = capture("cat '\{access_path()}' 2>/dev/null", 4096)
-  (read_flag(text, "allow_lan", true), read_flag(text, "allow_public", false))
+  let text = capture_whole(access_path())
+  match text {
+    Some(t) =>
+      (read_flag(t, "allow_lan", true), read_flag(t, "allow_public", false))
+    // 读不出来（不存在 / 太大 / 权限）就当作默认，但绝不用它去覆盖
+    None => (true, false)
+  }
+}
+
+///|
+/// 把整个文件读进来。读不全返回 None —— 宁可不改，也不拿半截内容去写。
+fn capture_whole(path : String) -> String? {
+  let limit = 65536
+  let out = capture("cat '\{path}' 2>/dev/null", limit)
+  // capture 填满缓冲说明可能被截断，这种内容不能信
+  if out.length() >= limit {
+    return None
+  }
+  Some(out)
 }
 
 ///|
 /// 把两档开关写回配置并重启服务让它生效。失败返回 false。
 fn write_access(lan : Bool, public : Bool) -> Bool {
-  let body = "# screenstream 访问控制（托盘菜单会改写这个文件）\n" +
-    "allow_lan = \{lan}\n" +
-    "allow_public = \{public}\n"
+  // 只改这两行，别的一律原样保留。
+  //
+  // 原来是整文件重写（只留三行）：用户手写的注释、`allow` 名单
+  // 全都会在一次点击里消失。那个 `allow` 名单是有用的配置，不是垃圾。
+  let old = capture_whole(access_path())
+  let body = rewrite_flags(old, lan, public)
   if !write_file(access_path(), body) {
     return false
   }
-  run_status("systemctl --user restart screenstream-mb.service") == 0
+  // 服务重启失败时，配置文件里已经是新值了，勾选却被回滚 ——
+  // 两边相反，下次服务重启又突然生效。这里把写入也退回去。
+  if run_status("systemctl --user restart screenstream-mb.service") != 0 {
+    match old {
+      Some(t) => {
+        let _ = write_file(access_path(), t)
+      }
+      None => ()
+    }
+    return false
+  }
+  true
+}
+
+///|
+/// 在保留原有内容的前提下，改掉 allow_lan / allow_public 两行。
+/// 没有这两行就追加，其它行（注释、allow 名单、未知键）原样留着。
+fn rewrite_flags(old : String?, lan : Bool, public : Bool) -> String {
+  let sb = StringBuilder()
+  let src = match old {
+    Some(t) => t
+    None => ""
+  }
+  let mut seen_lan = false
+  let mut seen_public = false
+  for line in src.split("\n") {
+    let s : String = line.to_owned()
+    let t : String = s.trim().to_owned()
+    if t.has_prefix("allow_lan") && t.contains("=") {
+      sb.write_string("allow_lan = \{lan}\n")
+      seen_lan = true
+    } else if t.has_prefix("allow_public") && t.contains("=") {
+      sb.write_string("allow_public = \{public}\n")
+      seen_public = true
+    } else if s != "" {
+      sb.write_string("\{s}\n")
+    }
+  }
+  if !seen_lan {
+    sb.write_string("allow_lan = \{lan}\n")
+  }
+  if !seen_public {
+    sb.write_string("allow_public = \{public}\n")
+  }
+  sb.to_string()
 }
 
 ///|
@@ -302,7 +371,16 @@ fn main raise {
   } else {
     "退出托盘"
   }
-  let quit_item = t.on("quit", quit_label, fn(_) { exit_now(0) })
+  let quit_item = t.on("quit", quit_label, fn(_) {
+    // 退出前把光标跟踪收掉。
+    //
+    // 不收的话：脚本还挂在 KWin 里、helper 进程还在跑、坐标还在刷新，
+    // 而唯一能关掉它的入口（这个菜单）已经没了 —— 用户只能重启 KWin
+    // 或重启机器。systemd 重启托盘服务（SIGTERM）走的也是这条路径，
+    // 每重启一次就多一个 helper 和一个叠加的定时器。
+    cursor_tracking_off()
+    exit_now(0)
+  })
   quit_ref.val = Some(quit_item)
   // 每 5 秒查一次，图标跟着健康状态变
   match t.run_with_tick(fn() { poll_icon(t, base) }, 5000) {
