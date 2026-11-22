@@ -272,7 +272,7 @@ async fn main {
   )
   // 端口被占时先退避重试，再换口或干净退出，细节见 bind.mbt
   let (server, port) = match
-    bind_with_retry(bind, port, !flag_on(m, "no-port-fallback")) {
+    bind_with_fallback(bind, port, !flag_on(m, "no-port-fallback")) {
     Some(pair) => pair
     None => return
   }

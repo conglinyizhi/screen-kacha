@@ -6,9 +6,7 @@ import {
 }
 
 // Values
-pub fn bind_backoff_ms(Int32) -> Int32
-
-pub async fn bind_with_retry(String, Int32, Bool) -> (@http.Server, Int32)?
+pub async fn bind_with_fallback(String, Int32, Bool) -> (@http.Server, Int32)?
 
 pub fn fallback_ports(Int32, Int32) -> Array[Int32]
 

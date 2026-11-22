@@ -207,7 +207,7 @@ has "$(curl -s --max-time 5 $B/health)" '"ok": true' \
   && ok || bad "并发之后 health 的 ok 不是 true"
 
 echo "== 端口被占时换口 =="
-# 占住一个空闲端口，服务应该退避几次后自己挪到下一个口，并且把实际端口写出来
+# 占住一个空闲端口，服务应该直接挪到下一个口，不等待，并把实际端口写出来
 OCC=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
 python3 - "$OCC" <<'PY' &
 import socket, sys, time

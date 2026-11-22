@@ -1,25 +1,6 @@
 ///|
-/// 端口被占用时的重试间隔（毫秒）。
-///
-/// 要覆盖的场景是「上一个实例正在退出，端口还没放开」：等 250ms 就够了，
-/// 不行就翻倍，累计约 3.75 秒。等这么久还占着，就不是等一等能解决的事了。
-const BIND_RETRIES : Int32 = 4
-
-///|
-/// 端口一直被占用时，往上最多再找几个。
+/// 端口被占用时，往上最多再找几个。
 const PORT_FALLBACK_SPAN : Int32 = 8
-
-///|
-/// 第 attempt 次重试前等多久；越界返回 0。
-pub fn bind_backoff_ms(attempt : Int32) -> Int32 {
-  match attempt {
-    0 => 250
-    1 => 500
-    2 => 1000
-    3 => 2000
-    _ => 0
-  }
-}
 
 ///|
 /// 备选端口：从 port+1 起，最多 span 个，不超过 65535。
@@ -50,42 +31,32 @@ async fn try_bind(bind : String, port : Int32) -> (@http.Server?, String) {
 }
 
 ///|
-/// 绑定监听端口；端口被占时先退避重试，再决定是退出还是换口。
+/// 绑定监听端口。被占就直接往上找一个能用的，不等待。
 ///
-/// 顺序是刻意这么排的：
-///   1. 指数退避重试，等的是「旧实例正在退出」
-///   2. 还占着 —— 先问一句占着的是不是我们自己，是就干净退出（不抢帧目录）
-///   3. 是别人的 —— 往上找第一个能绑的端口，并说清楚换到了哪儿
+/// 这里刻意没有退避重试。
+///
+/// 调用方在进来之前已经拿到了帧目录的锁（见 main 里的 acquire_instance_lock）：
+/// 拿得到锁，说明本机没有第二份 screen-kacha 在跑。既然是「别人」占着这个端口，
+/// 等 250ms 还是等 2 秒结果都一样 —— 它不会自己让开。等待只会在启动路径上
+/// 多加几秒，还给人「等久一点就成功」的错觉。
+///
+/// TIME_WAIT 不算占用：建监听时开了 reuse_addr，旧连接残留不会挡路。
 ///
 /// 失败时自己打印原因并以 1 退出，调用方拿到 None 直接 return 就行。
-pub async fn bind_with_retry(
+pub async fn bind_with_fallback(
   bind : String,
   port : Int32,
   fallback : Bool,
 ) -> (@http.Server, Int32)? {
   let started = try_bind(bind, port)
-  let first = started.0
-  let mut err = started.1
-  match first {
+  match started.0 {
     Some(server) => return Some((server, port))
     None => ()
   }
-  let mut attempt = 0
-  while attempt < BIND_RETRIES {
-    let wait = bind_backoff_ms(attempt)
-    eprintln("端口 \{port} 暂时绑不上（\{err}），\{wait}ms 后重试")
-    @async.sleep(wait)
-    let (server, e) = try_bind(bind, port)
-    err = e
-    match server {
-      Some(s) => return Some((s, port))
-      None => ()
-    }
-    attempt = attempt + 1
-  }
+  let err = started.1
   if fallback {
     for p in fallback_ports(port, PORT_FALLBACK_SPAN) {
-      let (server, e) = try_bind(bind, p)
+      let (server, _e) = try_bind(bind, p)
       match server {
         Some(s) => {
           eprintln(
@@ -96,11 +67,11 @@ pub async fn bind_with_retry(
           )
           return Some((s, p))
         }
-        None => err = e
+        None => ()
       }
     }
     eprintln(
-      "端口 \{port}..\{port + PORT_FALLBACK_SPAN} 都绑不上（最后一个是：\{err}）",
+      "端口 \{port}..\{port + PORT_FALLBACK_SPAN} 都被占着（\{err}）",
     )
   } else {
     eprintln("端口 \{bind}:\{port} 绑不上（\{err}）")
