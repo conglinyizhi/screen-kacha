@@ -351,6 +351,23 @@ fn current_pid() -> Int32 {
 extern "c" fn current_pid_raw() -> Int32 = "moonbit_current_pid"
 
 ///|
+/// 删掉帧目录里上一次运行留下的原始帧，返回删掉的数量。
+#borrow(dir, prefix)
+extern "c" fn clean_stale_frames_raw(
+  dir : Bytes,
+  prefix : Bytes,
+) -> Int32 = "moonbit_clean_stale_frames"
+
+///|
+/// 清掉上次运行留下的 `*.bgra`。
+///
+/// 原始帧每帧 8MB，文件名里的序号每个进程都从 1 重来，上个进程跑到几千号的
+/// 那些再也不会被覆盖，会一直躺在 tmpfs（也就是内存）里。启动时扫一遍。
+pub fn clean_stale_frames(dir : String, prefix : String) -> Int32 {
+  clean_stale_frames_raw(cstr(dir), cstr(prefix))
+}
+
+///|
 /// 采集成功记一笔。单独抽出来，采集本身要真跑 spectacle，这层逻辑可以单测。
 fn Store::record_ok(self : Store, bytes : Bytes, cap_ms : Int64) -> Unit {
   self.cap_ms = cap_ms

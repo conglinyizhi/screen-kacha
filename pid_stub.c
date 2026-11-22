@@ -1,6 +1,8 @@
 #include <moonbit.h>
 
+#include <dirent.h>
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -26,4 +28,34 @@ int32_t moonbit_tmp_remove(const char *path) {
 MOONBIT_FFI_EXPORT
 void moonbit_screenstream_exit(int32_t code) {
   exit((int)code);
+}
+
+/* 删掉帧目录里上次运行留下的原始帧。
+ *
+ * 文件名是 `<shot 的 basename>.<序号>.bgra`，序号每个进程都从 1 重新开始，
+ * 所以上个进程跑到几千号的那些文件再也不会被覆盖，一直躺在 tmpfs 里。
+ * 每帧 8MB，重启几次就是几十兆，`/run` 是内存盘。 */
+MOONBIT_FFI_EXPORT
+int32_t moonbit_clean_stale_frames(const char *dir, const char *prefix) {
+  if (dir == NULL || prefix == NULL) return -1;
+  DIR *d = opendir(dir);
+  if (d == NULL) return -1;
+  size_t plen = strlen(prefix);
+  size_t slen = strlen(".bgra");
+  int32_t n = 0;
+  struct dirent *e;
+  while ((e = readdir(d)) != NULL) {
+    size_t len = strlen(e->d_name);
+    if (len <= plen + slen) continue;
+    if (strncmp(e->d_name, prefix, plen) != 0) continue;
+    if (strcmp(e->d_name + len - slen, ".bgra") != 0) continue;
+    char full[4096];
+    if ((size_t)snprintf(full, sizeof(full), "%s/%s", dir, e->d_name) >=
+        sizeof(full)) {
+      continue;
+    }
+    if (remove(full) == 0) n++;
+  }
+  closedir(d);
+  return n;
 }

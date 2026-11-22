@@ -9,6 +9,10 @@
  */
 #include <moonbit.h>
 
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <pipewire/pipewire.h>
 #include <spa/param/video/format-utils.h>
 
@@ -107,6 +111,23 @@ static const struct pw_stream_events stream_events = {
     .param_changed = on_param_changed,
     .process = on_process,
 };
+
+/* 按 0600 开一个输出文件。
+ *
+ * 原始帧是整屏裸像素，落到 fopen 默认的 0644 上，同机别的用户就能读。
+ * 目录本身现在也是 0700，这里是第二层。 */
+static FILE *open_private(const char *path) {
+    if (path == NULL || *path == '\0') return NULL;
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
+    if (fd < 0) return NULL;
+    fchmod(fd, 0600);
+    FILE *f = fdopen(fd, "wb");
+    if (f == NULL) {
+        close(fd);
+        return NULL;
+    }
+    return f;
+}
 
 static void *thread_main(void *arg) {
     struct pwshim *s = arg;
@@ -259,7 +280,7 @@ int32_t moonbit_pw_save_raw(const char *path) {
         struct spa_buffer *buf = g.held->buffer;
         uint32_t size = buf->datas[0].chunk->size;
         if (size > 0) {
-            FILE *f = (path && *path) ? fopen(path, "wb") : NULL;
+            FILE *f = (path && *path) ? open_private(path) : NULL;
             if (f != NULL) {
                 if (fwrite(buf->datas[0].data, 1, size, f) == size) {
                     n = (int32_t)size;
@@ -300,7 +321,7 @@ int32_t moonbit_pw_save_raw_consistent(const char *path) {
     struct spa_buffer *buf = g.held->buffer;
     uint32_t size = buf->datas[0].chunk->size;
     if (size > 0) {
-      FILE *f = fopen(path, "wb");
+      FILE *f = open_private(path);
       if (f != NULL) {
         if (fwrite(buf->datas[0].data, 1, size, f) == size) {
           /* 尺寸也在这把锁里读，保证和刚写出去的像素是同一帧 */

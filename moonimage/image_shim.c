@@ -50,6 +50,9 @@ static FILE *create_private(const char *path) {
   }
   int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
   if (fd < 0) return NULL;
+  /* open 的 mode 只对新建的文件生效，路径上已经有旧文件（老版本按 0644 建的）
+   * 就保持原权限。主动收一次，免得升级之后旧文件继续对别人可读。 */
+  fchmod(fd, 0600);
   FILE *f = fdopen(fd, "wb");
   if (f == NULL) {
     close(fd);

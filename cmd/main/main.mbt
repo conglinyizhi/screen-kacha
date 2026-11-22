@@ -106,6 +106,22 @@ async fn idle_loop(store : @store.Store, seconds : Int32) -> Unit {
 }
 
 ///|
+/// 取路径的最后一段。清理陈旧原始帧时要拿它当文件名前缀。
+fn base_name(path : String) -> String {
+  let mut cut = -1
+  for i = 0; i < path.length(); i = i + 1 {
+    if path[i].to_int() == 47 {
+      cut = i
+    }
+  }
+  if cut < 0 {
+    path
+  } else {
+    path[cut + 1:].to_owned()
+  }
+}
+
+///|
 /// 启动时告诉用户「谁真的能取图」。
 ///
 /// 只陈述事实。原来的写法是 `访问控制：\{if restricted { 启用（…） } else { 未启用 }}`，
@@ -178,11 +194,23 @@ async fn main {
         eprintln("创建帧目录失败：\{err}")
       }
   }
+  // 已存在的目录 mkdir 不管，权限保持原样。老版本建的是 0755，帧和临时
+  // 输出都躺在里面，所以这里主动收紧一次。系统 systemd 给的 %t 本来就是
+  // 0700，但 --shm 可以指到 /tmp 下，那就全靠这一步。
+  @fs.chmod(shm, 0o700) catch {
+    err => eprintln("收紧帧目录权限失败（不影响运行）：\{err}")
+  }
   let fake_source = if fake == "" { None } else { Some(fake) }
   // 假帧模式下 shot 直接指向那张图，连拷贝都省了
   let shot_path = match fake_source {
     Some(p) => p
     None => "\{shm}/latest.jpg"
+  }
+  // 上一次运行留下的原始帧不会被这次覆盖（序号每进程从 1 重来），先扫掉。
+  // 每帧 8MB，而 /run 是内存盘。
+  let cleaned = @store.clean_stale_frames(shm, "\{base_name(shot_path)}.")
+  if cleaned > 0 {
+    eprintln("清掉上次运行留下的原始帧 \{cleaned} 个")
   }
   let wl_dir = match @env.get_env_var("XDG_RUNTIME_DIR") {
     Some(d) => d

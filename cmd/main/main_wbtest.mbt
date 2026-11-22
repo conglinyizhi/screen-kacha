@@ -52,3 +52,13 @@ test "启动横幅只说事实，不说「启用」" {
   assert_eq(solo_lines.length(), 1)
   assert_true(solo_lines[0].contains("仅本机"))
 }
+
+///|
+/// 清理陈旧原始帧要用文件名前缀，得能正确取出最后一段。
+test "base_name 取路径最后一段" {
+  assert_eq(base_name("/run/user/1000/screenstream/latest.jpg"), "latest.jpg")
+  assert_eq(base_name("latest.jpg"), "latest.jpg")
+  assert_eq(base_name("/a/b/c.png"), "c.png")
+  assert_eq(base_name("/"), "")
+  assert_eq(base_name(""), "")
+}
