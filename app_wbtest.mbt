@@ -310,3 +310,13 @@ test "拒绝路径的并发上限有界" {
   // 永远小于主上限，给正常请求留大头
   assert_true(reject_slots(1000) < 1000)
 }
+
+///|
+/// 拒绝路径上的超时必须用短的那个。
+///
+/// 原来写响应借的是 `WRITE_TIMEOUT_MS`（15 秒），跟注释说的「拒绝路径用短超时」
+/// 相反：一个不读响应的来源能白占槽位 15 秒。这条锁住「拒绝永远用短超时」。
+test "拒绝路径用的是短超时" {
+  assert_true(reject_timeout_ms() < WRITE_TIMEOUT_MS)
+  assert_eq(reject_timeout_ms(), REJECT_TIMEOUT_MS)
+}

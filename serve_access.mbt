@@ -33,6 +33,16 @@ pub fn accept_gave_up(consecutive : Int32) -> Bool {
 }
 
 ///|
+/// 拒绝路径上每一段的超时。
+///
+/// 两段都要用短的：会走到拒绝的客户端本来就不该占着槽位。原来写响应那一段
+/// 借用的是 `WRITE_TIMEOUT_MS`（15 秒），跟上面注释说的「拒绝路径用短超时」
+/// 正好相反，一个不读响应的来源能白占槽位 15 秒。
+pub fn reject_timeout_ms() -> Int32 {
+  REJECT_TIMEOUT_MS
+}
+
+///|
 /// 拒绝路径的并发上限。
 ///
 /// 取主上限的一小部分：拒绝只是读一下请求、回一句 403、关掉，不需要那么多槽位，
@@ -146,7 +156,7 @@ async fn reject(conn : @http.ServerConnection, peer : String) -> Unit {
   // 直接写会被当成协议错误，客户端只看到连接被重置。
   let got = try {
     match
-      @async.with_timeout_opt(REJECT_TIMEOUT_MS, () => conn.read_request()) {
+      @async.with_timeout_opt(reject_timeout_ms(), () => conn.read_request()) {
       Some(_) => true
       None => false
     }
@@ -163,7 +173,7 @@ async fn reject(conn : @http.ServerConnection, peer : String) -> Unit {
   hdrs.set("Connection", "close")
   let _ = try {
     match
-      @async.with_timeout_opt(WRITE_TIMEOUT_MS, () => {
+      @async.with_timeout_opt(reject_timeout_ms(), () => {
         conn.send_response(403, "Forbidden", extra_headers=hdrs)
         conn.write("这个服务只对本机开放\n")
         conn.end_response()
