@@ -14,10 +14,14 @@
 ///|
 /// 箭头素材的像素尺寸。负片要按这个尺寸裁剪底下的像素，
 /// 所以它必须和 `cursor-mask.png` 一致，改素材时一起改。
+///
+/// 29x41 是「去掉尾巴」那版（宽高比 0.674，贴近真光标）。
+/// 旧的带尾巴版本还留在 contrib/cursor-*-classic.png，尺寸 29x40，
+/// 两者不能混用 —— 负片裁切的尺寸要跟当前素材对上。
 const CURSOR_W : Int32 = 29
 
 ///|
-const CURSOR_H : Int32 = 40
+const CURSOR_H : Int32 = 41
 
 ///|
 pub enum CursorStyle {

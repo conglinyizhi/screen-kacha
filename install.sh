@@ -121,7 +121,7 @@ for f in README.md error.md skill.md llms.txt robots.txt; do
 done
 
 echo "== 装光标素材 =="
-for f in cursor-arrow.png cursor-mask.png; do
+for f in cursor-arrow.png cursor-mask.png cursor-arrow-classic.png cursor-mask-classic.png; do
   [ -f "$ROOT/contrib/$f" ] && install -m 0644 "$ROOT/contrib/$f" "$DATA/$f" && say "$f"
 done
 
