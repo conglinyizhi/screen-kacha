@@ -590,3 +590,29 @@ async test "编码写盘失败只返回 false，不退出进程" {
   assert_true(bgra_to_jpeg(src, 16, 16, 0, 82, out))
   assert_true(@fs.exists(out) catch { _ => false })
 }
+
+///|
+/// 反复喂坏图：清理路径要稳，不能崩，也不能把好的编码带走。
+///
+/// 解码的失败路径靠 longjmp 跳回来，清理用的指针声明成 volatile 才是
+/// C 标准保证的行为（否则 longjmp 之后读到的是不确定值，可能 free 野指针）。
+/// 没有 leak checker 可用，这里至少锁住「不崩、不乱」。
+async test "反复喂坏图不会崩，之后好的还能用" {
+  let dir = "/tmp/moonimage-test"
+  let _ = @fs.mkdir(dir, permission=0o700, recursive=true) catch { _ => () }
+  let bad = "\{dir}/broken.jpg"
+  // 截断的 JPEG：SOI 之后就没有了
+  @fs.write_file(bad, b"\xff\xd8\xff", create_mode=CreateOrTruncate) catch {
+    _ => ()
+  }
+  let out = "\{dir}/broken-out.jpg"
+  for _ in 0..<200 {
+    assert_false(jpeg_to_file(bad, 0, 82, false, out))
+  }
+  // 坏图跑了 200 轮之后，正常编码必须还好用
+  let src = put_bgra(
+    "after-broken.bgra",
+    make_bgra(32, 32, fn(_x, _y) { (9, 8, 7) }),
+  )
+  assert_true(bgra_to_jpeg(src, 32, 32, 0, 82, "\{dir}/after-broken.jpg"))
+}

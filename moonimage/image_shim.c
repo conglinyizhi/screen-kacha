@@ -426,8 +426,13 @@ static uint8_t *decode_jpeg_bgra(const char *path, int *out_w, int *out_h) {
 
   struct jpeg_decompress_struct cinfo;
   jpeg_jmp jerr;
-  uint8_t *bgra = NULL;
-  uint8_t *row = NULL;
+  /* 必须是 volatile。
+   *
+   * C 标准规定 setjmp 之后才赋值的非 volatile 自动变量，longjmp 回来后的值
+   * 是不确定的：编译器可以只把它们放在寄存器里，跳回来就读到旧值或垃圾。
+   * 清理路径拿它们 free，轻则漏 free（畸形图每次几 MB），重则 free 野指针。 */
+  uint8_t * volatile bgra = NULL;
+  uint8_t * volatile row = NULL;
 
   cinfo.err = jpeg_std_error(&jerr.pub);
   jerr.pub.error_exit = jpeg_fail;
@@ -510,8 +515,10 @@ static uint8_t *decode_png_rgba(const char *path, int *out_w, int *out_h) {
     return NULL;
   }
 
-  uint8_t *buf = NULL;
-  png_bytep *rows = NULL;
+  /* 同 decode_jpeg_bgra：setjmp 之后赋值的自动变量必须 volatile，
+   * 否则 longjmp 回来拿去 free 的是不确定值。 */
+  uint8_t * volatile buf = NULL;
+  png_bytep * volatile rows = NULL;
   if (setjmp(png_jmpbuf(png))) {
     png_destroy_read_struct(&png, &info, NULL);
     fclose(fp);
