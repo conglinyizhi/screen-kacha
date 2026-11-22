@@ -1,12 +1,12 @@
 # 出错了怎么查
 
-这个服务由两部分组成：**服务**（`screen-kacha`，监听 8930）和**托盘**
+这个服务由两部分组成：**服务**（`screen-kacha`，监听 {{PORT}}）和**托盘**
 （`screen-kacha-tray`，面板上的图标）。先看是哪一半不对，再往里查。
 
 ## 一、先看服务还活着没有
 
 ```sh
-curl -s http://127.0.0.1:8930/health
+curl -s http://127.0.0.1:{{PORT}}/health
 ```
 
 能拿到 JSON 说明服务正常，看字段：
@@ -57,7 +57,7 @@ journalctl --user -u screen-kacha -n 80 --no-pager
   一直不恢复会回落到 `spectacle`
 - **`portal 没有给出 node`**：屏幕共享授权被取消或过期，
   重新授权一次（托盘菜单或重新登录都会触发）
-- **端口被占**：`ss -ltnp | grep 8930` 看是谁
+- **端口被占**：`ss -ltnp | grep {{PORT}}` 看是谁
 
 ## 四、开机启动没生效
 
@@ -92,7 +92,7 @@ cat ~/.config/screen-kacha/access.conf
 ## 六、抓不到画面但服务是好的
 
 ```sh
-curl -s http://127.0.0.1:8930/health | grep source
+curl -s http://127.0.0.1:{{PORT}}/health | grep source
 ```
 
 - `spectacle`：说明 PipeWire 那条路没通，回落到截图工具了，能用但慢
@@ -104,7 +104,7 @@ curl -s http://127.0.0.1:8930/health | grep source
 把这几样一起带上再问：
 
 ```sh
-curl -s http://127.0.0.1:8930/health
+curl -s http://127.0.0.1:{{PORT}}/health
 cat ~/.local/state/screen-kacha/last-error.txt 2>/dev/null
 journalctl --user -u screen-kacha -u screen-kacha-tray -n 100 --no-pager
 ```

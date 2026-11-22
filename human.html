@@ -201,19 +201,19 @@
     <h2 class="sec">怎么用</h2>
     <p>地址都相对于本服务根，下面这些直接能用：</p>
     <pre><code># 拿一张图，存成文件
-curl -s -o screen.jpg 'http://127.0.0.1:8930/snapshot.jpg'
+curl -s -o screen.jpg 'http://127.0.0.1:{{PORT}}/snapshot.jpg'
 
 # 省 token：缩到 1280 宽的 WebP
-curl -s -o screen.webp 'http://127.0.0.1:8930/snapshot-1280.webp'
+curl -s -o screen.webp 'http://127.0.0.1:{{PORT}}/snapshot-1280.webp'
 
 # 只要最新的，最多容忍 50 毫秒的旧帧
-curl -s -o screen.jpg 'http://127.0.0.1:8930/snapshot.jpg?age=0.05'
+curl -s -o screen.jpg 'http://127.0.0.1:{{PORT}}/snapshot.jpg?age=0.05'
 
 # 想把鼠标位置也画进去，先去托盘菜单勾上「在截图里标出鼠标位置」
-curl -s -o screen.jpg 'http://127.0.0.1:8930/snapshot.jpg?cursor=1'
+curl -s -o screen.jpg 'http://127.0.0.1:{{PORT}}/snapshot.jpg?cursor=1'
 
 # 服务还好吗
-curl -s 'http://127.0.0.1:8930/health'</code></pre>
+curl -s 'http://127.0.0.1:{{PORT}}/health'</code></pre>
     <p class="note">服务在后台持续抓帧，请求直接返回缓存，通常一到两毫秒。
       <code>?age=</code> 是能接受的最大帧龄（秒），想要更新鲜就写小一点，
       代价是当场触发一次抓取。</p>

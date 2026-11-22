@@ -236,6 +236,14 @@ has "$(curl -s --max-time 5 "http://127.0.0.1:$FB_PORT/health")" "\"port\": $FB_
   && ok || bad "换口之后 /health 报的端口不是 $FB_PORT"
 has "$(cat "$FB_LOG")" "被别的程序占着" \
   && ok || bad "换口时没有说清楚原因"
+# 文档里的例子必须跟着换口走：出错的时候最需要正确地址
+ERRDOC=$(curl -s --max-time 5 "http://127.0.0.1:$FB_PORT/error.md")
+has "$ERRDOC" "127.0.0.1:$FB_PORT/health" \
+  && ok || bad "error.md 里的健康检查地址没跟着换口"
+has "$ERRDOC" "8930" && bad "error.md 还写着默认端口 8930" || ok
+JSDOC=$(curl -s --max-time 5 "http://127.0.0.1:$FB_PORT/for_human_use_browser.js")
+has "$JSDOC" "127.0.0.1:$FB_PORT/snapshot.jpg" \
+  && ok || bad "human.html 里的示例地址没跟着换口"
 kill "$FB_PID" "$OCC_PID" 2>/dev/null
 wait "$FB_PID" 2>/dev/null
 

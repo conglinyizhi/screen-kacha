@@ -203,7 +203,12 @@ if [ "$DO_START" -eq 1 ]; then
   systemctl --user restart screen-kacha-tray.service
   sleep 1
   say "已启动，健康检查："
-  curl -s --max-time 5 "http://127.0.0.1:$PORT/health" || echo "  服务还没起来，看 journalctl --user -u screen-kacha"
+  # 端口被占时服务会往上挪，挪完把实际端口写进状态目录。死认 $PORT 的话，
+  # 这里会对着一个空端口报「服务还没起来」，而服务其实好好跑在隔壁。
+  ACTUAL=$(cat "$HOME/.local/state/screen-kacha/port" 2>/dev/null || true)
+  ACTUAL=${ACTUAL:-$PORT}
+  [ "$ACTUAL" != "$PORT" ] && say "（$PORT 被占，实际监听 $ACTUAL）"
+  curl -s --max-time 5 "http://127.0.0.1:$ACTUAL/health" || echo "  服务还没起来，看 journalctl --user -u screen-kacha"
 else
   say "没有立刻启动。要现在启动：systemctl --user start screen-kacha screen-kacha-tray"
   say "或者重新运行：$0 --start"

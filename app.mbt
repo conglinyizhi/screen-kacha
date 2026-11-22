@@ -431,9 +431,9 @@ async fn handle_snapshot(
 }
 
 ///|
-async fn handle_skill(store : Store) -> @crescent.HttpResponse {
+async fn handle_skill(store : Store, port : Int32) -> @crescent.HttpResponse {
   handle_text_file(
-    store, "skill.md", "text/markdown; charset=utf-8", fallback_skill,
+    store, "skill.md", "text/markdown; charset=utf-8", fallback_skill, port,
   )
 }
 
@@ -460,12 +460,12 @@ pub fn build_app(store : Store, port : Int32, access : Access) -> @crescent.App 
       ).to_responder()
     } else {
       handle_text_file(
-        store, "llms.txt", "text/plain; charset=utf-8", fallback_llms,
+        store, "llms.txt", "text/plain; charset=utf-8", fallback_llms, port,
       ).to_responder()
     }
   })
   app.get("/for_human_use_browser.js", async fn(_ev) {
-    handle_human_js(store).to_responder()
+    handle_human_js(store, port).to_responder()
   })
   // 老链接还认：和 / 给同一个外壳
   app.get("/human.html", fn(_ev) {
@@ -488,20 +488,22 @@ pub fn build_app(store : Store, port : Int32, access : Access) -> @crescent.App 
     }
     @crescent.html(err_page(code))
   })
-  app.get("/skill.md", async fn(_ev) { handle_skill(store).to_responder() })
+  app.get("/skill.md", async fn(_ev) {
+    handle_skill(store, port).to_responder()
+  })
   app.get("/error.md", async fn(_ev) {
     handle_text_file(
-      store, "error.md", "text/markdown; charset=utf-8", fallback_error,
+      store, "error.md", "text/markdown; charset=utf-8", fallback_error, port,
     ).to_responder()
   })
   app.get("/robots.txt", async fn(_ev) {
     handle_text_file(
-      store, "robots.txt", "text/plain; charset=utf-8", fallback_robots,
+      store, "robots.txt", "text/plain; charset=utf-8", fallback_robots, port,
     ).to_responder()
   })
   app.get("/llms.txt", async fn(_ev) {
     handle_text_file(
-      store, "llms.txt", "text/plain; charset=utf-8", fallback_llms,
+      store, "llms.txt", "text/plain; charset=utf-8", fallback_llms, port,
     ).to_responder()
   })
   app.get("/:file", async fn(ev) {

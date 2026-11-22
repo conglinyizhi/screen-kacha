@@ -27,6 +27,8 @@ pub fn config_warnings(String) -> Array[String]
 
 pub fn exit_process(Int32) -> Unit
 
+pub fn fill_port(String, Int32) -> String
+
 pub async fn forget_portal_node(String) -> Unit
 
 pub fn frame_is_stalled(Int64, Int64, Int32) -> Bool

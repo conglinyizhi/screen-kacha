@@ -138,7 +138,7 @@ fn wrap_human_js(page : String) -> String {
 ///
 /// 它只被 `index_shell` 里那个 `<script src>` 拉起。不执行 JS 的客户端
 /// LLM、curl、agent 都不会请求它，也就不会下载这十几 KB。
-async fn handle_human_js(store : Store) -> @crescent.HttpResponse {
+async fn handle_human_js(store : Store, port : Int32) -> @crescent.HttpResponse {
   let path = store.data_path("human.html")
   let page = try {
     let f = @fs.open(path, mode=ReadOnly)
@@ -155,7 +155,12 @@ async fn handle_human_js(store : Store) -> @crescent.HttpResponse {
     }
   }
   let body = match page {
-    Some(t) => if t == "" { fallback_human_js } else { wrap_human_js(t) }
+    Some(t) =>
+      if t == "" {
+        fallback_human_js
+      } else {
+        wrap_human_js(fill_port(t, port))
+      }
     None => fallback_human_js
   }
   make_res(
@@ -174,10 +179,23 @@ let fallback_skill : String =
   $|出错排查见 /error.md。
 
 ///|
+/// 把文档里的 {{PORT}} 换成实际端口。
+///
+/// 这些文档是运行时读的，例子写着 `curl 127.0.0.1:8930/health` 这种具体地址。
+/// 端口被占时会往上挪，写死的例子就把人指到错的地方 —— 而出错的时候正好是最
+/// 需要正确地址的时候。
+pub fn fill_port(text : String, port : Int32) -> String {
+  if !text.contains("{{PORT}}") {
+    return text
+  }
+  text.replace_all(old="{{PORT}}", new=port.to_string())
+}
+
+///|
 let fallback_error : String =
   $|# 出错了怎么查
   $|
-  $|先看服务活着没有：curl -s http://127.0.0.1:8930/health
+  $|先看服务活着没有：curl -s http://127.0.0.1:{{PORT}}/health
   $|托盘的问题看：cat ~/.local/state/screen-kacha/last-error.txt
   $|日志：journalctl --user -u screen-kacha -u screen-kacha-tray -n 100 --no-pager
   $|完整的排查步骤在磁盘上的 error.md。
@@ -189,6 +207,7 @@ async fn handle_text_file(
   name : String,
   ctype : String,
   fallback : String,
+  port : Int32,
 ) -> @crescent.HttpResponse {
   let path = store.data_path(name)
   let text = try {
@@ -206,7 +225,7 @@ async fn handle_text_file(
       fallback
     }
   }
-  make_res(@crescent.StatusCode::OK, ctype, @utf8.encode(text))
+  make_res(@crescent.StatusCode::OK, ctype, @utf8.encode(fill_port(text, port)))
 }
 
 ///|

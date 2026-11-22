@@ -560,3 +560,19 @@ test "Host 只接受 IP 和 localhost" {
   assert_false(host_allowed("evil.example.com:8930"))
   assert_false(host_allowed("desktop.lan:8930"))
 }
+
+///|
+/// 文档里的端口占位符按实际端口替换。
+///
+/// 端口被占时服务会往上挪，文档里写死的 8930 就把人指到错地方 ——
+/// 而出错的时候正好是最需要正确地址的时候。
+test "文档里的端口占位符会被替换" {
+  assert_eq(
+    fill_port("curl -s http://127.0.0.1:{{PORT}}/health", 8931),
+    "curl -s http://127.0.0.1:8931/health",
+  )
+  // 多处的都换
+  assert_eq(fill_port("{{PORT}} 和 {{PORT}}", 5), "5 和 5")
+  // 没有占位符就原样返回
+  assert_eq(fill_port("没有占位符", 7), "没有占位符")
+}
