@@ -473,6 +473,54 @@ async test "缩放不引入通道错位" {
 /// 每条各造自己的输入文件：MoonBit 的测试是并发跑的，不能指望
 /// 另一条测试先把 base.bgra 写出来。之前负片那条复用了半透明那条的
 /// 产物，五分之一概率失败。
+
+///|
+/// 光标素材在仓库里的位置。
+///
+/// `moon test` 的工作目录可能是模块根，也可能是包目录，两种都试。
+async fn cursor_asset(name : String) -> String? {
+  for base in ["contrib", "../contrib", "../../contrib", "../../../contrib"] {
+    let p = "\{base}/\{name}"
+    if (@fs.exists(p) catch { _ => false }) {
+      return Some(p)
+    }
+  }
+  None
+}
+
+///|
+/// 把素材复制进测试目录。
+///
+/// 这两条测试以前从不创建 PNG，跑得通全靠 `/tmp` 里上一次留下的文件 ——
+/// 换一台干净的机器（比如 CI）就必挂。测试得自带夹具。
+async fn ensure_cursor_asset(dir : String, name : String) -> Bool {
+  // 目录可能是空的：以前这个目录是手工准备素材时顺便建好的
+  let _ = @fs.mkdir(dir, permission=0o700, recursive=true) catch { _ => () }
+  let dst = "\{dir}/\{name}"
+  if (@fs.exists(dst) catch { _ => false }) {
+    return true
+  }
+  let mut ok = false
+  match cursor_asset(name) {
+    Some(src) => {
+      let bytes = Some(@fs.read_file(src).binary()) catch { _ => None }
+      match bytes {
+        Some(b) =>
+          ok = try {
+            @fs.write_file(dst, b, create_mode=CreateOrTruncate)
+            true
+          } catch {
+            _ => false
+          }
+        None => ()
+      }
+    }
+    None => ()
+  }
+  ok
+}
+
+///|
 async fn cursor_case(name : String) -> String {
   let dir = "/tmp/moonimage-cursor"
   let src = "\{dir}/base-\{name}.bgra"
@@ -486,6 +534,7 @@ async fn cursor_case(name : String) -> String {
 ///|
 async test "cursor_overlay 半透明模式" {
   let dir = "/tmp/moonimage-cursor"
+  assert_true(ensure_cursor_asset(dir, "cursor-arrow.png"))
   let src = cursor_case("soft")
   let out = "\{dir}/soft.jpg"
   let ok = cursor_overlay(
@@ -509,6 +558,7 @@ async test "cursor_overlay 半透明模式" {
 ///|
 async test "cursor_overlay 负片模式" {
   let dir = "/tmp/moonimage-cursor"
+  assert_true(ensure_cursor_asset(dir, "cursor-mask.png"))
   let src = cursor_case("neg")
   let out = "\{dir}/neg.jpg"
   let ok = cursor_overlay(
