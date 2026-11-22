@@ -469,21 +469,30 @@ async test "缩放不引入通道错位" {
 /// 光标合成：直接打 C 那一层，绕开 HTTP。
 ///
 /// 素材由外部脚本放到 /tmp/moonimage-cursor/，这里只管调用。
-async test "cursor_overlay 半透明模式" {
+///
+/// 每条各造自己的输入文件：MoonBit 的测试是并发跑的，不能指望
+/// 另一条测试先把 base.bgra 写出来。之前负片那条复用了半透明那条的
+/// 产物，五分之一概率失败。
+async fn cursor_case(name : String) -> String {
   let dir = "/tmp/moonimage-cursor"
-  let src = "\{dir}/base.bgra"
-  let out = "\{dir}/soft.jpg"
-  let w : Int32 = 120
-  let h : Int32 = 100
-  let px = make_bgra(w, h, fn(_x, _y) { (200, 180, 40) })
+  let src = "\{dir}/base-\{name}.bgra"
+  let px = make_bgra(120, 100, fn(_x, _y) { (200, 180, 40) })
   @fs.write_file(src, px, create_mode=CreateOrTruncate) catch {
     _ => ()
   }
+  src
+}
+
+///|
+async test "cursor_overlay 半透明模式" {
+  let dir = "/tmp/moonimage-cursor"
+  let src = cursor_case("soft")
+  let out = "\{dir}/soft.jpg"
   let ok = cursor_overlay(
     src,
     true,
-    w,
-    h,
+    120,
+    100,
     "\{dir}/cursor-arrow.png",
     "",
     20,
@@ -500,7 +509,7 @@ async test "cursor_overlay 半透明模式" {
 ///|
 async test "cursor_overlay 负片模式" {
   let dir = "/tmp/moonimage-cursor"
-  let src = "\{dir}/base.bgra"
+  let src = cursor_case("neg")
   let out = "\{dir}/neg.jpg"
   let ok = cursor_overlay(
     src,
@@ -523,7 +532,7 @@ async test "cursor_overlay 负片模式" {
 ///|
 async test "素材路径不存在时返回 false，不崩" {
   let dir = "/tmp/moonimage-cursor"
-  let src = "\{dir}/base.bgra"
+  let src = cursor_case("missing")
   let out = "\{dir}/missing.jpg"
   let ok = cursor_overlay(
     src,

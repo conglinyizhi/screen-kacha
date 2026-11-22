@@ -10,6 +10,14 @@ extern "c" fn capture_shell(cmd : Bytes, buf : Bytes, len : Int32) -> Int32 = "m
 extern "c" fn exit_now(code : Int32) -> Unit = "moonbit_screenstream_exit"
 
 ///|
+/// 挂上 SIGTERM/SIGINT 的处理：只置标志，真正的收摊交给事件循环。
+extern "c" fn watch_stop() = "moonbit_screenstream_watch_stop"
+
+///|
+/// 收到过 SIGTERM/SIGINT 吗。
+extern "c" fn should_stop() -> Int32 = "moonbit_screenstream_should_stop"
+
+///|
 #borrow(path, data)
 extern "c" fn write_file_raw(path : Bytes, data : Bytes) -> Int32 = "moonbit_screenstream_write_file"
 
@@ -64,6 +72,12 @@ fn pick(m : @argparse.Matches, name : String, dflt : String) -> String {
 }
 
 ///|
+
+///|
+/// flag 型参数有没有被点上。
+fn flag_on(m : @argparse.Matches, name : String) -> Bool {
+  m.flags.get(name) == Some(true)
+}
 
 ///|
 /// 按 /health 的返回挑图标名和一句话说明。
@@ -266,9 +280,38 @@ fn main raise {
     options=[
       @argparse.OptionArg("port", about="服务端口", default_values=["8930"]),
     ],
+    flags=[
+      @argparse.FlagArg(
+        "cursor-on",
+        about="挂上光标跟踪然后退出。不点菜单也能测这条路径",
+      ),
+      @argparse.FlagArg("cursor-off", about="摘掉光标跟踪然后退出"),
+    ],
   )
   let m = cmd.parse()
   let port = parse_int(pick(m, "port", "8930"), 8930)
+  let helper = match @env.get_env_var("HOME") {
+    Some(h) => "\{h}/.local/bin/screenstream-cursor"
+    None => "screenstream-cursor"
+  }
+  // 两个一次性开关：跑完就退，不进事件循环。用来在没有菜单的情况下
+  // 验证挂载/摘除这条路径，出问题时也能直接把结论打出来。
+  if flag_on(m, "cursor-on") {
+    if cursor_tracking_on(helper) {
+      eprintln("cursor tracking: on")
+      exit_now(0)
+    } else {
+      eprintln(
+        "cursor tracking: on 失败，日志见 journalctl --user -u screenstream-mb-tray",
+      )
+      exit_now(1)
+    }
+  }
+  if flag_on(m, "cursor-off") {
+    cursor_tracking_off()
+    eprintln("cursor tracking: off")
+    exit_now(0)
+  }
   let base = "http://127.0.0.1:\{port}"
   let cfg = @sni.default_tray_config(
     "screenstream", "screenstream 屏幕快照", "video-display",
@@ -374,19 +417,15 @@ fn main raise {
   let _ = (cb_lan, cb_public, cb_cgnat, cb_boot)
   t.separator()
   // 光标跟踪：临时挂一个 KWin 脚本 + 一个收坐标的小进程，勾掉就全撤
-  let helper = match @env.get_env_var("HOME") {
-    Some(h) => "\{h}/.local/bin/screenstream-cursor"
-    None => "screenstream-cursor"
-  }
   let cb_cursor = t.checkbox(
     "cursor_track",
     "在截图里标出鼠标位置",
-    cursor_helper_alive(),
+    cursor_pos_fresh(),
     fn(item) {
       if item.checked() {
         if !cursor_tracking_on(helper) {
           alert(
-            "开不了鼠标坐标跟踪", "写脚本或加载 KWin 脚本失败。可以用 journalctl --user -u screenstream-mb-tray 看原因。",
+            "开不了鼠标坐标跟踪", "挂载 KWin 脚本或等坐标失败。可能的原因：KWin 的 Scripting 接口没响应、脚本文件写不进去、坐标进程抢不到 D-Bus 名字。用 journalctl --user -u screenstream-mb-tray 能看到托盘这边的动作。",
             "cursor",
           )
           item.set_checked(false)
@@ -420,14 +459,28 @@ fn main raise {
     //
     // 不收的话：脚本还挂在 KWin 里、helper 进程还在跑、坐标还在刷新，
     // 而唯一能关掉它的入口（这个菜单）已经没了，用户只能重启 KWin
-    // 或重启机器。systemd 重启托盘服务（SIGTERM）走的也是这条路径，
-    // 每重启一次就多一个 helper 和一个叠加的定时器。
+    // 或重启机器。systemd 重启（SIGTERM）走的是另一条路，见下面
+    // watch_stop 那段。
     cursor_tracking_off()
     exit_now(0)
   })
   quit_ref.val = Some(quit_item)
+  // systemd 重启（SIGTERM）不会走菜单的退出口，这里把收摊补上。
+  // 不补的话：KWin 脚本还挂着、helper 还占着 D-Bus 名字，
+  // 每重启一次托盘就多留一份，下次勾选会直接复用这个僵尸。
+  watch_stop()
   // 每 5 秒查一次，图标跟着健康状态变
-  match t.run_with_tick(fn() { poll_icon(t, base) }, 5000) {
+  match
+    t.run_with_tick(
+      fn() {
+        if should_stop() != 0 {
+          cursor_tracking_off()
+          exit_now(0)
+        }
+        poll_icon(t, base)
+      },
+      5000,
+    ) {
     Ok(_) => eprintln("托盘事件循环已结束")
     Err(code) => eprintln("托盘启动失败，错误码 \{code}")
   }

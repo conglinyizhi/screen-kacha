@@ -80,3 +80,33 @@ int moonbit_screenstream_run_status(const char *cmd) {
   if (WIFEXITED(rc)) return WEXITSTATUS(rc);
   return -2;
 }
+
+// ---------------------------------------------------------------------------
+// 收到 SIGTERM 时别当场死掉，留一口气把光标跟踪收干净
+//
+// systemd 重启托盘服务时发的是 SIGTERM。原来进程直接没了，KWin 那边
+// 脚本还挂着、helper 还活着占着 D-Bus 名字，每重启一次就多留一份。
+// 信号处理函数里能安全做的事很少，所以这里只置一个标志，
+// 让 MoonBit 侧每一拍去检查，检查到了再走正常的收摊流程。
+// ---------------------------------------------------------------------------
+static volatile sig_atomic_t g_stop = 0;
+
+static void on_stop_signal(int sig) {
+  (void)sig;
+  g_stop = 1;
+}
+
+MOONBIT_FFI_EXPORT
+void moonbit_screenstream_watch_stop(void) {
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_handler = on_stop_signal;
+  sigemptyset(&sa.sa_mask);
+  // 不设 SA_RESTART：让阻塞中的系统调用被打断，循环能早点回到 MoonBit 侧
+  sa.sa_flags = 0;
+  sigaction(SIGTERM, &sa, NULL);
+  sigaction(SIGINT, &sa, NULL);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t moonbit_screenstream_should_stop(void) { return g_stop ? 1 : 0; }

@@ -21,8 +21,8 @@ sudo pacman -S pipewire libjpeg-turbo libwebp
 sudo apt install libpipewire-0.3-dev libjpeg-dev libwebp-dev
 ```
 
-运行需要 PipeWire 和 xdg-desktop-portal（KDE 后端）。ImageMagick 是可选的，
-只有画鼠标指针那几条路径用到，缺了会明确报错，不会静默返回一张没指针的图。
+运行需要 PipeWire 和 xdg-desktop-portal（KDE 后端）。不依赖 ImageMagick 或任何
+外部图像程序：抓帧转码、缩放、WebP、画鼠标光标都在进程内完成。
 
 目前只在 KDE Wayland 上测过。核心链路（PipeWire 加 portal）其他桌面也能用，
 KDE 特化的是托盘菜单、KWin 光标脚本和 spectacle 兜底。

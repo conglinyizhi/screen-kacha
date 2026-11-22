@@ -31,7 +31,7 @@ fn main {
 }
 ```
 
-落盘版本（给 magick 之类外部工具用）：
+落盘版本（给外部工具直接读）：
 
 ```moonbit
 let n = pw.save_frame("/tmp/frame.bgra")

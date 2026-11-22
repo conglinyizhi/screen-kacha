@@ -23,7 +23,6 @@ jobs:
             libjpeg-dev \
             libwebp-dev \
             libpng-dev \
-            imagemagick \
             curl \
             python3
 

@@ -29,7 +29,22 @@ check() { # 描述 期望 实际
 }
 
 echo "== 准备假帧 =="
-magick -size 800x600 xc:'#2b6cb0' -fill white -pointsize 48 -gravity center -annotate 0 'smoke' "$WORK/frame.png" 2>/dev/null
+# 造一张纯色 PNG 当假帧。手写 PNG 而不是调 magick：
+# 冒烟不该把 ImageMagick 变成测试依赖，服务本身已经不需要它了。
+python3 - "$WORK/frame.png" <<'PY'
+import struct, sys, zlib
+w, h = 800, 600
+row = b"\x00" + bytes([43, 108, 176]) * w   # 每行开头是 filter 字节
+raw = row * h
+def chunk(tag, data):
+    body = tag + data
+    return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xffffffff)
+png = b"\x89PNG\r\n\x1a\n"
+png += chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+png += chunk(b"IDAT", zlib.compress(raw, 9))
+png += chunk(b"IEND", b"")
+open(sys.argv[1], "wb").write(png)
+PY
 [ -s "$WORK/frame.png" ] || { echo "  造图失败"; exit 1; }
 
 echo "== 起实例（端口 $PORT，假帧源）=="
@@ -49,7 +64,7 @@ done
 B="http://127.0.0.1:$PORT"
 code() { curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$1"; }
 ctype() { curl -s -o /dev/null -w '%{content_type}' --max-time 10 "$1"; }
-dims() { curl -s --max-time 10 "$1" -o "$WORK/out.bin" && magick identify -format '%wx%h' "$WORK/out.bin" 2>/dev/null; }
+dims() { curl -s --max-time 10 "$1" -o "$WORK/out.bin" && python3 "$ROOT/scripts/imgsize.py" "$WORK/out.bin" 2>/dev/null; }
 
 echo "== 路由与类型 =="
 check "/ 状态" 200 "$(code $B/)"
