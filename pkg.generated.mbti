@@ -39,6 +39,8 @@ pub fn portal_step(Bool) -> PortalStep
 
 pub async fn read_cursor_pos(String) -> (Int32, Int32)?
 
+pub fn reject_slots(Int32) -> Int32
+
 pub async fn serve_with_access(@crescent.App, @http.Server, Access, Int32) -> Unit
 
 pub fn wants_html(String?) -> Bool

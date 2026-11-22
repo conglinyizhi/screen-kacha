@@ -295,3 +295,18 @@ test "accept 连续失败要给够次数才放弃" {
   assert_true(accept_gave_up(100))
   assert_true(accept_gave_up(101))
 }
+
+///|
+/// 拒绝路径的并发上限要有界，并且比主上限小。
+///
+/// 原来拒绝分支不占任何槽位，未授权地址开上千个空闲连接就能把 fd 吃光。
+/// 这条锁住「拒绝也要限流」和「别把槽位全给拒绝、饿死正常请求」。
+test "拒绝路径的并发上限有界" {
+  assert_eq(reject_slots(64), 8)
+  assert_eq(reject_slots(256), 32)
+  // 上限很小时至少给 4 个，不能算成 0 把自己卡死
+  assert_eq(reject_slots(8), 4)
+  assert_eq(reject_slots(1), 4)
+  // 永远小于主上限，给正常请求留大头
+  assert_true(reject_slots(1000) < 1000)
+}

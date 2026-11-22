@@ -33,6 +33,20 @@ pub fn accept_gave_up(consecutive : Int32) -> Bool {
 }
 
 ///|
+/// 拒绝路径的并发上限。
+///
+/// 取主上限的一小部分：拒绝只是读一下请求、回一句 403、关掉，不需要那么多槽位，
+/// 大头要留给真正要服务的请求。至少给 4 个，免得上限很小时算成 0 直接卡死。
+pub fn reject_slots(max_conns : Int32) -> Int32 {
+  let eighth = max_conns / 8
+  if eighth < 4 {
+    4
+  } else {
+    eighth
+  }
+}
+
+///|
 /// 以非零码立刻结束进程。
 extern "c" fn exit_now(code : Int32) -> Unit = "moonbit_screenstream_exit"
 
@@ -63,6 +77,13 @@ pub async fn serve_with_access(
 ) -> Unit {
   let limit = if max_conns > 0 { max_conns } else { 256 }
   let gate = @async.Semaphore(limit)
+  // 拒绝路径也要限流。
+  //
+  // 原来拒绝分支直接 spawn，一个槽位都不占：一个不被允许的地址开上千个空闲
+  // 连接，每个都攥着一个 fd，撑到 EMFILE 之后正常连接也建不起来。
+  // 用独立的小信号量而不是共用 gate：共用的话，一阵未授权连接就能把正常
+  // 客户端的槽位吃光，等于借着"拒绝"把服务打死。
+  let reject_gate = @async.Semaphore(reject_slots(limit))
   @async.with_task_group(group => {
     let mut accept_errs = 0
     for ;; {
@@ -96,7 +117,11 @@ pub async fn serve_with_access(
           if !access.allows(peer) {
             // 拒绝也要 spawn：读请求可能永远等不到数据，
             // 在循环里等会把整个服务卡死，这不只是慢，是可用性问题。
+            // 拿不到槽位就停在 accept 上：新连接留在内核 backlog 里，
+            // 不占进程的 fd
+            reject_gate.acquire()
             group.spawn_bg(no_wait=true, allow_failure=true, () => {
+              defer reject_gate.release()
               reject(conn, peer)
             })
             continue
