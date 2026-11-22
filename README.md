@@ -60,8 +60,8 @@ v0.1，自己日常在用。核心链路（PipeWire 取帧 → HTTP 快照）、
 裁底下的像素，所以换素材时 `CURSOR_W` / `CURSOR_H` 和两套 png 必须一起改，
 混用会少裁一行、边缘错位。
 
-画光标要调 ImageMagick。没装的话带 `cursor` 会返回 503 并说明原因，
-不会静默给一张没指针的图。
+画光标要调 ImageMagick，因为这一步是贴图和负片混合，`moonimage` 只做缩放和编码，
+不碰合成。没装的话带 `cursor` 会返回 503 并说明原因，不会静默给一张没指针的图。
 
 坐标得先在托盘菜单里勾上「在截图里标出鼠标位置」：勾上会临时挂一个 KWin 脚本
 读光标坐标，取消就全撤掉。没勾上时带 `cursor` 只返回普通截图。
@@ -177,7 +177,13 @@ PSNR 在 33–37（原尺寸 49），视觉上基本看不出，文件反而略�
 
 启动时按 `/usr/bin/magick`、`/usr/bin/convert`、`/usr/bin/gm` 的顺序探测一次，结果写进 `/health` 的 `magick` 字段。
 
-没有 ImageMagick 也能跑：`/snapshot.jpg` 原样返回，需要缩放或 WebP 的请求退回原始 JPEG，并带 `X-Screenstream-Fallback: no-magick` 头，方便调用方知道拿到的不是所请求的尺寸。
+走 PipeWire 的时候基本用不到它。抓帧转码、按 `w` 缩放、输出 WebP 都由自带的
+`moonimage` 直接从原始 BGRA 重编码，省掉「先编成 JPEG 再解码回来」这一来一回，
+实测比 magick 快三到四倍。这时只有画鼠标光标还依赖它。
+
+PipeWire 不可用、退回 spectacle 或假帧源时才真的需要：那条路拿不到原始像素，
+缩放和 WebP 都得靠它。缺了的话请求退回原始 JPEG，并带
+`X-Screenstream-Fallback: no-magick` 头，方便调用方知道拿到的不是所请求的尺寸。
 
 ## 已知限制
 
