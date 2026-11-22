@@ -20,6 +20,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libpipewire-0.3-dev \
+            libjpeg-dev \
+            libwebp-dev \
             imagemagick \
             curl \
             python3
@@ -40,6 +42,12 @@ jobs:
       - name: 格式
         run: moon fmt --check
 
+      # moon info 会重写 .mbti。改完代码忘了重生成，下游看到的就是旧接口。
+      - name: 接口文件没落后
+        run: |
+          moon info
+          git diff --exit-code -- '*.mbti'
+
       - name: 类型检查（警告即失败）
         run: moon check --target native --deny-warn
 
@@ -48,6 +56,10 @@ jobs:
 
       - name: 构建三个可执行文件
         run: moon build --target native --release cmd/main cmd/tray cmd/portal
+
+      # 冒烟脚本直接跑 _build/native/debug 下的二进制，所以先单独编一次 debug。
+      - name: 构建 debug（冒烟用）
+        run: moon build --target native cmd/main
 
       # 冒烟用 --fake 假帧源，不需要显示器，也不会碰 portal。
       # 两条监听路径都要过：默认走 serve_on，受限走 serve_with_access。
