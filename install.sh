@@ -52,7 +52,15 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
   fi
   rm -f "$UNITS/screenstream-mb.service" "$UNITS/screenstream-mb-tray.service"
   rm -f "$AUTOSTART/screenstream-portal.desktop"
-  pkill -f screenstream-cursor 2>/dev/null || true
+  # 光标 helper 和 portal 助手都是自启拉起来的，systemctl disable 管不到它们。
+  # portal 那边不收尾，桌面上会留一条活的 ScreenCast 会话（「正在共享屏幕」
+  # 的指示、pw 里一条 capture 流），要等注销才消失 —— 软件已经删了，系统还在
+  # 共享屏幕，观感上就是安全问题。
+  # `[s]` 是为了让 pgrep 的模式不匹配到自己这条命令行。
+  pkill -f '[s]creenstream-cursor' 2>/dev/null || true
+  pkill -f '[s]creenstream-portal' 2>/dev/null || true
+  rm -f "$HOME/.local/state/screenstream-mb/portal.node" \
+        "$HOME/.local/state/screenstream-mb/portal.token"
   rm -f "$BIN/screenstream-mb" "$BIN/screenstream-mb-tray" \
         "$BIN/screenstream-portal" "$BIN/screenstream-portal-loop" \
         "$BIN/screenstream-cursor"
@@ -92,13 +100,39 @@ if [ -z "$BUILD" ]; then
 fi
 say "产物目录 $BUILD"
 
-# Wayland 显示名要从当前会话猜，写死 wayland-1 换台机器就起不来
+# 从 runtime 目录里挑 Wayland socket 名。
+#
+# 只认 `wayland-<数字>`：那个目录里还有 `wayland-0.lock`、`wayland-cursor.sock`
+# 这类文件，`ls -1 wayland-* | head -1` 会选中它们，写进 unit 之后 Qt 连不上
+# Wayland，抓帧一直失败，而 /health 里只有一个 err 字符串。多个 socket 时取
+# 编号最大的（KWin 重启会往上加）。
+#
+# 单独成函数是为了能被 scripts/check-install.sh 抽出来测。
+pick_wayland_socket() {
+  local rt="$1"
+  (cd "$rt" 2>/dev/null \
+    && ls -1 2>/dev/null \
+    | grep -E '^wayland-[0-9]+$' \
+    | sort -t- -k2 -n \
+    | tail -1) || true
+}
+
+# Wayland 显示名要从当前会话猜，写死 wayland-1 换台机器就起不来。
+#
+# 只认 `wayland-<数字>`：那个目录里还有 `wayland-0.lock`、`wayland-cursor.sock`
+# 这类文件，`ls -1 wayland-* | head -1` 会选中它们，写进 unit 之后 Qt 连不上
+# Wayland，抓帧一直失败，而 /health 里只有一个 err 字符串，没人知道是安装时
+# 猜错了一个环境变量。多个 socket 时取编号最大的那个（KWin 重启会往上加）。
 WAYLAND="${WAYLAND_DISPLAY:-}"
 if [ -z "$WAYLAND" ]; then
   rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-  WAYLAND=$(cd "$rt" 2>/dev/null && ls -1 wayland-* 2>/dev/null | head -1) || true
+  WAYLAND=$(pick_wayland_socket "$rt")
 fi
-WAYLAND="${WAYLAND:-wayland-0}"
+if [ -z "$WAYLAND" ]; then
+  echo "找不到 Wayland socket（在 ${XDG_RUNTIME_DIR:-/run/user/$(id -u)} 下没有 wayland-<数字>）。" >&2
+  echo "请确认在图形会话里执行，或者用 WAYLAND_DISPLAY=wayland-N 显式指定。" >&2
+  exit 1
+fi
 say "Wayland 显示 $WAYLAND"
 
 # ---------------------------------------------------------------------------

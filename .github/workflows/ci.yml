@@ -56,6 +56,9 @@ jobs:
       - name: systemd unit 静态检查
         run: bash scripts/check-units.sh
 
+      - name: install.sh 静态检查
+        run: bash scripts/check-install.sh
+
       - name: 单元测试
         run: moon test --target native
 
