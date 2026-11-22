@@ -98,7 +98,7 @@ test "滚动不会删掉刚返回的路径" {
 ///|
 test "health 初始状态字段齐全" {
   let store = Store::new(shot="/tmp/none.jpg")
-  let res = handle_health(store, 18940)
+  let res = handle_health(store, 18940, Access::default())
   let body = @utf8.decode(res.raw_body)
   assert_true(body.contains("\"ok\": false"))
   assert_true(body.contains("\"count\": 0"))
@@ -111,7 +111,7 @@ test "health 初始状态字段齐全" {
 /// 根路径按 Accept 分叉：浏览器拿到页面，其它拿到 llms.txt 原文。
 /// 这里两种请求都走一遍，锁住「agent 不该看到 HTML」这条。
 async test "路由：首页按 Accept 分叉" {
-  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930)
+  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930, Access::default())
 
   // 浏览器
   let (code, headers, body) = app.dispatch(
@@ -140,7 +140,7 @@ async test "路由：首页按 Accept 分叉" {
 
 ///|
 async test "路由：health 返回 JSON" {
-  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930)
+  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930, Access::default())
   let (code, headers, body) = app.dispatch("GET", "/health", {}, b"")
   assert_true(code is @crescent.StatusCode::OK)
   expect_header(headers, "Content-Type", "application/json")
@@ -149,7 +149,7 @@ async test "路由：health 返回 JSON" {
 
 ///|
 async test "路由：skill.md 返回 markdown" {
-  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930)
+  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930, Access::default())
   let (code, headers, body) = app.dispatch("GET", "/skill.md", {}, b"")
   assert_true(code is @crescent.StatusCode::OK)
   expect_header(headers, "Content-Type", "text/markdown; charset=utf-8")
@@ -158,7 +158,7 @@ async test "路由：skill.md 返回 markdown" {
 
 ///|
 async test "路由：未知路径走 404 引导" {
-  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930)
+  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930, Access::default())
   let (code, headers, body) = app.dispatch("GET", "/nope", {}, b"")
   assert_true(code is @crescent.StatusCode::NotFound)
   expect_header(headers, "Content-Type", "text/plain; charset=utf-8")
@@ -167,14 +167,14 @@ async test "路由：未知路径走 404 引导" {
 
 ///|
 async test "路由：多段未知路径也走 404" {
-  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930)
+  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930, Access::default())
   let (code, _, _) = app.dispatch("GET", "/a/b/c", {}, b"")
   assert_true(code is @crescent.StatusCode::NotFound)
 }
 
 ///|
 async test "路由：非法快照名不触发采集，直接 404" {
-  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930)
+  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930, Access::default())
   for path in ["/snapshot.png", "/snapshot-abc.jpg", "/snapshotx.jpg"] {
     let (code, _, _) = app.dispatch("GET", path, {}, b"")
     assert_true(code is @crescent.StatusCode::NotFound)

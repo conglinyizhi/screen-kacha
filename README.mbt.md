@@ -11,14 +11,14 @@ KDE Wayland 上另外提供托盘菜单和光标位置标记。
 
 ## 平台与依赖
 
-编译需要 MoonBit 工具链，以及三个系统库的头文件：
+编译需要 MoonBit 工具链，以及四个系统库的头文件：
 
 ```bash
 # Arch
-sudo pacman -S pipewire libjpeg-turbo libwebp
+sudo pacman -S pipewire libjpeg-turbo libwebp libpng
 
 # Debian / Ubuntu
-sudo apt install libpipewire-0.3-dev libjpeg-dev libwebp-dev
+sudo apt install libpipewire-0.3-dev libjpeg-dev libwebp-dev libpng-dev
 ```
 
 运行需要 PipeWire 和 xdg-desktop-portal（KDE 后端）。不依赖 ImageMagick 或任何

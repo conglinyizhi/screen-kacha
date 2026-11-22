@@ -72,8 +72,6 @@ fn pick(m : @argparse.Matches, name : String, dflt : String) -> String {
 }
 
 ///|
-
-///|
 /// flag 型参数有没有被点上。
 fn flag_on(m : @argparse.Matches, name : String) -> Bool {
   m.flags.get(name) == Some(true)

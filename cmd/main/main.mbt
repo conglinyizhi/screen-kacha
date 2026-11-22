@@ -165,7 +165,6 @@ async fn main {
     wl_dir~,
     pw=use_pw,
   )
-  let app = @store.build_app(store, port)
   // reuse_addr：服务重启时旧连接还处于 TIME-WAIT，不开这个 bind 会失败
   let server = @http.Server(
     @socket.Addr::parse("\{bind}:\{port}"),
@@ -180,10 +179,10 @@ async fn main {
     p => p
   }
   let access = @store.load_access(access_path)
-  store.set_access_note(access.describe())
   eprintln(
     "访问控制：\{if access.restricted() { "启用（\{access.describe()}）" } else { "未启用" }}  配置 \{access_path}",
   )
+  let app = @store.build_app(store, port, access)
   if pw_node > 0 {
     if store.enable_pipewire(pw_node) {
       eprintln("PipeWire 抓帧已启动，node=\{pw_node}")

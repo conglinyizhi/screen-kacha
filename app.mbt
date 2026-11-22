@@ -112,17 +112,50 @@ fn not_found(path : String) -> @crescent.HttpResponse {
 }
 
 ///|
-fn handle_health(store : Store, port : Int32) -> @crescent.HttpResponse {
+fn handle_health(
+  store : Store,
+  port : Int32,
+  access : Access,
+) -> @crescent.HttpResponse {
   let ok = match store.bytes() {
     Some(_) => store.err() == ""
     None => false
   }
-  let json = "{\"ok\": \{ok}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"err\": \"\{store.err()}\", \"port\": \{port}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{store.source()}\", \"access\": \"\{store.access_note()}\"}"
+  let json = "{\"ok\": \{ok}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"err\": \"\{store.err()}\", \"port\": \{port}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{store.source()}\", \"access\": \"\{access.describe()}\"}"
   make_res(@crescent.StatusCode::OK, "application/json", @utf8.encode(json))
 }
 
 ///|
-/// 按渲染计划构造图像响应。单独抽出来，好在不跑 spectacle 的前提下测降级分支。
+/// JPEG / WebP 编码质量。
+///
+/// 82 是这套图上的折中：再低文字边缘开始发糊，agent 截图认字会吃力；
+/// 再高单帧体积涨得快，而这张图是拿来看屏幕状态的，不追求观赏画质。
+const JPEG_QUALITY : Int32 = 82
+
+///|
+/// 编码器把结果写在临时文件里，这里读回内存。
+///
+/// `ok` 是编码器自己的返回值：它已经失败了就别再去开文件，省一次必然失败的读。
+async fn read_result(out : String, ok : Bool) -> Bytes? {
+  if !ok {
+    return None
+  }
+  try {
+    let f = @fs.open(out, mode=ReadOnly)
+    let b = f.read_all().binary()
+    f.close()
+    Some(b)
+  } catch {
+    _ => None
+  }
+}
+
+///|
+/// 按请求参数构造图像响应。单独抽出来，好在不跑 spectacle 的前提下测降级分支。
+///
+/// 三种来源（贴光标的帧、原始帧重编码、已抓到的 JPEG 重编码）结果都落在同一个
+/// 临时文件里，读回方式也一样，所以统一走 `read_result`。早先每个分支各抄一份
+/// 「建文件、编码、开文件、读回、返回」，三份模板改一处漏两处。
 async fn build_image_response(
   store : Store,
   data : Bytes,
@@ -131,136 +164,83 @@ async fn build_image_response(
   cursor : Cursor?,
 ) -> @crescent.HttpResponse {
   let ctype = if fmt == "webp" { "image/webp" } else { "image/jpeg" }
+  let webp = fmt == "webp"
+  // 尺寸写 0 表示保持原尺寸，编码器认这个约定
+  let dst_w = match width {
+    Some(w) => w
+    None => 0
+  }
+  // 不缩放又不要 webp 时，抓到的字节可以直接返回
+  let need_work = match width {
+    Some(_) => true
+    None => fmt != "jpg"
+  }
+  // 有 PipeWire 原始帧就直接在 BGRA 上动，省掉「编码成 JPEG 再解码回来」
+  // 这一来一回；只有退回 spectacle 或假帧源、手上只有 JPEG 时才多解一次。
+  let (src, is_raw, src_w, src_h) = match store.pw_raw() {
+    Some((raw, w, h)) => (raw, true, w, h)
+    None => (store.shot(), false, 0, 0)
+  }
   // 要在图上画光标。合成在 C 里做，不再调 ImageMagick。
   //
-  // 有 PipeWire 原始帧就直接在 BGRA 上画，省掉「编码成 JPEG 再解码回来」
-  // 这一来一回；只有退回 spectacle 或假帧源、手上只有 JPEG 时才解一次。
-  //
+  // 这一步和 need_work 无关：不缩放也得先把指针贴上。
   // 坐标拿不到（跟踪没开）算正常情况，安静退回普通截图。
   if cursor is Some(cur) {
     match read_cursor_pos(store.cursor_pos_path()) {
       Some((cx, cy)) => {
         let (arrow, mask) = cur.assets()
-        let out = store.next_tmp(fmt)
-        let (src, is_raw, sw, sh) = match store.pw_raw() {
-          Some((raw, w, h)) => (raw, true, w, h)
-          None => (store.shot(), false, 0, 0)
-        }
         // 半透明模式贴箭头，负片模式用蒙版做反色，两者互斥
         let (ov, mk) = match cur.style {
           Soft => (arrow, "")
           Neg => ("", mask)
         }
-        let dst_w = match width {
-          Some(w) => w
-          None => 0
-        }
+        let out = store.next_tmp(fmt)
         let ok = @image.cursor_overlay(
           src,
           is_raw,
-          sw,
-          sh,
+          src_w,
+          src_h,
           ov,
           mk,
           cx,
           cy,
           dst_w,
-          82,
-          fmt == "webp",
+          JPEG_QUALITY,
+          webp,
           out,
         )
-        if ok {
-          let got = try {
-            let f = @fs.open(out, mode=ReadOnly)
-            let b = f.read_all().binary()
-            f.close()
-            Some(b)
-          } catch {
-            _ => None
-          }
-          match got {
-            Some(b) => return make_res(@crescent.StatusCode::OK, ctype, b)
-            None => ()
-          }
+        match read_result(out, ok) {
+          Some(b) => return make_res(@crescent.StatusCode::OK, ctype, b)
+          None => ()
         }
       }
       None => ()
     }
-  }
-  // 有 PipeWire 原始帧时直接从 BGRA 出图：省掉「编码成 JPEG 再解码回来缩放」
-  // 这一来一回，实测比走外部程序快 3~4 倍。光标那步已经在上面的分支处理过，
-  // 走到这里说明不需要画光标。
-  let need_work = match width {
-    Some(_) => true
-    None => fmt != "jpg"
-  }
-  if need_work {
-    match store.pw_raw() {
-      Some((raw, w, h)) => {
-        let out = store.next_tmp(fmt)
-        let dst_w = match width {
-          Some(x) => x
-          None => 0
-        }
-        let ok = if fmt == "webp" {
-          @image.bgra_to_webp(raw, w, h, dst_w, 82, out)
-        } else {
-          @image.bgra_to_jpeg(raw, w, h, dst_w, 82, out)
-        }
-        if ok {
-          let got = try {
-            let f = @fs.open(out, mode=ReadOnly)
-            let b = f.read_all().binary()
-            f.close()
-            Some(b)
-          } catch {
-            _ => None
-          }
-          match got {
-            Some(b) => return make_res(@crescent.StatusCode::OK, ctype, b)
-            None => ()
-          }
-        }
-      }
-      None => ()
-    }
-  }
-  // 走到这里说明既没有原始帧，也没能直接复用：手上只有 JPEG。
-  //
-  // 退回 spectacle 或假帧源时会到这里。自己解码再缩放，不再调外部程序。
-  let need_work = match width {
-    Some(_) => true
-    None => fmt != "jpg"
-  }
-  if need_work {
-    let out = store.next_tmp(fmt)
-    let dst_w = match width {
-      Some(x) => x
-      None => 0
-    }
-    let ok = @image.jpeg_to_file(store.shot(), dst_w, 82, fmt == "webp", out)
-    if ok {
-      let got = try {
-        let f = @fs.open(out, mode=ReadOnly)
-        let b = f.read_all().binary()
-        f.close()
-        Some(b)
-      } catch {
-        _ => None
-      }
-      match got {
-        Some(b) => return make_res(@crescent.StatusCode::OK, ctype, b)
-        None => ()
-      }
-    }
-    return make_res(
-      @crescent.StatusCode::InternalServerError,
-      "application/json",
-      @utf8.encode("{\"error\":\"图像转换失败\"}"),
-    )
   }
   // 原始尺寸直出，什么都不用做
-  make_res(@crescent.StatusCode::OK, ctype, data)
+  if !need_work {
+    return make_res(@crescent.StatusCode::OK, ctype, data)
+  }
+  // 走到这里必须重编码：有原始像素就在 BGRA 上做，否则解一次已抓到的 JPEG。
+  let out = store.next_tmp(fmt)
+  let ok = if is_raw {
+    if webp {
+      @image.bgra_to_webp(src, src_w, src_h, dst_w, JPEG_QUALITY, out)
+    } else {
+      @image.bgra_to_jpeg(src, src_w, src_h, dst_w, JPEG_QUALITY, out)
+    }
+  } else {
+    @image.jpeg_to_file(src, dst_w, JPEG_QUALITY, webp, out)
+  }
+  match read_result(out, ok) {
+    Some(b) => make_res(@crescent.StatusCode::OK, ctype, b)
+    None =>
+      make_res(
+        @crescent.StatusCode::InternalServerError,
+        "application/json",
+        @utf8.encode("{\"error\":\"图像转换失败\"}"),
+      )
+  }
 }
 
 ///|
@@ -333,7 +313,7 @@ async fn handle_skill() -> @crescent.HttpResponse {
 }
 
 ///|
-pub fn build_app(store : Store, port : Int32) -> @crescent.App {
+pub fn build_app(store : Store, port : Int32, access : Access) -> @crescent.App {
   let app = @crescent.App()
   // 根路径分叉：浏览器给人看的页面，其它（curl、agent）直接给 llms.txt 原文。
   //
@@ -368,7 +348,9 @@ pub fn build_app(store : Store, port : Int32) -> @crescent.App {
       @utf8.encode(index_shell),
     ).to_responder()
   })
-  app.get("/health", fn(_ev) { handle_health(store, port).to_responder() })
+  app.get("/health", fn(_ev) {
+    handle_health(store, port, access).to_responder()
+  })
   // 出错兜底页：只认代号，正文从固定表里查
   app.get("/ui/err", fn(ev) {
     let code = match ev.req.get_query("code") {

@@ -5,8 +5,8 @@ BGRA 原始帧 → JPEG / WebP，带缩放。只在 native 后端可用。
 只做本项目实际用到的两件事：输入是一个裸 BGRA 文件，输出是一个文件。
 没有内存缓冲版本，不做解码，也不做通用图像处理。
 
-底层是 `image_shim.c`，依赖 libjpeg（BSD/IJG 许可）和 libwebp（BSD-3 许可）。
-两者都允许静态或动态链接进闭源程序。
+底层是 `image_shim.c`，依赖 libjpeg（BSD/IJG 许可）、libwebp（BSD-3 许可）和
+libpng（libpng License）。三者都允许静态或动态链接进闭源程序。
 
 ## 链接参数
 

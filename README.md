@@ -155,7 +155,7 @@ ACCESS_CONF=/tmp/only-local.conf bash scripts/smoke.sh   # 受限监听路径
 面积平均不会像 Lanczos 那样加锐化光晕。代价是和大尺寸输出对比
 PSNR 在 33–37（原尺寸 49），视觉上基本看不出，文件反而略大几 KB。
 
-依赖只有 libjpeg（BSD/IJG）和 libwebp（BSD-3），都不传染。
+依赖只有 libjpeg（BSD/IJG）、libwebp（BSD-3）和 libpng（libpng License），都不传染。
 **没有用 libswscale**：部分发行版的 ffmpeg 是 GPL-3.0，会带来许可证问题，
 那点像素算术自己写更省心。详见 `THIRD-PARTY.md`。
 

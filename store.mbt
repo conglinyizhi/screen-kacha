@@ -34,8 +34,6 @@ pub struct Store {
   pw_stream : @pipewire.PipeWire
   /// 当前实际使用的取帧来源："pipewire" / "spectacle" / "fake"
   mut source : String
-  /// 访问控制的描述，给 /health 用
-  mut access_note : String
   /// 最近一次请求的时间戳（毫秒），泵据此决定抓多勤
   mut last_req : Int64
   mut frame : Frame?
@@ -80,7 +78,6 @@ pub fn Store::new(
     pw_raw_frame: None,
     pw_raw_prev: None,
     pw_stream: @pipewire.PipeWire::new(app_name="screenstream-mb"),
-    access_note: "不限",
     source: if pw {
       "pipewire"
     } else if fake is Some(_) {
@@ -121,8 +118,6 @@ pub async fn Store::ensure(self : Store, max_age_ms : Int64) -> Unit {
   }
   self.capture()
 }
-
-///|
 
 ///|
 /// 桌面还没起来时 Wayland socket 不存在，这时硬拉 spectacle 会被 Qt 直接 abort
@@ -286,8 +281,6 @@ pub fn Store::shot(self : Store) -> String {
 }
 
 ///|
-
-///|
 /// 临时文件保留几个。超过就删最旧的。
 ///
 /// 10 足够宽：并发请求上限虽然有 64，但每个请求拿到路径到读完只有几毫秒，
@@ -349,8 +342,6 @@ fn current_pid() -> Int32 {
 
 ///|
 extern "c" fn current_pid_raw() -> Int32 = "moonbit_current_pid"
-
-///|
 
 ///|
 /// 采集成功记一笔。单独抽出来，采集本身要真跑 spectacle，这层逻辑可以单测。
@@ -489,12 +480,7 @@ async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
 }
 
 ///|
-/// 记录当前实际使用的取帧来源，供 /health 展示。
-pub fn Store::set_source(self : Store, name : String) -> Unit {
-  self.source = name
-}
-
-///|
+/// 当前实际使用的取帧来源，供 /health 展示。
 pub fn Store::source(self : Store) -> String {
   self.source
 }
@@ -516,17 +502,6 @@ pub fn Store::enable_pipewire(self : Store, node : Int32) -> Bool {
 ///|
 pub fn Store::pipewire_on(self : Store) -> Bool {
   self.pw
-}
-
-///|
-/// 记录访问控制策略，供 /health 展示。
-pub fn Store::set_access_note(self : Store, note : String) -> Unit {
-  self.access_note = note
-}
-
-///|
-pub fn Store::access_note(self : Store) -> String {
-  self.access_note
 }
 
 ///|
