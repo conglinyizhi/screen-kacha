@@ -574,3 +574,19 @@ async test "输出不跟随符号链接" {
   // 哨兵文件必须一个字节都没被动过
   assert_eq(@utf8.decode_lossy(slurp(victim)), sentinel)
 }
+
+///|
+/// 写盘失败不能把整个服务带走。
+///
+/// libjpeg 默认的 error_exit 是 `exit(EXIT_FAILURE)`：一次写失败（磁盘满、
+/// 配额打满）就把进程杀了，而不是让这次请求返回 500。现在改成 longjmp。
+/// 用 /dev/full 造一个「打开成功但写必失败」的目标。
+async test "编码写盘失败只返回 false，不退出进程" {
+  let src = put_bgra("full.bgra", make_bgra(16, 16, fn(_x, _y) { (1, 2, 3) }))
+  // 写 /dev/full 必然 ENOSPC。要是还走 exit()，这行之后测试进程就没了。
+  assert_false(bgra_to_jpeg(src, 16, 16, 0, 82, "/dev/full"))
+  // 进程还在：紧接着做一次正常编码必须成功
+  let out = "/tmp/moonimage-test/after-full.jpg"
+  assert_true(bgra_to_jpeg(src, 16, 16, 0, 82, out))
+  assert_true(@fs.exists(out) catch { _ => false })
+}

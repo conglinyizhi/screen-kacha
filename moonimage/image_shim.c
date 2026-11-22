@@ -51,8 +51,12 @@ static FILE *create_private(const char *path) {
   int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
   if (fd < 0) return NULL;
   /* open 的 mode 只对新建的文件生效，路径上已经有旧文件（老版本按 0644 建的）
-   * 就保持原权限。主动收一次，免得升级之后旧文件继续对别人可读。 */
-  fchmod(fd, 0600);
+   * 就保持原权限。主动收一次，免得升级之后旧文件继续对别人可读。
+   * 只对普通文件动手：写 /dev/full 这类设备时不该去改别人的权限。 */
+  struct stat st;
+  if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode)) {
+    fchmod(fd, 0600);
+  }
   FILE *f = fdopen(fd, "wb");
   if (f == NULL) {
     close(fd);
@@ -272,6 +276,24 @@ static void bgra_to_rgb_scaled(const uint8_t *src, int sw, int sh, uint8_t *dst,
  *
  * 返回 0 成功，非 0 失败。
  */
+/* libjpeg 默认的 error_exit 会直接 exit(EXIT_FAILURE)。
+ *
+ * 解码方向：服务读到一张坏图就被拖死。
+ * 编码方向：写盘失败（磁盘满、配额打满）同样会把整个服务带走，而不是让
+ * 这一次请求返回 500。
+ * 两边都换成 longjmp 跳回来，按失败返回。 */
+typedef struct {
+  struct jpeg_error_mgr pub;
+  jmp_buf jb;
+} jpeg_jmp;
+
+static void jpeg_fail(j_common_ptr cinfo) {
+  jpeg_jmp *e = (jpeg_jmp *)cinfo->err;
+  longjmp(e->jb, 1);
+}
+
+static void jpeg_quiet(j_common_ptr cinfo) { (void)cinfo; }
+
 static int encode_bgra(const uint8_t *bgra, int w, int h, int dst_w,
                        int quality, int webp, const char *out_path) {
   if (w <= 0 || h <= 0 || quality < 1 || quality > 100) return 1;
@@ -304,37 +326,49 @@ static int encode_bgra(const uint8_t *bgra, int w, int h, int dst_w,
   }
 
   struct jpeg_compress_struct cinfo;
-  struct jpeg_error_mgr jerr;
-  cinfo.err = jpeg_std_error(&jerr);
-  jpeg_create_compress(&cinfo);
+  jpeg_jmp jerr;
+  cinfo.err = jpeg_std_error(&jerr.pub);
+  /* 编码这一侧同样不能用默认的 error_exit。
+   *
+   * 写盘失败（磁盘满、/dev/full、配额打满）时 libjpeg 会调 error_exit，
+   * 默认实现直接 exit(EXIT_FAILURE)：一次写失败就把整个服务带走，
+   * 而不是让这次请求返回 500。 */
+  jerr.pub.error_exit = jpeg_fail;
+  jerr.pub.output_message = jpeg_quiet;
+  FILE *fp = NULL;
+  int failed = 0;
+  if (setjmp(jerr.jb)) {
+    failed = 1;
+  } else {
+    jpeg_create_compress(&cinfo);
+    fp = create_private(out_path);
+    if (fp == NULL) {
+      jpeg_destroy_compress(&cinfo);
+      free(rgb);
+      return 4;
+    }
+    jpeg_stdio_dest(&cinfo, fp);
+    cinfo.image_width = (JDIMENSION)dw;
+    cinfo.image_height = (JDIMENSION)dh;
+    cinfo.input_components = 3;
+    cinfo.in_color_space = JCS_RGB;
+    jpeg_set_defaults(&cinfo);
+    jpeg_set_quality(&cinfo, quality, TRUE);
+    /* 打开 Huffman 优化：体积能小 5% 左右，代价是编码稍慢 */
+    cinfo.optimize_coding = TRUE;
+    jpeg_start_compress(&cinfo, TRUE);
 
-  FILE *fp = create_private(out_path);
-  if (fp == NULL) {
-    jpeg_destroy_compress(&cinfo);
-    free(rgb);
-    return 4;
+    while (cinfo.next_scanline < cinfo.image_height) {
+      JSAMPROW row = rgb + (size_t)cinfo.next_scanline * dw * 3;
+      jpeg_write_scanlines(&cinfo, &row, 1);
+    }
+
+    jpeg_finish_compress(&cinfo);
   }
-  jpeg_stdio_dest(&cinfo, fp);
-  cinfo.image_width = (JDIMENSION)dw;
-  cinfo.image_height = (JDIMENSION)dh;
-  cinfo.input_components = 3;
-  cinfo.in_color_space = JCS_RGB;
-  jpeg_set_defaults(&cinfo);
-  jpeg_set_quality(&cinfo, quality, TRUE);
-  /* 打开 Huffman 优化：体积能小 5% 左右，代价是编码稍慢 */
-  cinfo.optimize_coding = TRUE;
-  jpeg_start_compress(&cinfo, TRUE);
-
-  while (cinfo.next_scanline < cinfo.image_height) {
-    JSAMPROW row = rgb + (size_t)cinfo.next_scanline * dw * 3;
-    jpeg_write_scanlines(&cinfo, &row, 1);
-  }
-
-  jpeg_finish_compress(&cinfo);
-  fclose(fp);
+  if (fp != NULL) fclose(fp);
   jpeg_destroy_compress(&cinfo);
   free(rgb);
-  return 0;
+  return failed ? 7 : 0;
 }
 
 /*
@@ -384,20 +418,6 @@ int32_t moonbit_image_bgra_to_webp(const char *bgra_path, int32_t w, int32_t h,
  * CopyOpacity 再用 over 贴回去」，加起来不到一百行，自己做掉就不依赖
  * 外部程序了。像素语义严格照 magick 那版对齐。
  * ================================================================== */
-
-/* libjpeg 默认的 error_exit 会直接 exit(EXIT_FAILURE)，服务读到一张坏图
- * 就被拖死了。换成 longjmp 跳回来，按失败返回。 */
-typedef struct {
-  struct jpeg_error_mgr pub;
-  jmp_buf jb;
-} jpeg_jmp;
-
-static void jpeg_fail(j_common_ptr cinfo) {
-  jpeg_jmp *e = (jpeg_jmp *)cinfo->err;
-  longjmp(e->jb, 1);
-}
-
-static void jpeg_quiet(j_common_ptr cinfo) { (void)cinfo; }
 
 /* JPEG 文件 → BGRA。返回 malloc 的缓冲；失败返回 NULL。 */
 static uint8_t *decode_jpeg_bgra(const char *path, int *out_w, int *out_h) {
