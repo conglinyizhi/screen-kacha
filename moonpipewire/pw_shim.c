@@ -363,10 +363,13 @@ int32_t moonbit_pw_shim_stop(void) {
     if (held != NULL) {
         pw_stream_queue_buffer(g.stream, held);
     }
+    /* 顺序：先让流断开，再把 loop 停掉并等线程退出，最后才销毁对象。
+     *
+     * 原来先 destroy stream 再 quit/join：这中间 PipeWire 的 loop 线程可能还在
+     * on_process / on_state_changed 回调里访问已经释放的 stream，是 use-after-free。
+     * 现在 disconnect 之后立刻 quit + join，回调不可能再进来，销毁才安全。 */
     if (g.stream != NULL) {
         pw_stream_disconnect(g.stream);
-        pw_stream_destroy(g.stream);
-        g.stream = NULL;
     }
     if (g.loop != NULL) {
         pw_main_loop_quit(g.loop);
@@ -374,6 +377,10 @@ int32_t moonbit_pw_shim_stop(void) {
     if (g.running) {
         pthread_join(g.thread, NULL);
         g.running = 0;
+    }
+    if (g.stream != NULL) {
+        pw_stream_destroy(g.stream);
+        g.stream = NULL;
     }
     if (g.loop != NULL) {
         pw_main_loop_destroy(g.loop);

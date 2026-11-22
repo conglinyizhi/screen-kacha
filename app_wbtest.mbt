@@ -510,3 +510,18 @@ test "health 暴露光标失败计数" {
   assert_true(json.contains("光标素材 PNG 读不出来"))
   assert_true(json_quotes_balanced(json))
 }
+
+///|
+/// 停一个没启动的流是空操作，不能崩、不能改状态。
+///
+/// 重连路径现在会先 disconnect() 再 connect()（会话过期后要真的重来），
+/// 所以「没启动时停止」会被经常调到。
+test "停一个没启动的 PipeWire 流是空操作" {
+  let pw = @pipewire.PipeWire::new()
+  assert_false(pw.started())
+  pw.disconnect()
+  assert_false(pw.started())
+  // 再来一次也还是空操作
+  pw.disconnect()
+  assert_false(pw.started())
+}
