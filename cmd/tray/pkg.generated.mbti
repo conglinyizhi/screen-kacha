@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "conglinyizhi/screenstream/cmd/tray"
+package "conglinyizhi/screen-kacha/cmd/tray"
 
 // Values
 pub fn alert(String, String, String) -> Unit

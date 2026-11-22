@@ -15,15 +15,15 @@ fn err_page(code : String) -> String {
       )
     "access" =>
       (
-        "访问控制设置失败", "写入配置文件或重启服务失败。检查 ~/.config/screenstream-mb/ 是否可写。",
+        "访问控制设置失败", "写入配置文件或重启服务失败。检查 ~/.config/screen-kacha/ 是否可写。",
       )
     "service" =>
       (
-        "服务操作失败", "systemctl 调用返回了非零退出码。可以用 systemctl --user status screenstream-mb 看看状态。",
+        "服务操作失败", "systemctl 调用返回了非零退出码。可以用 systemctl --user status screen-kacha 看看状态。",
       )
     _ =>
       (
-        "screenstream 出错了", "托盘遇到了一个没有预置说明的错误，请查看 journalctl --user -u screenstream-mb-tray 的日志。",
+        "screen-kacha 出错了", "托盘遇到了一个没有预置说明的错误，请查看 journalctl --user -u screen-kacha-tray 的日志。",
       )
   }
   let html = "<!doctype html><meta charset='utf-8'>"

@@ -1,25 +1,25 @@
 ///|
 #borrow(cmd)
-extern "c" fn run_shell(cmd : Bytes) -> Int32 = "moonbit_screenstream_run"
+extern "c" fn run_shell(cmd : Bytes) -> Int32 = "moonbit_screen_kacha_run"
 
 ///|
 #borrow(cmd, buf)
-extern "c" fn capture_shell(cmd : Bytes, buf : Bytes, len : Int32) -> Int32 = "moonbit_screenstream_capture"
+extern "c" fn capture_shell(cmd : Bytes, buf : Bytes, len : Int32) -> Int32 = "moonbit_screen_kacha_capture"
 
 ///|
-extern "c" fn exit_now(code : Int32) -> Unit = "moonbit_screenstream_exit"
+extern "c" fn exit_now(code : Int32) -> Unit = "moonbit_screen_kacha_exit"
 
 ///|
 /// 挂上 SIGTERM/SIGINT 的处理：只置标志，真正的收摊交给事件循环。
-extern "c" fn watch_stop() = "moonbit_screenstream_watch_stop"
+extern "c" fn watch_stop() = "moonbit_screen_kacha_watch_stop"
 
 ///|
 /// 收到过 SIGTERM/SIGINT 吗。
-extern "c" fn should_stop() -> Int32 = "moonbit_screenstream_should_stop"
+extern "c" fn should_stop() -> Int32 = "moonbit_screen_kacha_should_stop"
 
 ///|
 #borrow(path, data)
-extern "c" fn write_file_raw(path : Bytes, data : Bytes) -> Int32 = "moonbit_screenstream_write_file"
+extern "c" fn write_file_raw(path : Bytes, data : Bytes) -> Int32 = "moonbit_screen_kacha_write_file"
 
 ///|
 /// 写配置文件。同步调用，托盘菜单里用。
@@ -54,15 +54,15 @@ fn flag_on(m : @argparse.Matches, name : String) -> Bool {
 /// 灯的颜色就是这个函数唯一的输出：绿=正常，黄=刚启动，灰=没响应，红=采集失败。
 fn health_state(body : String) -> (String, String) {
   if body == "" {
-    return ("screenstream-dead", "服务没响应")
+    return ("screen-kacha-dead", "服务没响应")
   }
   if body.contains("\"ok\": true") {
-    return ("screenstream-ok", "正常")
+    return ("screen-kacha-ok", "正常")
   }
   if body.contains("\"count\": 0") {
-    return ("screenstream-warn", "已启动，还没抓到帧")
+    return ("screen-kacha-warn", "已启动，还没抓到帧")
   }
-  ("screenstream-down", "采集失败")
+  ("screen-kacha-down", "采集失败")
 }
 
 ///|
@@ -77,8 +77,8 @@ fn poll_icon(t : @sni.Tray, base : String) -> Unit {
 /// 访问控制配置文件路径。
 fn access_path() -> String {
   match @env.get_env_var("HOME") {
-    Some(h) => "\{h}/.config/screenstream-mb/access.conf"
-    None => "/etc/screenstream-mb/access.conf"
+    Some(h) => "\{h}/.config/screen-kacha/access.conf"
+    None => "/etc/screen-kacha/access.conf"
   }
 }
 
@@ -171,7 +171,7 @@ fn write_access(lan : Bool, public : Bool, cgnat : Bool) -> Bool {
   }
   // 服务重启失败时，配置文件里已经是新值了，勾选却被回滚，
   // 两边相反，下次服务重启又突然生效。这里把写入也退回去。
-  if run_status("systemctl --user restart screenstream-mb.service") != 0 {
+  if run_status("systemctl --user restart screen-kacha.service") != 0 {
     match old {
       Some(t) => {
         let _ = write_file(access_path(), t)
@@ -252,7 +252,7 @@ fn rewrite_flags(
 /// 托盘自己是不是开机启动的。决定「退出」这句话怎么说才不误解。
 fn tray_autostart() -> Bool {
   let out = capture(
-    "systemctl --user is-enabled screenstream-mb-tray.service 2>/dev/null", 64,
+    "systemctl --user is-enabled screen-kacha-tray.service 2>/dev/null", 64,
   )
   out.trim().to_owned() == "enabled"
 }
@@ -261,7 +261,7 @@ fn tray_autostart() -> Bool {
 /// 服务与托盘是否都开机启动。
 fn boot_enabled() -> Bool {
   let out = capture(
-    "systemctl --user is-enabled screenstream-mb.service screenstream-mb-tray.service 2>/dev/null | grep -c enabled",
+    "systemctl --user is-enabled screen-kacha.service screen-kacha-tray.service 2>/dev/null | grep -c enabled",
     64,
   )
   @util.parse_int(out.trim(), 0) >= 2
@@ -272,7 +272,7 @@ fn boot_enabled() -> Bool {
 fn set_boot(on : Bool) -> Bool {
   let verb = if on { "enable" } else { "disable" }
   run_status(
-    "systemctl --user \{verb} screenstream-mb.service screenstream-mb-tray.service",
+    "systemctl --user \{verb} screen-kacha.service screen-kacha-tray.service",
   ) ==
   0
 }
@@ -280,14 +280,14 @@ fn set_boot(on : Bool) -> Bool {
 ///|
 /// 重启服务。失败返回 false。
 fn restart_service() -> Bool {
-  run_status("systemctl --user restart screenstream-mb.service") == 0
+  run_status("systemctl --user restart screen-kacha.service") == 0
 }
 
 ///|
 fn main raise {
   let cmd = @argparse.Command(
-    "screenstream-tray",
-    about="screenstream 托盘",
+    "screen-kacha-tray",
+    about="screen-kacha 托盘",
     options=[
       @argparse.OptionArg("port", about="服务端口", default_values=["8930"]),
     ],
@@ -302,8 +302,8 @@ fn main raise {
   let m = cmd.parse()
   let port = @util.parse_int(@util.pick(m, "port", "8930"), 8930)
   let helper = match @env.get_env_var("HOME") {
-    Some(h) => "\{h}/.local/bin/screenstream-cursor"
-    None => "screenstream-cursor"
+    Some(h) => "\{h}/.local/bin/screen-kacha-cursor"
+    None => "screen-kacha-cursor"
   }
   // 两个一次性开关：跑完就退，不进事件循环。用来在没有菜单的情况下
   // 验证挂载/摘除这条路径，出问题时也能直接把结论打出来。
@@ -313,7 +313,7 @@ fn main raise {
       exit_now(0)
     } else {
       eprintln(
-        "cursor tracking: on 失败，日志见 journalctl --user -u screenstream-mb-tray",
+        "cursor tracking: on 失败，日志见 journalctl --user -u screen-kacha-tray",
       )
       exit_now(1)
     }
@@ -325,7 +325,7 @@ fn main raise {
   }
   let base = "http://127.0.0.1:\{port}"
   let cfg = @sni.default_tray_config(
-    "screenstream", "screenstream 屏幕快照", "video-display",
+    "screen-kacha", "screen-kacha 屏幕快照", "video-display",
   )
   let t = @sni.tray(cfg)
   t.on("open", "打开 :\{port} 页面", fn(_) { sh("xdg-open '\{base}/'") })
@@ -338,7 +338,7 @@ fn main raise {
     let (_, cur_public, cur_cgnat) = read_access()
     if !write_access(item.checked(), cur_public, cur_cgnat) {
       alert(
-        "访问控制设置失败", "写配置或重启服务失败了。可以检查 ~/.config/screenstream-mb/ 是否可写，或用 journalctl --user -xe 看原因。",
+        "访问控制设置失败", "写配置或重启服务失败了。可以检查 ~/.config/screen-kacha/ 是否可写，或用 journalctl --user -xe 看原因。",
         "access",
       )
       item.set_checked(!item.checked())
@@ -352,7 +352,7 @@ fn main raise {
       let (cur_lan, _, cur_cgnat) = read_access()
       if !write_access(cur_lan, item.checked(), cur_cgnat) {
         alert(
-          "访问控制设置失败", "写配置或重启服务失败了。可以检查 ~/.config/screenstream-mb/ 是否可写，或用 journalctl --user -xe 看原因。",
+          "访问控制设置失败", "写配置或重启服务失败了。可以检查 ~/.config/screen-kacha/ 是否可写，或用 journalctl --user -xe 看原因。",
           "access",
         )
         item.set_checked(!item.checked())
@@ -374,7 +374,7 @@ fn main raise {
       let on = item.checked()
       if !write_access(cur_lan, cur_public, on) {
         alert(
-          "访问控制设置失败", "写配置或重启服务失败了。可以检查 ~/.config/screenstream-mb/ 是否可写，或用 journalctl --user -xe 看原因。",
+          "访问控制设置失败", "写配置或重启服务失败了。可以检查 ~/.config/screen-kacha/ 是否可写，或用 journalctl --user -xe 看原因。",
           "access",
         )
         item.set_checked(!on)
@@ -396,7 +396,7 @@ fn main raise {
     fn(item) {
       if system_unit_conflict() {
         alert(
-          "无法用托盘管理开机启动", "检测到系统级（非 --user）的同名 systemd unit。\n托盘只能用 systemctl --user 管理用户级 unit，对系统级无效。\n\n请自行用 sudo systemctl disable screenstream-mb 处理，或先删掉系统级 unit。",
+          "无法用托盘管理开机启动", "检测到系统级（非 --user）的同名 systemd unit。\n托盘只能用 systemctl --user 管理用户级 unit，对系统级无效。\n\n请自行用 sudo systemctl disable screen-kacha 处理，或先删掉系统级 unit。",
           "sysunit",
         )
         // 勾选状态以真实状态为准，避免看起来像生效了
@@ -436,7 +436,7 @@ fn main raise {
       if item.checked() {
         if !cursor_tracking_on(helper) {
           alert(
-            "开不了鼠标坐标跟踪", "挂载 KWin 脚本或等坐标失败。可能的原因：KWin 的 Scripting 接口没响应、脚本文件写不进去、坐标进程抢不到 D-Bus 名字。用 journalctl --user -u screenstream-mb-tray 能看到托盘这边的动作。",
+            "开不了鼠标坐标跟踪", "挂载 KWin 脚本或等坐标失败。可能的原因：KWin 的 Scripting 接口没响应、脚本文件写不进去、坐标进程抢不到 D-Bus 名字。用 journalctl --user -u screen-kacha-tray 能看到托盘这边的动作。",
             "cursor",
           )
           item.set_checked(false)
@@ -451,7 +451,7 @@ fn main raise {
   t.on("restart", "重启服务", fn(_) {
     if !restart_service() {
       alert(
-        "重启服务失败", "systemctl 调用返回了非零退出码。可以用 systemctl --user status screenstream-mb 看看状态。",
+        "重启服务失败", "systemctl 调用返回了非零退出码。可以用 systemctl --user status screen-kacha 看看状态。",
         "service",
       )
     }

@@ -1,4 +1,4 @@
-# screenstream-mb 开发指南
+# screen-kacha 开发指南
 
 本机屏幕的 HTTP 快照服务，MoonBit 实现。取一张 JPEG 就能看见屏幕现状，给本地 agent 用。
 只在 Linux 桌面跑：抓屏走 PipeWire 加 xdg-desktop-portal，KDE Wayland 上额外有托盘和光标标记。
@@ -30,8 +30,8 @@ bash scripts/smoke.sh                      # 端到端，假帧源，不需要�
 部署：
 
 ```bash
-install -m 0755 _build/native/release/build/cmd/main/main.exe ~/.local/bin/screenstream-mb
-systemctl --user restart screenstream-mb.service
+install -m 0755 _build/native/release/build/cmd/main/main.exe ~/.local/bin/screen-kacha
+systemctl --user restart screen-kacha.service
 ```
 
 ## 代码地图

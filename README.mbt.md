@@ -1,4 +1,4 @@
-# screenstream-mb
+# screen-kacha
 
 本机屏幕的 HTTP 快照服务，MoonBit 实现。
 
@@ -62,8 +62,8 @@ WAYLAND_DISPLAY=wayland-1 ./_build/native/release/build/cmd/main/main.exe --port
 两个子包可以单独依赖：
 
 ```mbt nocheck
-import "conglinyizhi/screenstream/moonpipewire" @pipewire
-import "conglinyizhi/screenstream/moonimage" @image
+import "conglinyizhi/screen-kacha/moonpipewire" @pipewire
+import "conglinyizhi/screen-kacha/moonimage" @image
 ```
 
 `moonpipewire` 取的是已经存在的视频流节点，节点怎么来由调用方负责，

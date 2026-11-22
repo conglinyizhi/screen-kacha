@@ -13,7 +13,7 @@ systemd 单元 / 桌面文件推导出来的，传名字改变不了它。
 ## 用法
 
 ```moonbit
-import "conglinyizhi/screenstream/moonpipewire" @pipewire
+import "conglinyizhi/screen-kacha/moonpipewire" @pipewire
 
 fn main {
   // 构造只记配置，不做 I/O

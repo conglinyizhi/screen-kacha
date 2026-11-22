@@ -1,5 +1,5 @@
 import {
-  "conglinyizhi/screenstream/moonutil" @util,
+  "conglinyizhi/screen-kacha/moonutil" @util,
   "moonbitlang/core/argparse",
   "conglinyizhi/moonsni/src/tray" @sni,
   "conglinyizhi/moonsni/src/menu",

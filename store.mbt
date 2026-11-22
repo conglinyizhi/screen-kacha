@@ -90,7 +90,7 @@ pub fn Store::new(
   fake~ : String? = None,
   wl_dir~ : String = default_runtime_dir(),
   pw~ : Bool = false,
-  tmp_dir~ : String = "/tmp/screenstream-mb",
+  tmp_dir~ : String = "/tmp/screen-kacha",
   pump_ms~ : Int32 = 500,
   data_dir~ : String = ".",
 ) -> Store {
@@ -102,7 +102,7 @@ pub fn Store::new(
     pw_state: {
       on: pw,
       fails: 0,
-      stream: @pipewire.PipeWire::new(app_name="screenstream-mb"),
+      stream: @pipewire.PipeWire::new(app_name="screen-kacha"),
       raw_seq: 0,
       raw_frame: None,
       raw_prev: None,
@@ -707,7 +707,7 @@ pub fn Store::pipewire_on(self : Store) -> Bool {
 }
 
 ///|
-/// 光标坐标文件的位置。由 `screenstream-cursor` 写，这里只读。
+/// 光标坐标文件的位置。由 `screen-kacha-cursor` 写，这里只读。
 /// 用 runtime 目录：重启就清掉，本来就是瞬时状态。
 pub fn Store::cursor_pos_path(self : Store) -> String {
   let _ = self
@@ -715,7 +715,7 @@ pub fn Store::cursor_pos_path(self : Store) -> String {
     Some(v) => v
     None => "/tmp"
   }
-  "\{rt}/screenstream/cursor.pos"
+  "\{rt}/screen-kacha/cursor.pos"
 }
 
 ///|

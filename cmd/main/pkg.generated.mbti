@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "conglinyizhi/screenstream/cmd/main"
+package "conglinyizhi/screen-kacha/cmd/main"
 
 // Values
 pub fn source_valid(String) -> Bool

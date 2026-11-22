@@ -1,4 +1,4 @@
-# screenstream 使用说明
+# screen-kacha 使用说明
 
 本机屏幕的 HTTP 快照服务。取一张 JPEG 就能看见现在屏幕上是什么。
 

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=screen-kacha 屏幕流助手
+Comment=给 screen-kacha 提供 PipeWire 屏幕流
+Exec=@BIN@/screen-kacha-portal-loop
+Icon=video-display
+NoDisplay=true
+Terminal=false
+X-KDE-autostart-after=panel
+X-KDE-autostart-phase=2

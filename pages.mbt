@@ -40,10 +40,10 @@ pub fn wants_html(accept : String?) -> Bool {
 let index_shell : String =
   $|<!doctype html><meta charset="utf-8">
   $|<meta name="viewport" content="width=device-width, initial-scale=1">
-  $|<title>screenstream</title>
+  $|<title>screen-kacha</title>
   $|<script defer src="/for_human_use_browser.js"></script>
   $|<div id="for_llm">
-  $|<pre>screenstream — 本机屏幕快照服务
+  $|<pre>screen-kacha — 本机屏幕快照服务
   $|
   $|界面由 /for_human_use_browser.js 渲染，不执行 JS 的客户端只会看到这段文字。
   $|程序或 LLM 请读 /llms.txt（端点索引和参数说明）。
@@ -54,7 +54,7 @@ let fallback_human_js : String =
   $|(() => {
   $|  document.body.insertAdjacentHTML('afterbegin',
   $|    '<div style="font:15px system-ui;padding:2em">' +
-  $|    '<h1>screenstream</h1>' +
+  $|    '<h1>screen-kacha</h1>' +
   $|    '<p>界面文件 human.html 读不到，端点仍然可用：</p>' +
   $|    '<ul>' +
   $|    '<li><a href="/snapshot.jpg">/snapshot.jpg</a> 当前画面</li>' +
@@ -167,7 +167,7 @@ async fn handle_human_js(store : Store) -> @crescent.HttpResponse {
 
 ///|
 let fallback_skill : String =
-  $|# screenstream
+  $|# screen-kacha
   $|
   $|GET /snapshot.jpg 原图，GET /snapshot-1280.jpg 缩到宽 1280，
   $|GET /snapshot-1280.webp 输出 WebP，GET /health 采集状态。
@@ -178,8 +178,8 @@ let fallback_error : String =
   $|# 出错了怎么查
   $|
   $|先看服务活着没有：curl -s http://127.0.0.1:8930/health
-  $|托盘的问题看：cat ~/.local/state/screenstream-mb/last-error.txt
-  $|日志：journalctl --user -u screenstream-mb -u screenstream-mb-tray -n 100 --no-pager
+  $|托盘的问题看：cat ~/.local/state/screen-kacha/last-error.txt
+  $|日志：journalctl --user -u screen-kacha -u screen-kacha-tray -n 100 --no-pager
   $|完整的排查步骤在磁盘上的 error.md。
 
 ///|
@@ -219,4 +219,4 @@ pub fn not_found_text(path : String) -> String {
 let fallback_robots : String = "User-agent: *\nDisallow: /\n"
 
 ///|
-let fallback_llms : String = "# screenstream\n\n> 本机屏幕的 HTTP 快照服务。\n\n- /snapshot.jpg\n- /health\n- /skill.md\n"
+let fallback_llms : String = "# screen-kacha\n\n> 本机屏幕的 HTTP 快照服务。\n\n- /snapshot.jpg\n- /health\n- /skill.md\n"

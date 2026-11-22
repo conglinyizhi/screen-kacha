@@ -58,7 +58,7 @@ pub fn reject_slots(max_conns : Int32) -> Int32 {
 
 ///|
 /// 以非零码立刻结束进程。
-extern "c" fn exit_now(code : Int32) -> Unit = "moonbit_screenstream_exit"
+extern "c" fn exit_now(code : Int32) -> Unit = "moonbit_screen_kacha_exit"
 
 ///|
 /// 给别的包用的版本（本包内部的 extern 不对外）。

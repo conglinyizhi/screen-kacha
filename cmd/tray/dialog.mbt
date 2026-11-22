@@ -1,7 +1,7 @@
 ///|
 /// 同步跑一条命令，返回退出码；-1 表示连 shell 都没起来。
 #borrow(cmd)
-extern "c" fn run_status_raw(cmd : Bytes) -> Int32 = "moonbit_screenstream_run_status"
+extern "c" fn run_status_raw(cmd : Bytes) -> Int32 = "moonbit_screen_kacha_run_status"
 
 ///|
 fn run_status(cmd : String) -> Int32 {
@@ -30,8 +30,8 @@ fn has(cmd : String) -> Bool {
 /// 出错记录落在哪。
 fn error_log_path() -> String {
   match @env.get_env_var("HOME") {
-    Some(h) => "\{h}/.local/state/screenstream-mb/last-error.txt"
-    None => "/tmp/screenstream-last-error.txt"
+    Some(h) => "\{h}/.local/state/screen-kacha/last-error.txt"
+    None => "/tmp/screen-kacha-last-error.txt"
   }
 }
 
@@ -68,7 +68,7 @@ pub fn alert(title : String, body : String, code : String) -> Unit {
     return
   }
   if has("notify-send") {
-    sh("notify-send -u critical -a screenstream '\{title}' '\{body}'")
+    sh("notify-send -u critical -a screen-kacha '\{title}' '\{body}'")
     return
   }
   // 最后兜底：让本机服务渲染一个固定文案的错误页
@@ -90,7 +90,7 @@ pub fn inform(title : String, body : String) -> Unit {
     return
   }
   if has("notify-send") {
-    sh("notify-send -a screenstream '\{title}' '\{body}'")
+    sh("notify-send -a screen-kacha '\{title}' '\{body}'")
   }
 }
 
@@ -101,7 +101,7 @@ pub fn inform(title : String, body : String) -> Unit {
 /// 用户只会觉得「点了没反应」。所以要先说清楚，让人自己用 sudo 处理。
 pub fn system_unit_conflict() -> Bool {
   let out = capture(
-    "systemctl list-unit-files 'screenstream*' --no-pager 2>/dev/null | grep -c screenstream",
+    "systemctl list-unit-files 'screen-kacha*' --no-pager 2>/dev/null | grep -c screen-kacha",
     256,
   )
   @util.parse_int(out.trim(), 0) > 0

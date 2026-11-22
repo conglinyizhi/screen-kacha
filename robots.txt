@@ -1,4 +1,4 @@
-# screenstream：本机屏幕快照服务，只服务本地 agent。
+# screen-kacha：本机屏幕快照服务，只服务本地 agent。
 # 画面含桌面内容，不希望被任何爬虫索引。
 User-agent: *
 Disallow: /

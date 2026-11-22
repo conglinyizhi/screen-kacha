@@ -159,7 +159,9 @@ test "配置警告能指出废弃键和未知键" {
   assert_true(joined.contains("local_only 已废弃"))
   assert_true(joined.contains("alow_lan"))
   // 正常的键不该报警
-  let clean = config_warnings("allow_lan = true\nallow_public = false\nallow = 10.0.0.1\n")
+  let clean = config_warnings(
+    "allow_lan = true\nallow_public = false\nallow = 10.0.0.1\n",
+  )
   assert_eq(clean.length(), 0)
 }
 

@@ -13,7 +13,7 @@
 
 // 起一条 shell 命令，双 fork 后立刻返回，不等待子进程。
 MOONBIT_FFI_EXPORT
-int moonbit_screenstream_run(const char *cmd) {
+int moonbit_screen_kacha_run(const char *cmd) {
   if (!cmd) return -EINVAL;
   pid_t pid = fork();
   if (pid < 0) return -errno;
@@ -37,7 +37,7 @@ int moonbit_screenstream_run(const char *cmd) {
 
 // 同步执行命令并把 stdout 读进 buf，返回字节数，失败返回 -errno。
 MOONBIT_FFI_EXPORT
-int moonbit_screenstream_capture(const char *cmd, uint8_t *buf, int32_t len) {
+int moonbit_screen_kacha_capture(const char *cmd, uint8_t *buf, int32_t len) {
   if (!cmd || !buf || len <= 0) return -EINVAL;
   FILE *fp = popen(cmd, "r");
   if (!fp) return -errno;
@@ -49,12 +49,12 @@ int moonbit_screenstream_capture(const char *cmd, uint8_t *buf, int32_t len) {
 
 // 直接退出托盘进程；D-Bus 连接随进程结束由内核关闭。
 MOONBIT_FFI_EXPORT
-void moonbit_screenstream_exit(int32_t code) {
+void moonbit_screen_kacha_exit(int32_t code) {
   _exit(code);
 }
 
 /* 写一个小文本文件（配置文件用）。成功返回 0。 */
-int moonbit_screenstream_write_file(const char *path, const char *data) {
+int moonbit_screen_kacha_write_file(const char *path, const char *data) {
   // 先把父目录逐级建好：调用方可能在目录还不存在时就写
   char buf[1024];
   size_t n = strlen(path);
@@ -101,7 +101,7 @@ int moonbit_screenstream_write_file(const char *path, const char *data) {
 }
 
 /* 同步跑一条命令并返回退出码（-1 表示根本起不来）。 */
-int moonbit_screenstream_run_status(const char *cmd) {
+int moonbit_screen_kacha_run_status(const char *cmd) {
   int rc = system(cmd);
   if (rc == -1) return -1;
   if (WIFEXITED(rc)) return WEXITSTATUS(rc);
@@ -124,7 +124,7 @@ static void on_stop_signal(int sig) {
 }
 
 MOONBIT_FFI_EXPORT
-void moonbit_screenstream_watch_stop(void) {
+void moonbit_screen_kacha_watch_stop(void) {
   struct sigaction sa;
   memset(&sa, 0, sizeof(sa));
   sa.sa_handler = on_stop_signal;
@@ -136,4 +136,4 @@ void moonbit_screenstream_watch_stop(void) {
 }
 
 MOONBIT_FFI_EXPORT
-int32_t moonbit_screenstream_should_stop(void) { return g_stop ? 1 : 0; }
+int32_t moonbit_screen_kacha_should_stop(void) { return g_stop ? 1 : 0; }

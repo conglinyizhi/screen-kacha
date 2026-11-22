@@ -1,7 +1,7 @@
 ///|
 /// 鼠标指针叠加：从 `cursor.pos` 读坐标，在帧上画一个箭头。
 ///
-/// 坐标由 `screenstream-cursor` 进程写（KWin 脚本用 callDBus 喂给它）。
+/// 坐标由 `screen-kacha-cursor` 进程写（KWin 脚本用 callDBus 喂给它）。
 /// 这里只读文件，拿不到就不画 —— 缺了不该让整个请求失败。
 ///
 /// 参数只有三个值：

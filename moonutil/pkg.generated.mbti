@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "conglinyizhi/screenstream/moonutil"
+package "conglinyizhi/screen-kacha/moonutil"
 
 import {
   "moonbitlang/core/argparse",

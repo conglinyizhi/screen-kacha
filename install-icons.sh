@@ -21,7 +21,7 @@ fi
 for sz in 22 44; do
   mkdir -p "$D/${sz}x${sz}/apps"
   for name in ok warn dead down; do
-    cp "$SRC/screenstream-$name-$sz.png" "$D/${sz}x${sz}/apps/screenstream-$name.png"
+    cp "$SRC/screen-kacha-$name-$sz.png" "$D/${sz}x${sz}/apps/screen-kacha-$name.png"
   done
 done
 

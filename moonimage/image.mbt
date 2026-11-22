@@ -141,7 +141,8 @@ pub fn jpeg_to_file(
   out : String,
 ) -> Bool {
   let webp_flag : Int32 = if webp { 1 } else { 0 }
-  jpeg_to_file_raw(@util.cstr(src), dst_w, quality, webp_flag, @util.cstr(out)) == 0
+  jpeg_to_file_raw(@util.cstr(src), dst_w, quality, webp_flag, @util.cstr(out)) ==
+  0
 }
 
 ///|

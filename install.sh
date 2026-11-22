@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 把 screenstream 装到当前用户：二进制、文档、图标、systemd unit、portal 自启。
+# 把 screen-kacha 装到当前用户：二进制、文档、图标、systemd unit、portal 自启。
 #
 #   ./install.sh             安装并启用（不立刻启动）
 #   ./install.sh --start     安装后立刻启动
@@ -11,7 +11,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")" && pwd)
 PREFIX="${PREFIX:-$HOME/.local}"
 BIN="$PREFIX/bin"
-DATA="$PREFIX/share/screenstream-mb"
+DATA="$PREFIX/share/screen-kacha"
 UNITS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 AUTOSTART="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
 PORT="${PORT:-8930}"
@@ -44,14 +44,14 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
   # 只在 unit 确实落在本次的目录里才停服务。
   # systemctl 是按 unit 名字找的，不看 XDG_CONFIG_HOME；不加这层判断，
   # 在别的 PREFIX/配置目录下跑 --uninstall 会误停正在用的服务。
-  if [ -f "$UNITS/screenstream-mb-tray.service" ]; then
-    systemctl --user disable --now screenstream-mb-tray.service 2>/dev/null || true
+  if [ -f "$UNITS/screen-kacha-tray.service" ]; then
+    systemctl --user disable --now screen-kacha-tray.service 2>/dev/null || true
   fi
-  if [ -f "$UNITS/screenstream-mb.service" ]; then
-    systemctl --user disable --now screenstream-mb.service 2>/dev/null || true
+  if [ -f "$UNITS/screen-kacha.service" ]; then
+    systemctl --user disable --now screen-kacha.service 2>/dev/null || true
   fi
-  rm -f "$UNITS/screenstream-mb.service" "$UNITS/screenstream-mb-tray.service"
-  rm -f "$AUTOSTART/screenstream-portal.desktop"
+  rm -f "$UNITS/screen-kacha.service" "$UNITS/screen-kacha-tray.service"
+  rm -f "$AUTOSTART/screen-kacha-portal.desktop"
   # 光标 helper 和 portal 助手都是自启拉起来的，systemctl disable 管不到它们。
   # portal 那边不收尾，桌面上会留一条活的 ScreenCast 会话（「正在共享屏幕」
   # 的指示、pw 里一条 capture 流），要等注销才消失 —— 软件已经删了，系统还在
@@ -59,19 +59,19 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
   # `[s]` 是为了让 pgrep 的模式不匹配到自己这条命令行。
   pkill -f '[s]creenstream-cursor' 2>/dev/null || true
   pkill -f '[s]creenstream-portal' 2>/dev/null || true
-  rm -f "$HOME/.local/state/screenstream-mb/portal.node" \
-        "$HOME/.local/state/screenstream-mb/portal.token"
-  rm -f "$BIN/screenstream-mb" "$BIN/screenstream-mb-tray" \
-        "$BIN/screenstream-portal" "$BIN/screenstream-portal-loop" \
-        "$BIN/screenstream-cursor"
+  rm -f "$HOME/.local/state/screen-kacha/portal.node" \
+        "$HOME/.local/state/screen-kacha/portal.token"
+  rm -f "$BIN/screen-kacha" "$BIN/screen-kacha-tray" \
+        "$BIN/screen-kacha-portal" "$BIN/screen-kacha-portal-loop" \
+        "$BIN/screen-kacha-cursor"
   # 图标
   for sz in 22 44; do
-    rm -f "$PREFIX/share/icons/hicolor/${sz}x${sz}/apps/screenstream-"*.png
+    rm -f "$PREFIX/share/icons/hicolor/${sz}x${sz}/apps/screen-kacha-"*.png
   done
   systemctl --user daemon-reload 2>/dev/null || true
   say "已移除二进制、unit、自启和图标"
-  say "配置 $HOME/.config/screenstream-mb 与缓存 $HOME/.local/state/screenstream-mb 保留"
-  say "要彻底删干净：rm -rf ~/.config/screenstream-mb ~/.local/state/screenstream-mb"
+  say "配置 $HOME/.config/screen-kacha 与缓存 $HOME/.local/state/screen-kacha 保留"
+  say "要彻底删干净：rm -rf ~/.config/screen-kacha ~/.local/state/screen-kacha"
   exit 0
 fi
 
@@ -140,14 +140,14 @@ say "Wayland 显示 $WAYLAND"
 # ---------------------------------------------------------------------------
 echo "== 装二进制 =="
 mkdir -p "$BIN" "$DATA" "$UNITS" "$AUTOSTART"
-for exe in main:screenstream-mb tray:screenstream-mb-tray portal:screenstream-portal cursor:screenstream-cursor; do
+for exe in main:screen-kacha tray:screen-kacha-tray portal:screen-kacha-portal cursor:screen-kacha-cursor; do
   src="${exe%%:*}"
   dst="${exe##*:}"
   install -m 0755 "$BUILD/$src/$(basename "$src").exe" "$BIN/$dst"
   say "$dst"
 done
-install -m 0755 "$ROOT/contrib/screenstream-portal-loop" "$BIN/screenstream-portal-loop"
-say "screenstream-portal-loop"
+install -m 0755 "$ROOT/contrib/screen-kacha-portal-loop" "$BIN/screen-kacha-portal-loop"
+say "screen-kacha-portal-loop"
 
 echo "== 装文档 =="
 for f in README.md error.md skill.md llms.txt robots.txt human.html; do
@@ -175,17 +175,17 @@ render() { # 模板 → 目标
       -e "s|@BIND@|$BIND|g" \
       "$1" > "$2"
 }
-render "$ROOT/contrib/screenstream-mb.service.in" "$UNITS/screenstream-mb.service"
-render "$ROOT/contrib/screenstream-mb-tray.service.in" "$UNITS/screenstream-mb-tray.service"
-say "$UNITS/screenstream-mb.service"
-say "$UNITS/screenstream-mb-tray.service"
+render "$ROOT/contrib/screen-kacha.service.in" "$UNITS/screen-kacha.service"
+render "$ROOT/contrib/screen-kacha-tray.service.in" "$UNITS/screen-kacha-tray.service"
+say "$UNITS/screen-kacha.service"
+say "$UNITS/screen-kacha-tray.service"
 
 echo "== 装 portal 自启 =="
-render "$ROOT/contrib/screenstream-portal.desktop.in" "$AUTOSTART/screenstream-portal.desktop"
-say "$AUTOSTART/screenstream-portal.desktop"
+render "$ROOT/contrib/screen-kacha-portal.desktop.in" "$AUTOSTART/screen-kacha-portal.desktop"
+say "$AUTOSTART/screen-kacha-portal.desktop"
 
 # 配置文件只在缺失时放一份样例，不覆盖用户已经改过的
-CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/screenstream-mb"
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/screen-kacha"
 if [ ! -f "$CONF_DIR/access.conf" ] && [ -f "$ROOT/access.conf.example" ]; then
   mkdir -p "$CONF_DIR"
   install -m 0644 "$ROOT/access.conf.example" "$CONF_DIR/access.conf"
@@ -194,18 +194,18 @@ fi
 
 echo "== 启用 =="
 systemctl --user daemon-reload
-systemctl --user enable screenstream-mb.service screenstream-mb-tray.service >/dev/null
+systemctl --user enable screen-kacha.service screen-kacha-tray.service >/dev/null
 say "两个 unit 已 enable（开机随图形会话启动）"
 
 if [ "$DO_START" -eq 1 ]; then
-  systemctl --user restart screenstream-mb.service
+  systemctl --user restart screen-kacha.service
   sleep 2
-  systemctl --user restart screenstream-mb-tray.service
+  systemctl --user restart screen-kacha-tray.service
   sleep 1
   say "已启动，健康检查："
-  curl -s --max-time 5 "http://127.0.0.1:$PORT/health" || echo "  服务还没起来，看 journalctl --user -u screenstream-mb"
+  curl -s --max-time 5 "http://127.0.0.1:$PORT/health" || echo "  服务还没起来，看 journalctl --user -u screen-kacha"
 else
-  say "没有立刻启动。要现在启动：systemctl --user start screenstream-mb screenstream-mb-tray"
+  say "没有立刻启动。要现在启动：systemctl --user start screen-kacha screen-kacha-tray"
   say "或者重新运行：$0 --start"
 fi
 

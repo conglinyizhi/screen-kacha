@@ -1,7 +1,7 @@
 import {
-  "conglinyizhi/screenstream/moonutil" @util,
+  "conglinyizhi/screen-kacha/moonutil" @util,
   "moonbitlang/core/env",
-  "conglinyizhi/screenstream" @store,
+  "conglinyizhi/screen-kacha" @store,
   "moonbitlang/async",
   "moonbitlang/async/fs",
   "moonbitlang/async/http",

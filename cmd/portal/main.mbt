@@ -4,7 +4,7 @@
 /// 建会话、请求显示器流、拿 pipewire node id，然后把会话一直挂着
 /// （node 随会话存活，这个进程一退节点就消失）。
 ///
-/// 用法：screenstream-portal --out <node 文件> [--token <restore token 文件>]
+/// 用法：screen-kacha-portal --out <node 文件> [--token <restore token 文件>]
 
 ///|
 fn u32_at(b : Bytes, off : Int32) -> Int32 {

@@ -6,8 +6,8 @@
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-MAIN="$ROOT/contrib/screenstream-mb.service.in"
-TRAY="$ROOT/contrib/screenstream-mb-tray.service.in"
+MAIN="$ROOT/contrib/screen-kacha.service.in"
+TRAY="$ROOT/contrib/screen-kacha-tray.service.in"
 PASS=0
 FAIL=0
 

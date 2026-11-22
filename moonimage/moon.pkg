@@ -1,5 +1,5 @@
 import {
-  "conglinyizhi/screenstream/moonutil" @util,
+  "conglinyizhi/screen-kacha/moonutil" @util,
 }
 
 // 这些只在白盒测试里用：造临时文件、调 magick 验通道顺序。

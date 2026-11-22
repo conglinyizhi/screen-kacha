@@ -1,9 +1,9 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "conglinyizhi/screenstream"
+package "conglinyizhi/screen-kacha"
 
 import {
   "bobzhang/crescent",
-  "conglinyizhi/screenstream/moonpipewire",
+  "conglinyizhi/screen-kacha/moonpipewire",
   "moonbitlang/async",
   "moonbitlang/async/http",
 }

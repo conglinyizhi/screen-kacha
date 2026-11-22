@@ -9,7 +9,7 @@
 //   "moonbitlang/x@0.4.6",
 // }
 
-name = "conglinyizhi/screenstream"
+name = "conglinyizhi/screen-kacha"
 
 version = "0.1.0"
 

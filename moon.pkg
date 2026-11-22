@@ -1,7 +1,7 @@
 import {
-  "conglinyizhi/screenstream/moonutil" @util,
-  "conglinyizhi/screenstream/moonpipewire" @pipewire,
-  "conglinyizhi/screenstream/moonimage" @image,
+  "conglinyizhi/screen-kacha/moonutil" @util,
+  "conglinyizhi/screen-kacha/moonpipewire" @pipewire,
+  "conglinyizhi/screen-kacha/moonimage" @image,
   "moonbitlang/async",
   "moonbitlang/async/fs",
   "moonbitlang/async/process",

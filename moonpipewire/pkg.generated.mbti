@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "conglinyizhi/screenstream/moonpipewire"
+package "conglinyizhi/screen-kacha/moonpipewire"
 
 // Values
 pub fn pipewire_kill(Int32) -> Int32

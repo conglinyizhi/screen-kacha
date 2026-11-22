@@ -1,14 +1,14 @@
 ///|
 /// 命令行定义单独抽出来，方便测试直接解析 argv。
 fn cli_cmd() -> @argparse.Command {
-  @argparse.Command("screenstream", about="本机屏幕快照服务", options=[
+  @argparse.Command("screen-kacha", about="本机屏幕快照服务", options=[
     @argparse.OptionArg("port", short='p', about="监听端口", default_values=[
       "18940",
     ]),
     @argparse.OptionArg("bind", about="监听地址", default_values=["0.0.0.0"]),
     @argparse.OptionArg(
       "access",
-      about="访问控制配置文件；留空用 ~/.config/screenstream-mb/access.conf",
+      about="访问控制配置文件；留空用 ~/.config/screen-kacha/access.conf",
       default_values=[""],
     ),
     @argparse.OptionArg(
@@ -42,7 +42,7 @@ fn cli_cmd() -> @argparse.Command {
       default_values=["500"],
     ),
     @argparse.OptionArg("shm", about="帧文件存放目录", default_values=[
-      "/tmp/screenstream-mb",
+      "/tmp/screen-kacha",
     ]),
     @argparse.OptionArg(
       "data",
@@ -186,7 +186,7 @@ async fn main {
     )
     @store.exit_process(2)
   }
-  let shm = @util.pick(m, "shm", "/tmp/screenstream-mb")
+  let shm = @util.pick(m, "shm", "/tmp/screen-kacha")
   let data_dir = @util.pick(m, "data", ".")
   let max_conns = @util.parse_int(@util.pick(m, "max-conns", "64"), 64)
   @fs.mkdir(shm, permission=0o700, recursive=true) catch {
@@ -252,8 +252,8 @@ async fn main {
   let access_path = match @util.pick(m, "access", "") {
     "" =>
       match @env.get_env_var("HOME") {
-        Some(h) => "\{h}/.config/screenstream-mb/access.conf"
-        None => "/etc/screenstream-mb/access.conf"
+        Some(h) => "\{h}/.config/screen-kacha/access.conf"
+        None => "/etc/screen-kacha/access.conf"
       }
     p => p
   }
@@ -282,7 +282,7 @@ async fn main {
     }
   }
   eprintln(
-    "screenstream-mb v0.1 监听 \{bind}:\{port}  帧目录 \{shm}  素材 \{data_dir}  泵 \{pump}ms  并发上限 \{max_conns}",
+    "screen-kacha v0.1 监听 \{bind}:\{port}  帧目录 \{shm}  素材 \{data_dir}  泵 \{pump}ms  并发上限 \{max_conns}",
   )
   @async.with_task_group() <| group => {
     if pw_node <= 0 && source != "spectacle" && fake_source is None {

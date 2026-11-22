@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "conglinyizhi/screenstream/moonimage"
+package "conglinyizhi/screen-kacha/moonimage"
 
 // Values
 pub fn bgra_to_jpeg(String, Int32, Int32, Int32, Int32, String) -> Bool

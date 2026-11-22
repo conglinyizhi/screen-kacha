@@ -23,7 +23,7 @@ link: { "native": { "cc-link-flags": "-ljpeg -lwebp" } }
 ## 用法
 
 ```mbt nocheck
-import "conglinyizhi/screenstream/moonimage" @image
+import "conglinyizhi/screen-kacha/moonimage" @image
 
 fn save(w : Int32, h : Int32) -> Unit {
   // 原尺寸存 JPEG，质量 80

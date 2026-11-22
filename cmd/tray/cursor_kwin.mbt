@@ -13,7 +13,7 @@ let kwin_script_src : String = "var t = new QTimer();\n" +
   "t.timeout.connect(function () {\n" +
   "    var p = workspace.cursorPos;\n" +
   "    if (!p) return;\n" +
-  "    callDBus('org.kde.screenstream', '/cursor', 'org.kde.screenstream', 'Moved', p.x, p.y);\n" +
+  "    callDBus('org.kde.screen-kacha', '/cursor', 'org.kde.screen-kacha', 'Moved', p.x, p.y);\n" +
   "});\n" +
   "t.start(200);\n"
 
@@ -24,13 +24,13 @@ fn kwin_script_path() -> String {
     Some(v) => v
     None => "/tmp"
   }
-  "\{rt}/screenstream/cursor-kwin.js"
+  "\{rt}/screen-kacha/cursor-kwin.js"
 }
 
 ///|
 /// 坐标服务在不在跑（它就是那个 D-Bus 名字的持有者）。
 fn cursor_helper_alive() -> Bool {
-  run_status("busctl --user status org.kde.screenstream >/dev/null 2>&1") == 0
+  run_status("busctl --user status org.kde.screen-kacha >/dev/null 2>&1") == 0
 }
 
 ///|
@@ -136,7 +136,7 @@ fn parse_script_id(raw : String) -> Int32 {
 ///
 /// 1. **先删坐标**。删晚了（比如被下面的 shell 问题打断）会留一个
 ///    停住的假箭头在图上，用户取消勾选却看不出变化。
-/// 2. **杀 helper 不能写成 `pkill -f screenstream-cursor`**。
+/// 2. **杀 helper 不能写成 `pkill -f screen-kacha-cursor`**。
 ///    `sh()` 是通过 `sh -c '...'` 执行的，那个 shell 的 cmdline 里
 ///    就含这串字符，pkill 会连自己和后面的命令一起打死，
 ///    实测过：连 `pkill -f 一个不存在的名字` 都返回 Terminated。
@@ -163,12 +163,12 @@ fn cursor_tracking_off() -> Unit {
   // ③ 杀 helper。
   //
   // 不能用 `pgrep -x`：Linux 的 comm 只保留前 15 个字符，
-  // `screenstream-cursor` 是 18 个，`-x` 永远匹配不到，等于从来没杀过，
+  // `screen-kacha-cursor` 是 18 个，`-x` 永远匹配不到，等于从来没杀过，
   // helper 会一直活着占着 D-Bus 名字，下次勾选就直接复用这个僵尸。
   //
   // 改用 `-f` 匹配整条命令行，但模式写成 `[s]creenstream-cursor`：
   // 正则能匹配到 helper 自己，却匹配不到正在执行这条命令的 shell
-  // （后者的 cmdline 里是字面上的方括号，不含连续的 screenstream-cursor）。
+  // （后者的 cmdline 里是字面上的方括号，不含连续的 screen-kacha-cursor）。
   let pids = capture("pgrep -f '[s]creenstream-cursor' 2>/dev/null", 512)
   for line in pids.split("\n") {
     let t : String = line.trim().to_owned()
@@ -194,7 +194,7 @@ fn script_id_path() -> String {
     Some(v) => v
     None => "/tmp"
   }
-  "\{rt}/screenstream/cursor-script.id"
+  "\{rt}/screen-kacha/cursor-script.id"
 }
 
 ///|
@@ -229,5 +229,5 @@ fn cursor_pos_path() -> String {
     Some(v) => v
     None => "/tmp"
   }
-  "\{rt}/screenstream/cursor.pos"
+  "\{rt}/screen-kacha/cursor.pos"
 }

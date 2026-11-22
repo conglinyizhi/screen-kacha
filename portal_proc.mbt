@@ -48,7 +48,7 @@ pub async fn acquire_portal_node(dir : String) -> Int32? {
     Some(h) => h
     None => "/tmp"
   }
-  let tok = "\{home}/.local/state/screenstream-mb/portal.token"
+  let tok = "\{home}/.local/state/screen-kacha/portal.token"
 
   // ① 已经有人写了就直接用 —— 但必须先确认写它的助手还活着。
   //
@@ -95,13 +95,13 @@ pub async fn acquire_portal_node(dir : String) -> Int32? {
   }
 
   // 真的没人管：自己拉一个
-  let state_dir = "\{home}/.local/state/screenstream-mb"
+  let state_dir = "\{home}/.local/state/screen-kacha"
   let _ = Some(@fs.mkdir(state_dir, permission=0o700, recursive=true)) catch {
     _ => None
   }
   let bin = match @env.get_env_var("HOME") {
-    Some(h) => "\{h}/.local/bin/screenstream-portal"
-    None => "screenstream-portal"
+    Some(h) => "\{h}/.local/bin/screen-kacha-portal"
+    None => "screen-kacha-portal"
   }
   let spawned = Some(@process.spawn_orphan(bin, ["--out", out, "--token", tok])) catch {
     _ => None
@@ -126,9 +126,9 @@ pub async fn acquire_portal_node(dir : String) -> Int32? {
 ///|
 /// 写 portal.node 的那个助手进程还在不在。
 ///
-/// 这里有个坑：`pgrep -x screenstream-portal` **永远匹配不到**。
-/// Linux 的进程名（comm）上限是 15 个字符，`screenstream-portal` 有 18 个，
-/// 内核会把它截成 `screenstream-po`，pgrep 还会明确警告
+/// 这里有个坑：`pgrep -x screen-kacha-portal` **永远匹配不到**。
+/// Linux 的进程名（comm）上限是 15 个字符，`screen-kacha-portal` 有 18 个，
+/// 内核会把它截成 `screen-kacha-po`，pgrep 还会明确警告
 /// 「模式要搜索的进程名的长度超过 15 个字符」。
 /// 所以只能用 `-f` 匹配完整命令行。
 ///
@@ -136,7 +136,7 @@ pub async fn acquire_portal_node(dir : String) -> Int32? {
 /// 也避免了误伤命令行里恰好含这串的别的进程。
 async fn portal_helper_alive() -> Bool {
   let (code, out) = @process.collect_stdout("/usr/bin/pgrep", [
-    "-f", "/screenstream-portal --out",
+    "-f", "/screen-kacha-portal --out",
   ]) catch {
     _ => return false
   }

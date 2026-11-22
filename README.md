@@ -1,4 +1,4 @@
-# screenstream-mb
+# screen-kacha
 
 本机屏幕的 HTTP 快照服务，MoonBit 重写版。版本从 v0.1 起，与 Python 版并行存在。
 
@@ -77,7 +77,7 @@ moon build --target native --release cmd/main cmd/tray cmd/portal
 ```
 
 `install.sh` 只动用户目录，不需要 sudo。它装二进制到 `~/.local/bin`、
-文档到 `~/.local/share/screenstream-mb`、图标到 hicolor 主题，
+文档到 `~/.local/share/screen-kacha`、图标到 hicolor 主题，
 并生成 systemd unit 和 portal 自启项。`--uninstall` 反向卸载，
 保留配置和缓存。
 
@@ -192,7 +192,7 @@ PSNR 在 33–37（原尺寸 49），视觉上基本看不出，文件反而略�
 - 启用访问控制后走 `serve_with_access`（自己写的 accept 循环），它和
   `serve_on` 行为基本对齐，但少了请求体大小上限，本服务只收 GET，
   不影响使用，换成支持 POST 时要补。
-- 临时文件落在 `/tmp/screenstream-mb-*.jpg`，退出不清理。
+- 临时文件落在 `/tmp/screen-kacha-*.jpg`，退出不清理。
 
 ## 取帧来源
 
@@ -202,7 +202,7 @@ PSNR 在 33–37（原尺寸 49），视觉上基本看不出，文件反而略�
 - PipeWire 模式下不再反复启动 spectacle，空闲时 CPU 基本为零
 - 首次需要人工确认一次屏幕共享授权；确认后 portal 会发 restore token，
   存在帧目录的 `portal.token` 里，之后重启不再询问
-- 会话由 `screenstream-portal` 助手进程保持，node 随会话存活
+- 会话由 `screen-kacha-portal` 助手进程保持，node 随会话存活
 - PipeWire 连续失败 3 次会自动切回 spectacle，`/health` 的 `source` 字段
   标明当前实际来源
 - 已知代价：PipeWire 抓屏期间桌面会一直显示「正在共享屏幕」的指示
@@ -215,10 +215,10 @@ PSNR 在 33–37（原尺寸 49），视觉上基本看不出，文件反而略�
 
 | 图标 | 灯色 | 含义 |
 |---|---|---|
-| `screenstream-ok` | 绿 | 服务正常 |
-| `screenstream-warn` | 黄 | 已启动，还没抓到帧 |
-| `screenstream-dead` | 灰 | 服务没响应 |
-| `screenstream-down` | 红 | 采集失败并记了错 |
+| `screen-kacha-ok` | 绿 | 服务正常 |
+| `screen-kacha-warn` | 黄 | 已启动，还没抓到帧 |
+| `screen-kacha-dead` | 灰 | 服务没响应 |
+| `screen-kacha-down` | 红 | 采集失败并记了错 |
 
 托盘每 5 秒查一次 `/health`，按结果换图标名。
 
@@ -228,7 +228,7 @@ PSNR 在 33–37（原尺寸 49），视觉上基本看不出，文件反而略�
 
 ## 访问控制
 
-配置放在 `~/.config/screenstream-mb/access.conf`（或 `--access <path>`）：
+配置放在 `~/.config/screen-kacha/access.conf`（或 `--access <path>`）：
 
 ```text
 allow_lan    = true    # 局域网放行

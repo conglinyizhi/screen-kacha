@@ -1,7 +1,7 @@
 # 出错了怎么查
 
-这个服务由两部分组成：**服务**（`screenstream-mb`，监听 8930）和**托盘**
-（`screenstream-mb-tray`，面板上的图标）。先看是哪一半不对，再往里查。
+这个服务由两部分组成：**服务**（`screen-kacha`，监听 8930）和**托盘**
+（`screen-kacha-tray`，面板上的图标）。先看是哪一半不对，再往里查。
 
 ## 一、先看服务还活着没有
 
@@ -28,7 +28,7 @@ curl -s http://127.0.0.1:8930/health
 托盘把所有失败都写到一个固定文件里，**先看它**：
 
 ```sh
-cat ~/.local/state/screenstream-mb/last-error.txt
+cat ~/.local/state/screen-kacha/last-error.txt
 ```
 
 里面按时间倒序记着最近几次失败：时间、哪个动作、退出码、原始输出。
@@ -37,7 +37,7 @@ cat ~/.local/state/screenstream-mb/last-error.txt
 托盘的运行日志：
 
 ```sh
-journalctl --user -u screenstream-mb-tray -n 50 --no-pager
+journalctl --user -u screen-kacha-tray -n 50 --no-pager
 ```
 
 图标右下角的灯是状态：绿=正常，黄=刚启动还没抓到帧，灰=服务没响应，
@@ -46,8 +46,8 @@ journalctl --user -u screenstream-mb-tray -n 50 --no-pager
 ## 三、服务的问题
 
 ```sh
-systemctl --user status screenstream-mb
-journalctl --user -u screenstream-mb -n 80 --no-pager
+systemctl --user status screen-kacha
+journalctl --user -u screen-kacha -n 80 --no-pager
 ```
 
 常见原因：
@@ -65,7 +65,7 @@ journalctl --user -u screenstream-mb -n 80 --no-pager
 如果系统里存在同名的**系统级** unit，托盘管不了它：
 
 ```sh
-systemctl list-unit-files 'screenstream*' --no-pager    # 不带 --user
+systemctl list-unit-files 'screen-kacha*' --no-pager    # 不带 --user
 ```
 
 有输出就说明需要你自己用 `sudo systemctl disable ...` 处理，
@@ -74,16 +74,16 @@ systemctl list-unit-files 'screenstream*' --no-pager    # 不带 --user
 检查用户级 unit 的实际状态：
 
 ```sh
-systemctl --user is-enabled screenstream-mb screenstream-mb-tray
+systemctl --user is-enabled screen-kacha screen-kacha-tray
 ```
 
 ## 五、访问被拒（403）
 
 `/health` 里的 `access` 字段写着当前策略。配置在
-`~/.config/screenstream-mb/access.conf`：
+`~/.config/screen-kacha/access.conf`：
 
 ```sh
-cat ~/.config/screenstream-mb/access.conf
+cat ~/.config/screen-kacha/access.conf
 ```
 
 回环地址永远放行；局域网和公网是两档开关。改完要重启服务才生效
@@ -105,8 +105,8 @@ curl -s http://127.0.0.1:8930/health | grep source
 
 ```sh
 curl -s http://127.0.0.1:8930/health
-cat ~/.local/state/screenstream-mb/last-error.txt 2>/dev/null
-journalctl --user -u screenstream-mb -u screenstream-mb-tray -n 100 --no-pager
+cat ~/.local/state/screen-kacha/last-error.txt 2>/dev/null
+journalctl --user -u screen-kacha -u screen-kacha-tray -n 100 --no-pager
 ```
 
 能复现的话，记下当时点了菜单里的哪一项。

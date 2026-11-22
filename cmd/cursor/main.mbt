@@ -13,10 +13,10 @@
 /// 新鲜度靠文件 mtime 判断，省得自己维护时间戳。
 
 ///|
-const BUS_NAME : String = "org.kde.screenstream"
+const BUS_NAME : String = "org.kde.screen-kacha"
 
 ///|
-const IFACE : String = "org.kde.screenstream"
+const IFACE : String = "org.kde.screen-kacha"
 
 ///|
 const OBJ_PATH : String = "/cursor"
@@ -44,7 +44,7 @@ fn pos_path() -> String {
     Some(v) => v
     None => "/tmp"
   }
-  "\{rt}/screenstream/cursor.pos"
+  "\{rt}/screen-kacha/cursor.pos"
 }
 
 ///|

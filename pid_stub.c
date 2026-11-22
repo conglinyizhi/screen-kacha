@@ -19,7 +19,7 @@ int32_t moonbit_current_pid(void) {
  * accept 循环里 break 出来，进程以 0 正常收工，而单元写的是 Restart=on-failure，
  * 于是服务静默消失，日志里只有启动那两行。 */
 MOONBIT_FFI_EXPORT
-void moonbit_screenstream_exit(int32_t code) {
+void moonbit_screen_kacha_exit(int32_t code) {
   exit((int)code);
 }
 
