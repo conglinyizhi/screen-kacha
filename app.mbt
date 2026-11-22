@@ -257,7 +257,9 @@ async fn read_result(out : String, ok : Bool) -> Bytes? {
   // 而它们可能正被读。现在读回只有这一个入口，就地删最干净。
   if !ok {
     // 编码器失败时可能已经建了个空文件，顺手清掉
-    @fs.remove(out) catch { _ => () }
+    @fs.remove(out) catch {
+      _ => ()
+    }
     return None
   }
   let got = try {
@@ -268,7 +270,9 @@ async fn read_result(out : String, ok : Bool) -> Bytes? {
   } catch {
     _ => None
   }
-  @fs.remove(out) catch { _ => () }
+  @fs.remove(out) catch {
+    _ => ()
+  }
   got
 }
 
@@ -405,7 +409,7 @@ async fn handle_snapshot(
           }
         None => 1500L
       }
-      store.ensure(max_age)
+      store.ensure_request(max_age)
       match store.bytes() {
         None =>
           make_res(
@@ -429,10 +433,7 @@ async fn handle_snapshot(
 ///|
 async fn handle_skill(store : Store) -> @crescent.HttpResponse {
   handle_text_file(
-    store,
-    "skill.md",
-    "text/markdown; charset=utf-8",
-    fallback_skill,
+    store, "skill.md", "text/markdown; charset=utf-8", fallback_skill,
   )
 }
 
@@ -458,7 +459,9 @@ pub fn build_app(store : Store, port : Int32, access : Access) -> @crescent.App 
         @utf8.encode(index_shell),
       ).to_responder()
     } else {
-      handle_text_file(store, "llms.txt", "text/plain; charset=utf-8", fallback_llms).to_responder()
+      handle_text_file(
+        store, "llms.txt", "text/plain; charset=utf-8", fallback_llms,
+      ).to_responder()
     }
   })
   app.get("/for_human_use_browser.js", async fn(_ev) {
@@ -487,13 +490,19 @@ pub fn build_app(store : Store, port : Int32, access : Access) -> @crescent.App 
   })
   app.get("/skill.md", async fn(_ev) { handle_skill(store).to_responder() })
   app.get("/error.md", async fn(_ev) {
-    handle_text_file(store, "error.md", "text/markdown; charset=utf-8", fallback_error).to_responder()
+    handle_text_file(
+      store, "error.md", "text/markdown; charset=utf-8", fallback_error,
+    ).to_responder()
   })
   app.get("/robots.txt", async fn(_ev) {
-    handle_text_file(store, "robots.txt", "text/plain; charset=utf-8", fallback_robots).to_responder()
+    handle_text_file(
+      store, "robots.txt", "text/plain; charset=utf-8", fallback_robots,
+    ).to_responder()
   })
   app.get("/llms.txt", async fn(_ev) {
-    handle_text_file(store, "llms.txt", "text/plain; charset=utf-8", fallback_llms).to_responder()
+    handle_text_file(
+      store, "llms.txt", "text/plain; charset=utf-8", fallback_llms,
+    ).to_responder()
   })
   app.get("/:file", async fn(ev) {
     match ev.param("file") {

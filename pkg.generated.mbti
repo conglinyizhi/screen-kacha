@@ -15,6 +15,8 @@ pub async fn acquire_portal_node(String) -> Int32?
 
 pub fn build_app(Store, Int32, Access) -> @crescent.App
 
+pub fn capture_too_soon(Int64, Int64) -> Bool
+
 pub fn clean_stale_frames(String, String, String) -> Int32
 
 pub fn config_line_key(String) -> String?
@@ -113,6 +115,7 @@ pub struct Store {
   mut count : Int32
   mut fails : Int32
   mut consec_fails : Int32
+  mut last_capture : Int64
   pump_ms : Int32
   mut err : String
   mut seq : Int32
@@ -133,6 +136,7 @@ pub fn Store::cursor_pos_path(Self) -> String
 pub fn Store::data_path(Self, String) -> String
 pub fn Store::enable_pipewire(Self, Int32) -> Bool
 pub async fn Store::ensure(Self, Int64) -> Unit
+pub async fn Store::ensure_request(Self, Int64) -> Unit
 pub fn Store::err(Self) -> String
 pub fn Store::fails(Self) -> Int32
 pub fn Store::idle_ms(Self) -> Int64

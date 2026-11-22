@@ -525,3 +525,20 @@ test "停一个没启动的 PipeWire 流是空操作" {
   pw.disconnect()
   assert_false(pw.started())
 }
+
+///|
+/// 请求驱动的抓帧有频率上限。
+///
+/// `age` 是公开参数，压到几十毫秒就等于「每个请求重抓一次」：PipeWire 路径
+/// 每次 8MB 落盘 + 全尺寸重编码，spectacle 路径一次七八百毫秒，全在采集锁里。
+/// 没有认证时一个 curl 循环就能把机器打满。
+test "请求驱动的抓帧有最小间隔" {
+  // 从没抓过：允许
+  assert_false(capture_too_soon(0L, 1_000_000L))
+  // 刚抓过：不允许
+  assert_true(capture_too_soon(1_000_000L, 1_000_100L))
+  // 刚好到间隔：允许
+  assert_false(capture_too_soon(1_000_000L, 1_000_250L))
+  // 久没抓：允许
+  assert_false(capture_too_soon(1_000_000L, 1_010_000L))
+}

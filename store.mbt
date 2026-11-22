@@ -45,6 +45,8 @@ pub struct Store {
   /// `fails` 是累计值，只增不减，看不出「现在是不是还在坏」。
   /// 这两个分开：累计值给「出过多少次问题」，连续值给「现在有没有好」。
   mut consec_fails : Int32
+  /// 上一次真正发起抓帧的时刻。请求驱动的抓帧有频率上限，靠它算间隔。
+  mut last_capture : Int64
   /// 后台泵的节奏，用来判断帧是不是该更新了
   pump_ms : Int32
   mut err : String
@@ -105,6 +107,7 @@ pub fn Store::new(
     count: 0,
     fails: 0,
     consec_fails: 0,
+    last_capture: 0L,
     pump_ms,
     err: "",
     seq: 0,
@@ -122,6 +125,24 @@ fn Store::fresh(self : Store, max_age_ms : Int64) -> Bool {
     Some(f) => @async.now() - f.ts <= max_age_ms
     None => false
   }
+}
+
+///|
+/// 请求驱动抓帧的最小间隔。
+///
+/// `age` 是公开查询参数，把它压到几十毫秒就等于「每个请求都重抓一次」：
+/// PipeWire 路径每次 8MB 原始帧落盘 + 一次全尺寸重编码，spectacle 路径一次
+/// 七八百毫秒，而且整段都在采集锁里，后面排队的请求一起被堵。
+/// 没有认证的服务，一个 curl 循环就能把机器持续打满。
+const MIN_CAPTURE_GAP_MS : Int64 = 250
+
+///|
+/// 距上次抓帧还不到最小间隔，这次就别抓了。
+pub fn capture_too_soon(last_capture_ms : Int64, now_ms : Int64) -> Bool {
+  if last_capture_ms <= 0L {
+    return false
+  }
+  now_ms - last_capture_ms < MIN_CAPTURE_GAP_MS
 }
 
 ///|
@@ -181,6 +202,7 @@ async fn wayland_ready(dir : String) -> Bool {
 
 ///|
 async fn Store::capture(self : Store) -> Unit {
+  self.last_capture = @async.now()
   let t0 = @async.now()
   if self.pw {
     self.capture_pipewire(t0)
@@ -386,7 +408,6 @@ pub fn Store::err(self : Store) -> String {
 pub fn Store::shot(self : Store) -> String {
   self.shot
 }
-
 
 ///|
 pub fn Store::next_tmp(self : Store, ext : String) -> String {
@@ -606,6 +627,22 @@ async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
     }
   }
   self.record_ok(data, @async.now() - t0)
+}
+
+///|
+/// 请求驱动的取帧：比 `ensure` 多一道频率上限。
+///
+/// 后台泵仍然走 `ensure`，不受这个限制：泵的节奏由 `--pump` 控制，是运维
+/// 自己定的，不该被请求侧的策略改掉。
+pub async fn Store::ensure_request(self : Store, max_age_ms : Int64) -> Unit {
+  if self.fresh(max_age_ms) {
+    return
+  }
+  if capture_too_soon(self.last_capture, @async.now()) {
+    // 太近了，这次就用现有帧（可能是旧的），不抓
+    return
+  }
+  self.ensure(max_age_ms)
 }
 
 ///|
