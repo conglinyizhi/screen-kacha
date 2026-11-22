@@ -96,6 +96,15 @@ pub struct Frame {
   ts : Int64
 }
 
+pub struct PipeWireState {
+  mut on : Bool
+  mut fails : Int32
+  stream : @moonpipewire.PipeWire
+  mut raw_seq : Int32
+  mut raw_frame : (String, Int32, Int32)?
+  mut raw_prev : String?
+}
+
 pub enum PortalStep {
   Watch
   Reacquire
@@ -106,12 +115,7 @@ pub struct Store {
   lock : @async.Mutex
   fake : String?
   wl_dir : String
-  mut pw : Bool
-  mut pw_fails : Int32
-  mut raw_seq : Int32
-  mut pw_raw_frame : (String, Int32, Int32)?
-  mut pw_raw_prev : String?
-  pw_stream : @moonpipewire.PipeWire
+  pw_state : PipeWireState
   mut source : String
   mut last_req : Int64
   mut frame : Frame?

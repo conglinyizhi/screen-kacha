@@ -83,8 +83,6 @@ fn access_path() -> String {
 }
 
 ///|
-/// 从配置文本里读一个布尔项，缺省用 dflt。
-///|
 /// 解析布尔值。大小写不敏感，跟服务端的 `parse_flag_value` 同一套规则。
 fn flag_value(v : String) -> Bool {
   let s = v.trim().to_owned()
@@ -185,9 +183,6 @@ fn write_access(lan : Bool, public : Bool, cgnat : Bool) -> Bool {
   true
 }
 
-///|
-/// 在保留原有内容的前提下，改掉 allow_lan / allow_public / allow_cgnat 三行。
-/// 没有这两行就追加，其它行（注释、allow 名单、未知键）原样留着。
 ///|
 /// 取一行配置的 key（`=` 左边，去掉空白）。空行和注释返回 None。
 ///

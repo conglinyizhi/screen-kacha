@@ -10,6 +10,27 @@ pub struct Frame {
 ///
 /// spectacle 是单实例应用，同时拉起多个会互相卡死（实测三个并发就永久挂住）。
 /// 所以采集必须串行，且并发请求只能合并成一次采集：抢到锁后再判一次帧龄。
+
+///|
+/// PipeWire 取帧的状态。
+pub struct PipeWireState {
+  /// 是否正在用 PipeWire 取帧；连续失败会翻回 false
+  mut on : Bool
+  /// 连续失败次数，到阈值就回落 spectacle
+  mut fails : Int32
+  /// 抓帧句柄
+  stream : @pipewire.PipeWire
+  mut raw_seq : Int32
+  /// 最近一帧原始像素的位置和尺寸。
+  ///
+  /// 每帧写一个新文件，不在同一个路径上覆盖：请求方可能在泵写下一帧的时候
+  /// 才去读文件，共用一个路径就会读到「上一帧的尺寸配这一帧的像素」。
+  mut raw_frame : (String, Int32, Int32)?
+  /// 上一帧的位置。留着不删：可能有请求刚拿到它的路径还没读完。
+  mut raw_prev : String?
+}
+
+///|
 pub struct Store {
   shot : String
   lock : @async.Mutex
@@ -17,21 +38,11 @@ pub struct Store {
   fake : String?
   /// 运行时目录（/run/user/<uid>），用来确认 Wayland socket 是否已经就绪
   wl_dir : String
-  /// 是否用 PipeWire 取帧（true 时不再起 spectacle）；连续失败会自动回落
-  mut pw : Bool
-  /// PipeWire 连续失败次数，到阈值就回落 spectacle
-  mut pw_fails : Int32
-  mut raw_seq : Int32
-  /// 最近一帧原始像素的位置和尺寸。
+  /// PipeWire 那一簇状态：流、连续失败计数、原始帧轮转。
   ///
-  /// 每帧写一个新文件，不在同一个路径上覆盖：请求方可能在泵写下一帧的
-  /// 时候才去读文件，共用一个路径就会读到「上一帧的尺寸配这一帧的像素」。
-  /// 用独立文件后，(路径, 尺寸) 这一对永远指向同一份内容。
-  mut pw_raw_frame : (String, Int32, Int32)?
-  /// 上一帧的位置。留着不删：可能有请求刚拿到它的路径还没读完。
-  mut pw_raw_prev : String?
-  /// PipeWire 抓帧句柄
-  pw_stream : @pipewire.PipeWire
+  /// 从 `Store` 上摘出来单独命名，是因为它们是同一件事的四个部分：
+  /// 想加一条「流断了怎么恢复」的监督逻辑时，只看这一个结构就够。
+  pw_state : PipeWireState
   /// 当前实际使用的取帧来源："pipewire" / "spectacle" / "fake"
   mut source : String
   /// 最近一次请求的时间戳（毫秒），泵据此决定抓多勤
@@ -88,12 +99,14 @@ pub fn Store::new(
     lock: @async.Mutex(),
     fake,
     wl_dir,
-    pw,
-    pw_fails: 0,
-    raw_seq: 0,
-    pw_raw_frame: None,
-    pw_raw_prev: None,
-    pw_stream: @pipewire.PipeWire::new(app_name="screenstream-mb"),
+    pw_state: {
+      on: pw,
+      fails: 0,
+      stream: @pipewire.PipeWire::new(app_name="screenstream-mb"),
+      raw_seq: 0,
+      raw_frame: None,
+      raw_prev: None,
+    },
     source: if pw {
       "pipewire"
     } else if fake is Some(_) {
@@ -204,7 +217,7 @@ async fn wayland_ready(dir : String) -> Bool {
 async fn Store::capture(self : Store) -> Unit {
   self.last_capture = @async.now()
   let t0 = @async.now()
-  if self.pw {
+  if self.pw_state.on {
     self.capture_pipewire(t0)
     return
   }
@@ -456,7 +469,11 @@ pub fn clean_stale_frames(
   prefix : String,
   suffix : String,
 ) -> Int32 {
-  clean_stale_frames_raw(@util.cstr(dir), @util.cstr(prefix), @util.cstr(suffix))
+  clean_stale_frames_raw(
+    @util.cstr(dir),
+    @util.cstr(prefix),
+    @util.cstr(suffix),
+  )
 }
 
 ///|
@@ -473,7 +490,7 @@ fn Store::record_ok(self : Store, bytes : Bytes, cap_ms : Int64) -> Unit {
   // 看起来像"正常回退"，没人会去查。
   // 启动期更危险：PipeWire::connect 立刻返回不等第一帧，
   // 泵 500ms 一拍，协商超过 1.5 秒就会被判死，一开机就没救了。
-  self.pw_fails = 0
+  self.pw_state.fails = 0
   self.consec_fails = 0
   self.frame = Some({ bytes, ts: @async.now(), })
 }
@@ -544,12 +561,12 @@ fn default_runtime_dir() -> String {
 /// 「连续」靠 `record_ok` 里清零 `pw_fails` 来保证，别把那一行删了，
 /// 删了就退化成「累计」，偶发抖动也能把快路径永久打掉。
 fn Store::pw_failed(self : Store, why : String) -> Unit {
-  self.pw_fails = self.pw_fails + 1
-  if self.pw_fails >= 3 {
-    self.pw = false
+  self.pw_state.fails = self.pw_state.fails + 1
+  if self.pw_state.fails >= 3 {
+    self.pw_state.on = false
     self.source = "spectacle"
     eprintln(
-      "PipeWire 连续失败 \{self.pw_fails} 次，回落到 spectacle: \{why}",
+      "PipeWire 连续失败 \{self.pw_state.fails} 次，回落到 spectacle: \{why}",
     )
   }
   self.record_fail(why)
@@ -559,8 +576,8 @@ fn Store::pw_failed(self : Store, why : String) -> Unit {
 async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
   // 每帧一个独立文件：请求方读的时候，泵可能已经在写下一帧了，
   // 共用一个路径就会读到错位的内容。
-  self.raw_seq += 1
-  let raw = "\{self.shot}.\{self.raw_seq}.bgra"
+  self.pw_state.raw_seq += 1
+  let raw = "\{self.shot}.\{self.pw_state.raw_seq}.bgra"
   // 尺寸和像素必须来自同一帧，所以用一次调用同时取。
   //
   // 原来是 size() + save_frame() 两次独立调用，中间隔着一次完整落盘
@@ -568,7 +585,7 @@ async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
   // 第二次拿到的就是「旧尺寸配新像素」，解码按错的尺寸走，
   // 产出花屏，或者直接读越界。改成一次调用后由 C 侧在同一把锁里
   // 读完尺寸再写像素，两者必然一致。
-  let (wrote, w, h) = self.pw_stream.save_frame_consistent(raw)
+  let (wrote, w, h) = self.pw_state.stream.save_frame_consistent(raw)
   if w <= 0 || h <= 0 {
     self.pw_failed("PipeWire 还没协商出画面格式")
     return
@@ -589,17 +606,17 @@ async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
   // 删上一帧是不行的，可能有请求刚拿到它的路径、正要读，
   // 文件就没了。留一帧的余量足够：请求拿到路径到读完只有几毫秒，
   // 而泵最快 500ms 才换一次帧。
-  match self.pw_raw_prev {
+  match self.pw_state.raw_prev {
     Some(old) => {
       let _ = @fs.remove(old) catch { _ => () }
     }
     None => ()
   }
-  self.pw_raw_prev = match self.pw_raw_frame {
+  self.pw_state.raw_prev = match self.pw_state.raw_frame {
     Some((p, _, _)) => Some(p)
     None => None
   }
-  self.pw_raw_frame = Some((raw, w, h))
+  self.pw_state.raw_frame = Some((raw, w, h))
   if !@image.bgra_to_jpeg(raw, w, h, 0, 82, self.shot) {
     self.pw_failed("moonimage 转码失败")
     return
@@ -672,13 +689,13 @@ pub fn portal_step(pipewire_on : Bool) -> PortalStep {
 /// 连之前先断开旧的：`pw_shim` 里「已经在跑就直接返回 0」的分支会拿上一个
 /// 可能已经死掉的流假装成功，调用方以为恢复了，实际上还是没帧。
 pub fn Store::enable_pipewire(self : Store, node : Int32) -> Bool {
-  self.pw_stream.disconnect()
-  if self.pw_stream.connect(node) != 0 {
+  self.pw_state.stream.disconnect()
+  if self.pw_state.stream.connect(node) != 0 {
     eprintln("PipeWire 启动失败，继续用 spectacle")
     return false
   }
-  self.pw = true
-  self.pw_fails = 0
+  self.pw_state.on = true
+  self.pw_state.fails = 0
   self.source = "pipewire"
   eprintln("已切到 PipeWire 取帧，node=\{node}")
   true
@@ -686,7 +703,7 @@ pub fn Store::enable_pipewire(self : Store, node : Int32) -> Bool {
 
 ///|
 pub fn Store::pipewire_on(self : Store) -> Bool {
-  self.pw
+  self.pw_state.on
 }
 
 ///|
@@ -707,7 +724,7 @@ pub fn Store::cursor_pos_path(self : Store) -> String {
 /// 缩放请求可以直接从原始像素重新编码，省掉「先编码成 JPEG、
 /// 再解码回来缩放」这一来一回。
 pub fn Store::pw_raw(self : Store) -> (String, Int32, Int32)? {
-  if !self.pw {
+  if !self.pw_state.on {
     return None
   }
   // 用抓帧时记下的尺寸，不要再现场问 C 侧。
@@ -715,7 +732,7 @@ pub fn Store::pw_raw(self : Store) -> (String, Int32, Int32)? {
   // 现场问的话，拿到的可能是「下一帧」的尺寸，而文件里躺的是上一帧的
   // 像素，改分辨率的那一瞬间就会按错的尺寸去解，出花屏。
   // 尺寸和像素必须在同一时刻确定下来，这里就是那个「同一时刻」的结果。
-  match self.pw_raw_frame {
+  match self.pw_state.raw_frame {
     Some((path, w, h)) => if w > 0 && h > 0 { Some((path, w, h)) } else { None }
     None => None
   }
