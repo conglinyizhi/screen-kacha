@@ -26,6 +26,29 @@ pub fn wants_html(accept : String?) -> Bool {
 }
 
 ///|
+/// `/` 给浏览器的中间页：用 meta refresh 跳到 `/human.html`。
+///
+/// 为什么不用 302：
+///
+/// - 302 对 agent 不友好。有些 HTTP 客户端默认不跟随重定向，
+///   它们发的 `Accept` 里又恰好带 `text/html`，就会拿到一个空的重定向
+///   响应，比现在更难排查。
+/// - meta refresh 只有真的浏览器会执行，agent 当普通 HTML 读也不会
+///   被误导成"内容就是这一行"。
+/// - 浏览器地址栏会变成 `/human.html`，链接可以直接分享。
+///
+/// 页面本身做得尽量小：一行提示 + 一个真链接兜底。
+/// 不执行跳转的客户端（比如纯文本浏览器、带 noscript 的）至少能看到链接。
+let human_redirect : String =
+  $|<!doctype html><meta charset="utf-8">
+  $|<title>screenstream</title>
+  $|<meta http-equiv="refresh" content="0; url=/human.html">
+  $|<link rel="canonical" href="/human.html">
+  $|<body style="font:15px system-ui;padding:2em;background:#161618;color:#e6e6e8">
+  $|<p>正在转到 <a href="/human.html" style="color:#4ad0e8">/human.html</a>…</p>
+  $|<noscript><p style="color:#8b8b93">浏览器没有自动跳转，点上面的链接。</p></noscript>
+
+///|
 let fallback_human : String =
   $|<!doctype html><meta charset="utf-8"><title>screenstream</title>
   $|<body style="font:15px system-ui;padding:2em"><h1>screenstream</h1>

@@ -353,7 +353,14 @@ pub fn build_app(store : Store, port : Int32) -> @crescent.App {
   // 两边各拿到干净的东西。
   app.get("/", async fn(ev) {
     if wants_html(ev.req.get_header("accept")) {
-      handle_human_page().to_responder()
+      // 浏览器：给一个 meta refresh 的中间页，让地址栏落到 /human.html。
+      // 不用 302 —— 有些 agent 的 HTTP 客户端不跟随重定向，
+      // 而它们发的 Accept 里可能带 text/html，那样会拿到空的响应。
+      make_res(
+        @crescent.StatusCode::OK,
+        "text/html; charset=utf-8",
+        @utf8.encode(human_redirect),
+      ).to_responder()
     } else {
       handle_text_file("llms.txt", "text/plain; charset=utf-8", fallback_llms).to_responder()
     }
