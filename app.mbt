@@ -348,9 +348,11 @@ pub fn build_app(store : Store, port : Int32, access : Access) -> @crescent.App 
       @utf8.encode(index_shell),
     ).to_responder()
   })
-  app.get("/health", fn(_ev) {
-    handle_health(store, port, access).to_responder()
-  })
+  // 健康状态。`/health.json` 是别名：别的端点全带后缀（/snapshot.jpg、
+  // /skill.md），agent 容易顺手多敲一个 .json，这里认下来，省一次 404 往返。
+  for path in ["/health", "/health.json"] {
+    app.get(path, fn(_ev) { handle_health(store, port, access).to_responder() })
+  }
   // 出错兜底页：只认代号，正文从固定表里查
   app.get("/ui/err", fn(ev) {
     let code = match ev.req.get_query("code") {

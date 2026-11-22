@@ -9,7 +9,7 @@
 | `/snapshot.jpg` | 当前画面，原分辨率 |
 | `/snapshot-1280.jpg` | 宽度缩到 1280，省 token |
 | `/snapshot-1280.webp` | 同样尺寸，体积更小 |
-| `/health` | 采集状态 JSON |
+| `/health` | 采集状态 JSON，`/health.json` 是同一个东西的别名 |
 | `/skill.md` | 本文件 |
 
 宽度写在文件名里，160 到 3840，超出会被夹到边界；也可以用 `?w=1280` 查询参数。

@@ -103,6 +103,8 @@ curl -s --max-time 5 $B/for_human_use_browser.js \
   | grep -q 'pre-wrap' && ok || bad "界面脚本没给 pre 注入折行样式"
 check "/health 状态" 200 "$(code $B/health)"
 check "/health 类型" "application/json" "$(ctype $B/health)"
+check "/health.json 别名" 200 "$(code $B/health.json)"
+check "/health.json 类型" "application/json" "$(ctype $B/health.json)"
 check "/skill.md 类型" "text/markdown; charset=utf-8" "$(ctype $B/skill.md)"
 check "/robots.txt 状态" 200 "$(code $B/robots.txt)"
 check "/robots.txt 类型" "text/plain; charset=utf-8" "$(ctype $B/robots.txt)"
