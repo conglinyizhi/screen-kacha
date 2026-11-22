@@ -47,12 +47,20 @@ open(sys.argv[1], "wb").write(png)
 PY
 [ -s "$WORK/frame.png" ] || { echo "  造图失败"; exit 1; }
 
+# 素材和文档放同一个数据目录，用 --data 指过去。
+# 这样跑的是「相对 cwd 之外找文件」那条路：光标 PNG 在 contrib/、
+# 文档在仓库根目录，平时靠工作目录凑齐，这里显式铺一份。
+mkdir -p "$WORK/data"
+cp "$ROOT"/contrib/cursor-*.png "$WORK/data/"
+cp "$ROOT"/human.html "$ROOT"/llms.txt "$ROOT"/skill.md "$ROOT"/error.md \
+  "$ROOT"/robots.txt "$WORK/data/"
+
 echo "== 起实例（端口 $PORT，假帧源）=="
 # timeout：即使外层把本脚本整个杀掉（ssh 断了、CI 取消、按了 Ctrl-C），
 #          服务也会在 300 秒后自己退出，不会变成抢屏幕流的孤儿进程。
 timeout 300 ./_build/native/debug/build/cmd/main/main.exe \
   --port "$PORT" --bind 127.0.0.1 --pump 100 \
-  --shm "$WORK/shm" --fake "$WORK/frame.png" \
+  --shm "$WORK/shm" --fake "$WORK/frame.png" --data "$WORK/data" \
   ${ACCESS_CONF:+--access "$ACCESS_CONF"} >"$PORT_LOG" 2>&1 &
 SERVER_PID=$!
 

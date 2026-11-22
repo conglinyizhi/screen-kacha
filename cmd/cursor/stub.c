@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -38,4 +39,10 @@ int moonbit_cursor_write(const char *path, const char *data) {
 /* 删掉坐标文件。KWin 脚本没了以后留着会画出一个停住的光标。 */
 int moonbit_cursor_remove(const char *path) {
   return unlink(path);
+}
+
+/* 以指定退出码结束。写坐标失败时用：让托盘那边的校验看到 helper 没了，
+ * 而不是留一个永远不写坐标的进程假装在跟踪。 */
+void moonbit_cursor_exit(int32_t code) {
+  exit((int)code);
 }

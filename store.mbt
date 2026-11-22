@@ -49,6 +49,20 @@ pub struct Store {
   pump_ms : Int32
   mut err : String
   mut seq : Int32
+  /// 光标合成失败的次数和最后一次原因。
+  ///
+  /// 合成失败原来是完全静默的：素材打不开、或者坐标有了但贴图失败，
+  /// 调用方拿到的仍是一张普通截图（200），从外面看不出区别。托盘那边的开关
+  /// 还显示「已开启」。这里记下来，`/health` 才答得出「为什么没箭头」。
+  mut cursor_fails : Int32
+  mut cursor_err : String
+  /// 已经报过「读不到」的文档名。
+  ///
+  /// `/llms.txt`、`/skill.md` 是 agent 会反复拉的，每次 fallback 都打一行
+  /// 会把 journal 冲掉，所以同一个文件只报第一次。
+  missing_docs : Map[String, Bool]
+  /// 素材（光标 PNG）和文档所在目录。相对文件名都按它拼。
+  data_dir : String
   /// 临时输出文件的目录。
   ///
   /// 不再直接落在 /tmp 根下：那个目录谁都能读、谁都能写，截图 0644 摆着，
@@ -65,6 +79,7 @@ pub fn Store::new(
   pw~ : Bool = false,
   tmp_dir~ : String = "/tmp/screenstream-mb",
   pump_ms~ : Int32 = 500,
+  data_dir~ : String = ".",
 ) -> Store {
   {
     shot,
@@ -94,6 +109,10 @@ pub fn Store::new(
     err: "",
     seq: 0,
     tmp_dir,
+    cursor_fails: 0,
+    cursor_err: "",
+    missing_docs: Map([]),
+    data_dir,
   }
 }
 
@@ -275,6 +294,59 @@ pub fn frame_is_stalled(
 ///|
 pub fn Store::is_stalled(self : Store) -> Bool {
   frame_is_stalled(self.age_ms(), self.idle_ms(), self.pump_ms)
+}
+
+///|
+/// 光标合成成功一次就把失败计数和原因清掉，跟采集那套一致。
+pub fn Store::note_cursor_ok(self : Store) -> Unit {
+  self.cursor_fails = 0
+  self.cursor_err = ""
+}
+
+///|
+/// 记一次光标合成失败，并在日志里留一行。
+pub fn Store::note_cursor_fail(self : Store, why : String) -> Unit {
+  self.cursor_fails = self.cursor_fails + 1
+  if should_log_failure(self.cursor_fails, why != self.cursor_err) {
+    eprintln("光标合成失败（连续 \{self.cursor_fails} 次）：\{why}")
+  }
+  self.cursor_err = why
+}
+
+///|
+pub fn Store::cursor_fails(self : Store) -> Int32 {
+  self.cursor_fails
+}
+
+///|
+pub fn Store::cursor_err(self : Store) -> String {
+  self.cursor_err
+}
+
+///|
+/// 素材和文档的路径。相对文件名按 `data_dir` 拼成绝对路径。
+///
+/// 原来直接用 `cursor-arrow.png` 这种相对名，只有进程的工作目录正好是安装
+/// 目录时才找得到。换一个 unit、或者从别处手动跑，光标就静默失效，
+/// 而托盘上的勾还亮着。
+pub fn Store::data_path(self : Store, name : String) -> String {
+  if self.data_dir == "" || self.data_dir == "." || name.has_prefix("/") {
+    name
+  } else {
+    "\{self.data_dir}/\{name}"
+  }
+}
+
+///|
+/// 第一次读不到某个文档时返回 true，用来决定要不要打日志。
+pub fn Store::note_missing_doc(self : Store, name : String) -> Bool {
+  match self.missing_docs.get(name) {
+    Some(_) => false
+    None => {
+      self.missing_docs.set(name, true)
+      true
+    }
+  }
 }
 
 ///|

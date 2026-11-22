@@ -451,3 +451,62 @@ test "失败日志降频，错误变了立刻记" {
   assert_true(should_log_failure(60, false))
   assert_false(should_log_failure(31, false))
 }
+
+///|
+/// 光标合成失败要能看见：计数、原因，成功一次就清零。
+///
+/// 失败原来是完全静默的：素材打不开或者贴图失败，调用方拿到的仍是 200 的
+/// 普通截图，托盘的开关还显示「已开启」。
+test "光标合成失败会被记下来，成功一次就清零" {
+  let store = Store::new(shot="/tmp/none.jpg")
+  assert_eq(store.cursor_fails(), 0)
+  store.note_cursor_fail("光标素材 PNG 读不出来")
+  assert_eq(store.cursor_fails(), 1)
+  assert_eq(store.cursor_err(), "光标素材 PNG 读不出来")
+  store.note_cursor_fail("输出文件建不出来")
+  assert_eq(store.cursor_fails(), 2)
+  assert_eq(store.cursor_err(), "输出文件建不出来")
+  store.note_cursor_ok()
+  assert_eq(store.cursor_fails(), 0)
+  assert_eq(store.cursor_err(), "")
+}
+
+///|
+/// 素材和文档的路径跟着 data_dir 走，绝对路径不动。
+///
+/// 原来直接用相对文件名，只有进程工作目录正好是安装目录时才找得到。
+test "data_path 按 data_dir 拼，绝对路径原样" {
+  let with_dir = Store::new(shot="/tmp/none.jpg", data_dir="/opt/ss")
+  assert_eq(with_dir.data_path("cursor-arrow.png"), "/opt/ss/cursor-arrow.png")
+  assert_eq(with_dir.data_path("/abs/x.png"), "/abs/x.png")
+  let plain = Store::new(shot="/tmp/none.jpg")
+  assert_eq(plain.data_path("cursor-arrow.png"), "cursor-arrow.png")
+}
+
+///|
+/// 缺文档只报第一次，别让 agent 的反复轮询把 journal 冲掉。
+test "缺文档只报第一次" {
+  let store = Store::new(shot="/tmp/none.jpg")
+  assert_true(store.note_missing_doc("llms.txt"))
+  assert_false(store.note_missing_doc("llms.txt"))
+  assert_true(store.note_missing_doc("skill.md"))
+}
+
+///|
+/// 光标返回码要翻成人话，别只丢一个数字。
+test "光标返回码有对应文案" {
+  assert_eq(cursor_code_text(7), "光标素材 PNG 读不出来")
+  assert_eq(cursor_code_text(2), "源画面解码失败")
+  assert_true(cursor_code_text(99).contains("未知"))
+}
+
+///|
+/// /health 里能查到光标为什么没画出来。
+test "health 暴露光标失败计数" {
+  let store = Store::new(shot="/tmp/none.jpg")
+  store.note_cursor_fail("光标素材 PNG 读不出来")
+  let json = health_json(store, 8930, Access::default())
+  assert_true(json.contains("\"cursor_fails\": 1"))
+  assert_true(json.contains("光标素材 PNG 读不出来"))
+  assert_true(json_quotes_balanced(json))
+}

@@ -189,6 +189,28 @@ fn hex_digit_of(n : Int32) -> Byte {
 }
 
 ///|
+/// C 侧光标合成的返回码翻译成人话。码值见 `moonbit_image_cursor`。
+fn cursor_code_text(code : Int32) -> String {
+  if code == 1 {
+    "原始帧尺寸非法"
+  } else if code == 2 {
+    "源画面解码失败"
+  } else if code == 3 {
+    "缩放缓冲分配失败"
+  } else if code == 4 {
+    "输出文件建不出来"
+  } else if code == 5 {
+    "WebP 编码失败"
+  } else if code == 6 {
+    "写盘不完整"
+  } else if code == 7 {
+    "光标素材 PNG 读不出来"
+  } else {
+    "未知错误"
+  }
+}
+
+///|
 /// `/health` 的响应正文。抽成纯函数，好直接测转义。
 fn health_json(store : Store, port : Int32, access : Access) -> String {
   // ok 要同时看三件事：有帧、最近一次采集没失败、帧还在更新。
@@ -200,7 +222,7 @@ fn health_json(store : Store, port : Int32, access : Access) -> String {
     Some(_) => store.err() == "" && !stalled
     None => false
   }
-  "{\"ok\": \{ok}, \"stalled\": \{stalled}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"fails_consecutive\": \{store.consec_fails()}, \"err\": \"\{json_escape_text(store.err())}\", \"port\": \{port}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{json_escape_text(store.source())}\", \"access\": \"\{json_escape_text(access.describe())}\"}"
+  "{\"ok\": \{ok}, \"stalled\": \{stalled}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"fails_consecutive\": \{store.consec_fails()}, \"err\": \"\{json_escape_text(store.err())}\", \"port\": \{port}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{json_escape_text(store.source())}\", \"access\": \"\{json_escape_text(access.describe())}\", \"cursor_fails\": \{store.cursor_fails()}, \"cursor_err\": \"\{json_escape_text(store.cursor_err())}\"}"
 }
 
 ///|
@@ -294,14 +316,18 @@ async fn build_image_response(
           Soft => (arrow, "")
           Neg => ("", mask)
         }
+        // 素材走 data_dir，不再依赖进程当前目录
+        let ov_path = store.data_path(ov)
+        let mk_path = if mk == "" { "" } else { store.data_path(mk) }
         let out = store.next_tmp(fmt)
-        let ok = @image.cursor_overlay(
+        // 要返回码，不能只要 Bool：失败的时候得知道是哪一步坏的
+        let code = @image.cursor_overlay_code(
           src,
           is_raw,
           src_w,
           src_h,
-          ov,
-          mk,
+          ov_path,
+          mk_path,
           cx,
           cy,
           dst_w,
@@ -309,9 +335,14 @@ async fn build_image_response(
           webp,
           out,
         )
-        match read_result(out, ok) {
-          Some(b) => return make_res(@crescent.StatusCode::OK, ctype, b)
-          None => ()
+        match read_result(out, code == 0) {
+          Some(b) => {
+            store.note_cursor_ok()
+            return make_res(@crescent.StatusCode::OK, ctype, b)
+          }
+          // 合成失败不能静默：调用方拿到的还是 200 的普通截图，
+          // 从外面分不出「没开跟踪」和「开了但坏了」。
+          None => store.note_cursor_fail(cursor_code_text(code))
         }
       }
       None => ()
@@ -396,19 +427,12 @@ async fn handle_snapshot(
 }
 
 ///|
-async fn handle_skill() -> @crescent.HttpResponse {
-  let text = try {
-    let f = @fs.open("skill.md", mode=ReadOnly)
-    let s = f.read_all().text()
-    f.close()
-    s
-  } catch {
-    _ => fallback_skill
-  }
-  make_res(
-    @crescent.StatusCode::OK,
+async fn handle_skill(store : Store) -> @crescent.HttpResponse {
+  handle_text_file(
+    store,
+    "skill.md",
     "text/markdown; charset=utf-8",
-    @utf8.encode(text),
+    fallback_skill,
   )
 }
 
@@ -434,11 +458,11 @@ pub fn build_app(store : Store, port : Int32, access : Access) -> @crescent.App 
         @utf8.encode(index_shell),
       ).to_responder()
     } else {
-      handle_text_file("llms.txt", "text/plain; charset=utf-8", fallback_llms).to_responder()
+      handle_text_file(store, "llms.txt", "text/plain; charset=utf-8", fallback_llms).to_responder()
     }
   })
   app.get("/for_human_use_browser.js", async fn(_ev) {
-    handle_human_js().to_responder()
+    handle_human_js(store).to_responder()
   })
   // 老链接还认：和 / 给同一个外壳
   app.get("/human.html", fn(_ev) {
@@ -461,15 +485,15 @@ pub fn build_app(store : Store, port : Int32, access : Access) -> @crescent.App 
     }
     @crescent.html(err_page(code))
   })
-  app.get("/skill.md", async fn(_ev) { handle_skill().to_responder() })
+  app.get("/skill.md", async fn(_ev) { handle_skill(store).to_responder() })
   app.get("/error.md", async fn(_ev) {
-    handle_text_file("error.md", "text/markdown; charset=utf-8", fallback_error).to_responder()
+    handle_text_file(store, "error.md", "text/markdown; charset=utf-8", fallback_error).to_responder()
   })
   app.get("/robots.txt", async fn(_ev) {
-    handle_text_file("robots.txt", "text/plain; charset=utf-8", fallback_robots).to_responder()
+    handle_text_file(store, "robots.txt", "text/plain; charset=utf-8", fallback_robots).to_responder()
   })
   app.get("/llms.txt", async fn(_ev) {
-    handle_text_file("llms.txt", "text/plain; charset=utf-8", fallback_llms).to_responder()
+    handle_text_file(store, "llms.txt", "text/plain; charset=utf-8", fallback_llms).to_responder()
   })
   app.get("/:file", async fn(ev) {
     match ev.param("file") {

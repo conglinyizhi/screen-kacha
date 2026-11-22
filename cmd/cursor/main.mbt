@@ -31,6 +31,9 @@ const STALE_TICKS : Int32 = 4
 extern "c" fn write_pos_raw(path : Bytes, data : Bytes) -> Int32 = "moonbit_cursor_write"
 
 ///|
+extern "c" fn exit_now(code : Int32) -> Unit = "moonbit_cursor_exit"
+
+///|
 #borrow(path)
 extern "c" fn remove_pos_raw(path : Bytes) -> Int32 = "moonbit_cursor_remove"
 
@@ -64,9 +67,13 @@ fn read_i32(b : Bytes, at : Int32) -> Int32 {
 
 ///|
 /// 把坐标写进文件。
-fn save_pos(x : Int32, y : Int32) -> Unit {
-  let text = "\{x} \{y}"
-  let _ = write_pos_raw(cstr(pos_path()), cstr(text))
+///|
+/// 写坐标文件。返回是否写成功。
+///
+/// 原来用 `let _ = ...` 把结果丢掉：写不进去就永远没有箭头，主服务那边
+/// 只会看到「坐标文件不存在」，跟「没开跟踪」完全一样，没有任何线索。
+fn save_pos(x : Int32, y : Int32) -> Bool {
+  write_pos_raw(cstr(pos_path()), cstr("\{x} \{y}")) == 0
 }
 
 ///|
@@ -103,7 +110,12 @@ fn main {
     fn(_s, ctx) {
       if ctx.iface == IFACE && ctx.member == "Moved" && ctx.body.length() >= 8 {
         seen_tick.val = tick_no.val
-        save_pos(read_i32(ctx.body, 0), read_i32(ctx.body, 4))
+        // 写不进去就退出：托盘那边有「坐标到底流没流动」的检查，
+        // 会看到失败并把跟踪状态收回去，比留一个静默失效的 helper 好
+        if !save_pos(read_i32(ctx.body, 0), read_i32(ctx.body, 4)) {
+          eprintln("写坐标文件失败，退出让托盘重新接管")
+          exit_now(1)
+        }
       }
       Some(@dbus.Reply::make(Bytes::new(0), ""))
     },

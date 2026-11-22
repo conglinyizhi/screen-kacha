@@ -61,6 +61,11 @@ fn cli_cmd() -> @argparse.Command {
     @argparse.OptionArg("shm", about="帧文件存放目录", default_values=[
       "/tmp/screenstream-mb",
     ]),
+    @argparse.OptionArg(
+      "data",
+      about="素材与文档所在目录（光标 PNG、skill.md、llms.txt 等）",
+      default_values=["."],
+    ),
     @argparse.OptionArg("max-conns", about="并发连接上限", default_values=[
       "64",
     ]),
@@ -184,6 +189,7 @@ async fn main {
   let pw_node = parse_int(pick(m, "pw-node", "0"), 0)
   let source = pick(m, "source", "auto")
   let shm = pick(m, "shm", "/tmp/screenstream-mb")
+  let data_dir = pick(m, "data", ".")
   let max_conns = parse_int(pick(m, "max-conns", "64"), 64)
   @fs.mkdir(shm, permission=0o700, recursive=true) catch {
     err =>
@@ -236,6 +242,9 @@ async fn main {
     tmp_dir=shm,
     // 停摆判定要知道泵的节奏
     pump_ms=pump,
+    // 素材和文档的目录。以前靠进程工作目录，换个 unit 或从别处手动跑，
+    // 光标就静默失效而托盘上的勾还亮着
+    data_dir~,
   )
   // reuse_addr：服务重启时旧连接还处于 TIME-WAIT，不开这个 bind 会失败
   let server = @http.Server(
@@ -263,8 +272,20 @@ async fn main {
       eprintln("PipeWire 启动失败，回落到 spectacle")
     }
   }
+  // 光标素材缺了不致命，但必须说一声：否则 ?cursor=1 会一直返回没箭头的图，
+  // 从外面看不出区别。
+  let cursor_assets : Array[String] = [
+    "cursor-arrow.png", "cursor-mask.png", "cursor-arrow-classic.png",
+    "cursor-mask-classic.png",
+  ]
+  for name in cursor_assets {
+    let path = store.data_path(name)
+    if !(@fs.exists(path) catch { _ => false }) {
+      eprintln("缺少光标素材 \{path}：?cursor= 开了也画不出来")
+    }
+  }
   eprintln(
-    "screenstream-mb v0.1 监听 \{bind}:\{port}  帧目录 \{shm}  泵 \{pump}ms  并发上限 \{max_conns}",
+    "screenstream-mb v0.1 监听 \{bind}:\{port}  帧目录 \{shm}  素材 \{data_dir}  泵 \{pump}ms  并发上限 \{max_conns}",
   )
   @async.with_task_group() <| group => {
     if pw_node <= 0 && source != "spectacle" && fake_source is None {

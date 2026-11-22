@@ -138,14 +138,21 @@ fn wrap_human_js(page : String) -> String {
 ///
 /// 它只被 `index_shell` 里那个 `<script src>` 拉起。不执行 JS 的客户端
 /// LLM、curl、agent 都不会请求它，也就不会下载这十几 KB。
-async fn handle_human_js() -> @crescent.HttpResponse {
+async fn handle_human_js(store : Store) -> @crescent.HttpResponse {
+  let path = store.data_path("human.html")
   let page = try {
-    let f = @fs.open("human.html", mode=ReadOnly)
+    let f = @fs.open(path, mode=ReadOnly)
     let t = f.read_all().text()
     f.close()
     Some(t)
   } catch {
-    _ => None
+    _ => {
+      // 兜底外壳和真页面从外面分不出来，留一行日志
+      if store.note_missing_doc("human.html") {
+        eprintln("读不到 \{path}，页面退回内置兜底")
+      }
+      None
+    }
   }
   let body = match page {
     Some(t) => if t == "" { fallback_human_js } else { wrap_human_js(t) }
@@ -178,17 +185,26 @@ let fallback_error : String =
 ///|
 /// 文本类静态文件：磁盘上有就用磁盘的（可改），没有就用编进二进制的兜底。
 async fn handle_text_file(
+  store : Store,
   name : String,
   ctype : String,
   fallback : String,
 ) -> @crescent.HttpResponse {
+  let path = store.data_path(name)
   let text = try {
-    let f = @fs.open(name, mode=ReadOnly)
+    let f = @fs.open(path, mode=ReadOnly)
     let s = f.read_all().text()
     f.close()
     s
   } catch {
-    _ => fallback
+    _ => {
+      // 内置兜底和真文件从外面完全分不出来，所以至少留一行日志。
+      // 同一个文件只报第一次：agent 会反复拉这些文档。
+      if store.note_missing_doc(name) {
+        eprintln("读不到 \{path}，改用内置兜底文案")
+      }
+      fallback
+    }
   }
   make_res(@crescent.StatusCode::OK, ctype, @utf8.encode(text))
 }
