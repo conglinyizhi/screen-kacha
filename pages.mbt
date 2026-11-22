@@ -50,21 +50,6 @@ let index_shell : String =
   $|</pre></div>
 
 ///|
-let fallback_human_js : String =
-  $|(() => {
-  $|  document.body.insertAdjacentHTML('afterbegin',
-  $|    '<div style="font:15px system-ui;padding:2em">' +
-  $|    '<h1>screen-kacha</h1>' +
-  $|    '<p>界面文件 human.html 读不到，端点仍然可用：</p>' +
-  $|    '<ul>' +
-  $|    '<li><a href="/snapshot.jpg">/snapshot.jpg</a> 当前画面</li>' +
-  $|    '<li><a href="/health">/health</a> 采集状态</li>' +
-  $|    '<li><a href="/llms.txt">/llms.txt</a> 端点索引</li>' +
-  $|    '<li><a href="/error.md">/error.md</a> 排查</li>' +
-  $|    '</ul></div>');
-  $|})();
-
-///|
 /// 把一段文本转义成能安全放进 JS 模板字符串的形式。
 ///
 /// 只处理三种，顺序不能乱：
@@ -154,25 +139,17 @@ async fn handle_human_js(store : Store, port : Int32) -> Resp {
       None
     }
   }
-  let body = match page {
-    Some(t) =>
-      if t == "" {
-        fallback_human_js
-      } else {
-        wrap_human_js(fill_port(t, port))
-      }
-    None => fallback_human_js
+  // 磁盘读不到就用编进二进制的那一份：两边永远是同一份文件
+  let raw = match page {
+    Some(t) => if t == "" { store.embedded_text("human.html") } else { Some(t) }
+    None => store.embedded_text("human.html")
+  }
+  let body = match raw {
+    Some(t) => wrap_human_js(fill_port(t, port))
+    None => minimal_human_js()
   }
   make_res(200, "application/javascript; charset=utf-8", @utf8.encode(body))
 }
-
-///|
-let fallback_skill : String =
-  $|# screen-kacha
-  $|
-  $|GET /snapshot.jpg 原图，GET /snapshot-1280.jpg 缩到宽 1280，
-  $|GET /snapshot-1280.webp 输出 WebP，GET /health 采集状态。
-  $|出错排查见 /error.md。
 
 ///|
 /// 把文档里的 {{PORT}} 换成实际端口。
@@ -188,21 +165,11 @@ pub fn fill_port(text : String, port : Int32) -> String {
 }
 
 ///|
-let fallback_error : String =
-  $|# 出错了怎么查
-  $|
-  $|先看服务活着没有：curl -s http://127.0.0.1:{{PORT}}/health
-  $|托盘的问题看：cat ~/.local/state/screen-kacha/last-error.txt
-  $|日志：journalctl --user -u screen-kacha -u screen-kacha-tray -n 100 --no-pager
-  $|完整的排查步骤在磁盘上的 error.md。
-
-///|
 /// 文本类静态文件：磁盘上有就用磁盘的（可改），没有就用编进二进制的兜底。
 async fn handle_text_file(
   store : Store,
   name : String,
   ctype : String,
-  fallback : String,
   port : Int32,
 ) -> Resp {
   let path = store.data_path(name)
@@ -216,9 +183,12 @@ async fn handle_text_file(
       // 内置兜底和真文件从外面完全分不出来，所以至少留一行日志。
       // 同一个文件只报第一次：agent 会反复拉这些文档。
       if store.note_missing_doc(name) {
-        eprintln("读不到 \{path}，改用内置兜底文案")
+        eprintln("读不到 \{path}，改用编进二进制的那一份")
       }
-      fallback
+      match store.embedded_text(name) {
+        Some(t) => t
+        None => ""
+      }
     }
   }
   make_res(200, ctype, @utf8.encode(fill_port(text, port)))
@@ -231,7 +201,12 @@ pub fn not_found_text(path : String) -> String {
 }
 
 ///|
-let fallback_robots : String = "User-agent: *\nDisallow: /\n"
 
 ///|
-let fallback_llms : String = "# screen-kacha\n\n> 本机屏幕的 HTTP 快照服务。\n\n- /snapshot.jpg\n- /health\n- /skill.md\n"
+/// 连嵌入的页面都没有时的最后兜底。
+///
+/// 正常构建不会走到这里：human.html 是构建时嵌进去的。留着是为了万一生成步骤
+/// 被跳过时不至于返回一个空响应。
+fn minimal_human_js() -> String {
+  "// screen-kacha: 页面资源缺失，接口仍然可用\n"
+}

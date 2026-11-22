@@ -10,6 +10,24 @@ v0.1，自己日常在用。核心链路（PipeWire 取帧 → HTTP 快照）、
 还没做的：Windows / macOS 从未验证（代码只支持 native + Linux），
 也没有打包成发行版包。
 
+## 一个二进制就能跑
+
+文档（`skill.md`、`error.md`、`llms.txt`、`robots.txt`、`human.html`）和四张光标
+素材在构建时被编进二进制（`cmd/embedgen` 生成 `embedded_gen.mbt`），所以拿到一个
+可执行文件就能直接起服务，不需要旁边放一堆文件。
+
+磁盘上有同名文件时以磁盘的为准（`--data` 指的目录），这样改文档、换光标素材不用重编。
+光标素材是 C 侧按路径打开的，磁盘上没有时由服务在启动时释放到帧目录。
+
+改了文档或素材之后重新生成一遍：
+
+```bash
+moon run cmd/embedgen -- embedded_gen.mbt \
+  human.html skill.md error.md llms.txt robots.txt \
+  contrib/cursor-arrow.png contrib/cursor-mask.png \
+  contrib/cursor-arrow-classic.png contrib/cursor-mask-classic.png
+```
+
 ## 端点
 
 | 路径 | 返回 |

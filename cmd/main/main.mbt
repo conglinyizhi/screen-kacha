@@ -270,6 +270,9 @@ async fn main {
     // 光标就静默失效而托盘上的勾还亮着
     data_dir~,
   )
+  // 内嵌的素材释放到临时目录：C 侧的 cursor_overlay 要文件路径
+  store.init_assets()
+
   // 端口被占时先退避重试，再换口或干净退出，细节见 bind.mbt
   let (server, port) = match
     bind_with_fallback(bind, port, !flag_on(m, "no-port-fallback")) {

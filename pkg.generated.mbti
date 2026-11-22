@@ -24,6 +24,10 @@ pub fn config_line_key(String) -> String?
 
 pub fn config_warnings(String) -> Array[String]
 
+pub let emb_data : Array[String]
+
+pub let emb_paths : Array[String]
+
 pub fn exit_process(Int32) -> Unit
 
 pub fn fill_port(String, Int32) -> String
@@ -190,9 +194,12 @@ pub struct Store {
   mut cursor_err : String
   missing_docs : Map[String, Bool]
   data_dir : String
+  embedded : Map[String, Bytes]
+  mut asset_dir : String
   tmp_dir : String
 }
 pub fn Store::age_ms(Self) -> Int64
+pub fn Store::asset_path(Self, String) -> String
 pub fn Store::bytes(Self) -> Bytes?
 pub fn Store::cap_ms(Self) -> Int64
 pub fn Store::consec_fails(Self) -> Int32
@@ -201,12 +208,14 @@ pub fn Store::cursor_err(Self) -> String
 pub fn Store::cursor_fails(Self) -> Int32
 pub fn Store::cursor_pos_path(Self) -> String
 pub fn Store::data_path(Self, String) -> String
+pub fn Store::embedded_text(Self, String) -> String?
 pub fn Store::enable_pipewire(Self, Int32) -> Bool
 pub async fn Store::ensure(Self, Int64) -> Unit
 pub async fn Store::ensure_request(Self, Int64) -> Unit
 pub fn Store::err(Self) -> String
 pub fn Store::fails(Self) -> Int32
 pub fn Store::idle_ms(Self) -> Int64
+pub async fn Store::init_assets(Self) -> Unit
 pub fn Store::is_stalled(Self) -> Bool
 pub fn Store::mark_request(Self) -> Unit
 pub fn Store::new(shot~ : String, fake? : String?, wl_dir? : String, pw? : Bool, tmp_dir? : String, pump_ms? : Int32, data_dir? : String) -> Self

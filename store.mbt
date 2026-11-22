@@ -76,6 +76,13 @@ pub struct Store {
   missing_docs : Map[String, Bool]
   /// 素材（光标 PNG）和文档所在目录。相对文件名都按它拼。
   data_dir : String
+  /// 编进二进制的文档与光标素材（名字 → 字节）。
+  ///
+  /// 以前这些是 pages.mbt 里手抄的硬编码兜底，改磁盘文件忘了改兜底就会漂移。
+  /// 现在磁盘读不到时直接用构建时嵌入的那一份，两边永远是同一份。
+  embedded : Map[String, Bytes]
+  /// 素材实际所在的目录：磁盘上有就用 data_dir，否则是释放出来的临时目录
+  mut asset_dir : String
   /// 临时输出文件的目录。
   ///
   /// 不再直接落在 /tmp 根下：那个目录谁都能读、谁都能写，截图 0644 摆着，
@@ -129,6 +136,8 @@ pub fn Store::new(
     cursor_err: "",
     missing_docs: Map([]),
     data_dir,
+    embedded: @embed.decode_all(emb_paths, emb_data),
+    asset_dir: data_dir,
   }
 }
 
@@ -369,6 +378,69 @@ pub fn Store::data_path(self : Store, name : String) -> String {
     name
   } else {
     "\{self.data_dir}/\{name}"
+  }
+}
+
+///|
+/// 素材（光标 PNG）的路径。
+///
+/// 和文档分开：文档从 `data_dir` 读、读不到用嵌入的；素材是 C 侧按路径打开的，
+/// 磁盘上没有就得先落盘。`init_assets` 会决定到底从哪个目录取。
+pub fn Store::asset_path(self : Store, name : String) -> String {
+  if self.asset_dir == "" || name.has_prefix("/") {
+    name
+  } else {
+    "\{self.asset_dir}/\{name}"
+  }
+}
+
+///|
+/// 把内嵌的素材释放到临时目录，供 C 侧按路径读取。
+///
+/// C 的 `cursor_overlay` 要的是文件路径，不是内存，所以只能落盘。只补缺失的
+/// 文件：磁盘上有（用户自己换过素材）就整个用磁盘那份，不混着来。
+pub async fn Store::init_assets(self : Store) -> Unit {
+  let probe = "\{self.data_dir}/cursor-arrow.png"
+  if (@fs.exists(probe) catch { _ => false }) {
+    self.asset_dir = self.data_dir
+    return
+  }
+  self.asset_dir = self.tmp_dir
+  for
+    name in [
+      "cursor-arrow.png", "cursor-mask.png", "cursor-arrow-classic.png", "cursor-mask-classic.png",
+    ] {
+    let target = "\{self.tmp_dir}/\{name}"
+    if (@fs.exists(target) catch { _ => false }) {
+      continue
+    }
+    match self.embedded_bytes(name) {
+      Some(bytes) => {
+        let _ = @fs.write_file(target, bytes, create_mode=CreateOrTruncate) catch {
+          _ => ()
+        }
+      }
+      None => ()
+    }
+  }
+}
+
+///|
+/// 取内嵌的字节。键在生成时带前导斜杠（`/skill.md`），这里两种都认。
+fn Store::embedded_bytes(self : Store, name : String) -> Bytes? {
+  let key = if name.has_prefix("/") { name } else { "/\{name}" }
+  match self.embedded.get(key) {
+    Some(bytes) => Some(bytes)
+    None => self.embedded.get(name)
+  }
+}
+
+///|
+/// 取内嵌的文本（文档）。没有就返回 None。
+pub fn Store::embedded_text(self : Store, name : String) -> String? {
+  match self.embedded_bytes(name) {
+    Some(bytes) => Some(@utf8.decode_lossy(bytes))
+    None => None
   }
 }
 

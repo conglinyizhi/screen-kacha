@@ -258,6 +258,30 @@ check "重复启动退出码" 0 "$?"
 has "$(cat "$WORK/dup.log")" "已经被另一个" \
   && ok || bad "重复启动没给出原因"
 
+echo "== 没有数据目录也能用（文档与素材内嵌在二进制里）=="
+EMB_PORT=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
+EMB_SHM=$(mktemp -d "$WORK/emb.XXXXXX")
+MISSING_DATA="/tmp/screen-kacha-no-such-dir-$$"
+timeout 300 ./_build/native/debug/build/cmd/main/main.exe \
+  --port "$EMB_PORT" --bind 127.0.0.1 --pump 100 \
+  --shm "$EMB_SHM" --fake "$WORK/frame.png" --data "$MISSING_DATA" \
+  --access /dev/null >"$WORK/emb.log" 2>&1 &
+for _ in $(seq 1 50); do
+  curl -sf --max-time 1 "http://127.0.0.1:$EMB_PORT/health" >/dev/null 2>&1 && break
+  sleep 0.1
+done
+EB="http://127.0.0.1:$EMB_PORT"
+check "无数据目录：/skill.md" 200 "$(code $EB/skill.md)"
+has "$(curl -s --max-time 5 $EB/skill.md)" "screen-kacha" \
+  && ok || bad "内嵌的 skill.md 内容不对"
+check "无数据目录：/error.md" 200 "$(code $EB/error.md)"
+check "无数据目录：/llms.txt" 200 "$(code $EB/llms.txt)"
+check "无数据目录：/robots.txt" 200 "$(code $EB/robots.txt)"
+check "无数据目录：/human.html" 200 "$(code $EB/human.html)"
+# 光标素材要释放到帧目录，否则 C 侧按路径打不开
+[ -f "$EMB_SHM/cursor-arrow.png" ] && ok || bad "光标素材没有释放到帧目录"
+check "无数据目录：带光标取图" 200 "$(code "$EB/snapshot.jpg?cursor=1")"
+
 echo
 echo "通过 $PASS，失败 $FAIL"
 [ "$FAIL" -eq 0 ] || { echo "--- 服务日志 ---"; tail -20 "$PORT_LOG"; exit 1; }

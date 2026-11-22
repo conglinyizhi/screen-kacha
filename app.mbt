@@ -300,8 +300,8 @@ async fn build_image_response(
           Neg => ("", mask)
         }
         // 素材走 data_dir，不再依赖进程当前目录
-        let ov_path = store.data_path(ov)
-        let mk_path = if mk == "" { "" } else { store.data_path(mk) }
+        let ov_path = store.asset_path(ov)
+        let mk_path = if mk == "" { "" } else { store.asset_path(mk) }
         let out = store.next_tmp(fmt)
         // 要返回码，不能只要 Bool：失败的时候得知道是哪一步坏的
         let code = @image.cursor_overlay_code(
@@ -411,9 +411,7 @@ async fn handle_snapshot(
 
 ///|
 async fn handle_skill(store : Store, port : Int32) -> Resp {
-  handle_text_file(
-    store, "skill.md", "text/markdown; charset=utf-8", fallback_skill, port,
-  )
+  handle_text_file(store, "skill.md", "text/markdown; charset=utf-8", port)
 }
 
 ///|
@@ -434,9 +432,7 @@ pub fn build_router(store : Store, port : Int32, access : Access) -> Router {
       // 由那段脚本插到 #for_llm 前面。不执行 JS 的客户端只看到文本。
       make_res(200, "text/html; charset=utf-8", @utf8.encode(index_shell))
     } else {
-      handle_text_file(
-        store, "llms.txt", "text/plain; charset=utf-8", fallback_llms, port,
-      )
+      handle_text_file(store, "llms.txt", "text/plain; charset=utf-8", port)
     }
   })
   router.get("/for_human_use_browser.js", async fn(_ev) {
@@ -461,19 +457,13 @@ pub fn build_router(store : Store, port : Int32, access : Access) -> Router {
   })
   router.get("/skill.md", async fn(_ev) { handle_skill(store, port) })
   router.get("/error.md", async fn(_ev) {
-    handle_text_file(
-      store, "error.md", "text/markdown; charset=utf-8", fallback_error, port,
-    )
+    handle_text_file(store, "error.md", "text/markdown; charset=utf-8", port)
   })
   router.get("/robots.txt", async fn(_ev) {
-    handle_text_file(
-      store, "robots.txt", "text/plain; charset=utf-8", fallback_robots, port,
-    )
+    handle_text_file(store, "robots.txt", "text/plain; charset=utf-8", port)
   })
   router.get("/llms.txt", async fn(_ev) {
-    handle_text_file(
-      store, "llms.txt", "text/plain; charset=utf-8", fallback_llms, port,
-    )
+    handle_text_file(store, "llms.txt", "text/plain; charset=utf-8", port)
   })
   router.get("/:file", async fn(ev) {
     match ev.param("file") {
