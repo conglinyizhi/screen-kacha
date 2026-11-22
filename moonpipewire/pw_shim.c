@@ -114,11 +114,19 @@ static void *thread_main(void *arg) {
     return NULL;
 }
 
+/* 停止的顺序在下面，启动要先停旧的，所以提前声明。 */
+int32_t moonbit_pw_shim_stop(void);
+
 /* 启动抓帧流。返回 0 成功，负数是 -errno 或自定义错误码。 */
 MOONBIT_FFI_EXPORT
 int32_t moonbit_pw_shim_start(int32_t node_id, const char *app_name) {
+    /* 已经在跑就先停干净。
+     *
+     * 原来是 `if (g.started) return 0;`，直接报成功：调用方以为重连上了，
+     * 实际上还是那条（可能已经死掉的）流，之后一帧都拿不到。会话过期、
+     * KWin 重启这类场景正好会走这条路，于是“重连”永远是假的。 */
     if (g.started) {
-        return 0;
+        moonbit_pw_shim_stop();
     }
     memset(&g, 0, sizeof(g));
     pthread_mutex_init(&g.lock, NULL);

@@ -486,8 +486,35 @@ pub fn Store::source(self : Store) -> String {
 }
 
 ///|
+/// 后台 portal 监督循环每一轮该做什么。
+pub enum PortalStep {
+  /// 流还在，等下一轮再看
+  Watch
+  /// 流没了（从没连上，或者降级了），去重新申请一个 node
+  Reacquire
+}
+
+///|
+/// 降级之后必须继续去申请。
+///
+/// 「连上过一次就退出循环」是原来的 bug：会话过期或 KWin 重启之后
+/// `pw` 掉回 false，可循环已经结束了，服务就永久停在 spectacle 慢路径上。
+/// `/health` 还显示 `source=spectacle`，看着像「正常回退」，实际再也不会好。
+pub fn portal_step(pipewire_on : Bool) -> PortalStep {
+  if pipewire_on {
+    Watch
+  } else {
+    Reacquire
+  }
+}
+
+///|
 /// portal 拿到 node 之后切到 PipeWire 取帧。
+///
+/// 连之前先断开旧的：`pw_shim` 里「已经在跑就直接返回 0」的分支会拿上一个
+/// 可能已经死掉的流假装成功，调用方以为恢复了，实际上还是没帧。
 pub fn Store::enable_pipewire(self : Store, node : Int32) -> Bool {
+  self.pw_stream.disconnect()
   if self.pw_stream.connect(node) != 0 {
     eprintln("PipeWire 启动失败，继续用 spectacle")
     return false

@@ -110,16 +110,21 @@ async fn idle_loop(store : @store.Store, seconds : Int32) -> Unit {
 /// portal 首次可能需要人工授权，所以这里允许长时间等待，期间服务照常可用。
 async fn portal_bg(store : @store.Store, shm : String) -> Unit {
   for round = 0; ; round = round + 1 {
-    if store.pipewire_on() {
-      // 已经连上就慢慢看着：助手重启、会话过期时流会断，这里负责重新接
-      @async.sleep(15000)
-      continue
+    // 已经连上就慢慢看着：助手重启、会话过期时流会断。这里必须继续转，
+    // 不能连上就 return —— 那样 loop 就结束了，之后流断了没人接，
+    // 服务永久停在 spectacle 慢路径上。决策本身在 portal_step 里，好测。
+    match @store.portal_step(store.pipewire_on()) {
+      Watch => {
+        @async.sleep(15000)
+        continue
+      }
+      Reacquire => ()
     }
     eprintln(
       "后台尝试通过 portal 获取屏幕流（第 \{round + 1} 次）",
     )
     match @store.acquire_portal_node(shm) {
-      Some(id) => if store.enable_pipewire(id) { return }
+      Some(id) => store.enable_pipewire(id) |> ignore
       None => eprintln("portal 这次没给出 node")
     }
     @async.sleep(30000)

@@ -267,3 +267,15 @@ test "age 非法格式返回 None" {
   assert_true(parse_seconds_ms("1 2") is None)
   assert_true(parse_seconds_ms("0x10") is None)
 }
+
+///|
+/// 降级之后必须继续去申请，不能退出监督循环。
+///
+/// 原来的 `portal_bg` 第一次连上就 `return`，for 循环直接结束。之后会话过期、
+/// KWin 重启让 `pw` 掉回 false，没有任何人再去申请，服务就永久停在 spectacle
+/// 慢路径上，而 `/health` 只显示 `source=spectacle`，看着像「正常回退」。
+/// 这条锁的是「降级 = 还要去要」这个判断，别让它再变成退出。
+test "PipeWire 降级后仍然要去重新申请" {
+  assert_true(portal_step(true) is Watch)
+  assert_true(portal_step(false) is Reacquire)
+}
