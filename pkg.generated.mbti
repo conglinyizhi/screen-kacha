@@ -13,7 +13,7 @@ pub async fn acquire_portal_node(String) -> Int32?
 
 pub fn build_app(Store, Int32) -> @crescent.App
 
-pub fn cursor_args(CursorStyle, String, String, Int32, Int32, String, String, Int32?) -> Array[String]
+pub fn cursor_args(CursorStyle, String, String, Int32, Int32, String, String, Int32, Int32, Int32?) -> Array[String]
 
 pub fn default_magick_candidates() -> Array[String]
 
@@ -33,7 +33,7 @@ pub fn not_found_text(String) -> String
 
 pub fn parse_access(String) -> Access
 
-pub fn parse_cursor(String?) -> CursorStyle?
+pub fn parse_cursor(String?) -> Cursor?
 
 pub fn parse_cursor_pos_text(String) -> (Int32, Int32)?
 
@@ -62,6 +62,12 @@ pub fn Access::default() -> Self
 pub fn Access::describe(Self) -> String
 pub fn Access::open() -> Self
 pub fn Access::restricted(Self) -> Bool
+
+pub struct Cursor {
+  style : CursorStyle
+  classic : Bool
+}
+pub fn Cursor::assets(Self) -> (String, String, Int32, Int32)
 
 pub enum CursorStyle {
   Soft

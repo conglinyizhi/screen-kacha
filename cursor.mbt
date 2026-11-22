@@ -12,16 +12,24 @@
 /// - `2`：把箭头覆盖的像素反色，深浅背景都清楚，但会盖住内容
 
 ///|
-/// 箭头素材的像素尺寸。负片要按这个尺寸裁剪底下的像素，
-/// 所以它必须和 `cursor-mask.png` 一致，改素材时一起改。
+/// 新版（无尾巴）素材的像素尺寸：29x41，宽高比 0.674，贴近真光标。
 ///
-/// 29x41 是「去掉尾巴」那版（宽高比 0.674，贴近真光标）。
-/// 旧的带尾巴版本还留在 contrib/cursor-*-classic.png，尺寸 29x40，
-/// 两者不能混用 —— 负片裁切的尺寸要跟当前素材对上。
+/// 负片模式要按这个尺寸裁底下的像素，所以它必须和 `cursor-arrow.png`
+/// 以及 `cursor-mask.png` 严格一致，换素材时一起改。
 const CURSOR_W : Int32 = 29
 
 ///|
 const CURSOR_H : Int32 = 41
+
+///|
+/// 旧版（带尾巴）素材的像素尺寸：29x40。
+///
+/// 和新的差一行。两套不能混用 —— 负片裁切按这边的尺寸走，
+/// 用错就会少裁一行、边缘错位。
+const CURSOR_W_CLASSIC : Int32 = 29
+
+///|
+const CURSOR_H_CLASSIC : Int32 = 40
 
 ///|
 pub enum CursorStyle {
@@ -30,18 +38,66 @@ pub enum CursorStyle {
 }
 
 ///|
+/// 一次绘制请求要用的光标：样式 + 用哪套素材。
+///
+/// 现在有两套素材，形状不同：
+///
+/// - 新版（无尾巴）29x41，`cursor-arrow.png`
+/// - 旧版（带尾巴）29x40，`cursor-arrow-classic.png`
+///
+/// 两者的尺寸不一样，而负片模式要按素材尺寸裁底下的像素，
+/// 所以「用哪套」和「裁多大」必须一起决定，不能分开算。
+pub struct Cursor {
+  style : CursorStyle
+  classic : Bool
+}
+
+///|
 /// 解析 `?cursor=` 的值。返回 None 表示这次不画。
-pub fn parse_cursor(v : String?) -> CursorStyle? {
+pub fn parse_cursor(v : String?) -> Cursor? {
   match v {
     // 不带参数：保持默认（当前就是不画）。以后默认要改就改这里一处。
     None => None
     Some(raw) =>
       match raw.trim().to_owned() {
-        "1" => Some(Soft)
-        "2" => Some(Neg)
+        "1" => Some({ style: Soft, classic: false, })
+        "2" => Some({ style: Neg, classic: false, })
+        "3" => Some({ style: Soft, classic: true, })
+        "4" => Some({ style: Neg, classic: true, })
         // "0" 和任何写错的值都不画 —— 写错了还悄悄画上去最坑
         _ => None
       }
+  }
+}
+
+///|
+/// 这套光标用哪两个素材文件、以及素材的像素尺寸。
+///
+/// 返回 (箭头图, 蒙版图, 宽, 高)。负片分支拿蒙版去裁底下的像素，
+/// 尺寸必须和素材严格一致，差一行就会错位。
+pub fn Cursor::assets(self : Cursor) -> (String, String, Int32, Int32) {
+  if self.classic {
+    match self.style {
+      Soft =>
+        (
+          "cursor-arrow-classic.png",
+          "cursor-mask-classic.png",
+          CURSOR_W_CLASSIC,
+          CURSOR_H_CLASSIC,
+        )
+      Neg =>
+        (
+          "cursor-mask-classic.png",
+          "cursor-mask-classic.png",
+          CURSOR_W_CLASSIC,
+          CURSOR_H_CLASSIC,
+        )
+    }
+  } else {
+    match self.style {
+      Soft => ("cursor-arrow.png", "cursor-mask.png", CURSOR_W, CURSOR_H)
+      Neg => ("cursor-mask.png", "cursor-mask.png", CURSOR_W, CURSOR_H)
+    }
   }
 }
 
@@ -157,6 +213,8 @@ pub fn cursor_args(
   y : Int32,
   arrow : String,
   mask : String,
+  cursor_w : Int32,
+  cursor_h : Int32,
   width : Int32?,
 ) -> Array[String] {
   let args : Array[String] = [src]
@@ -174,7 +232,7 @@ pub fn cursor_args(
       args.push("(")
       args.push("+clone")
       args.push("-crop")
-      args.push("\{CURSOR_W}x\{CURSOR_H}+\{x}+\{y}")
+      args.push("\{cursor_w}x\{cursor_h}+\{x}+\{y}")
       args.push("+repage")
       args.push("-negate")
       args.push("(")

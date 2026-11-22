@@ -149,7 +149,7 @@ async fn build_image_response(
   data : Bytes,
   width : Int32?,
   fmt : String,
-  cursor : CursorStyle?,
+  cursor : Cursor?,
 ) -> @crescent.HttpResponse {
   let ctype = if fmt == "webp" { "image/webp" } else { "image/jpeg" }
   // 要在图上画光标：一律走 magick，哪怕原始尺寸直出也要多跑一趟。
@@ -167,26 +167,25 @@ async fn build_image_response(
       { "X-Screenstream-Fallback": "no-magick" },
     )
   }
-  if cursor is Some(style) {
+  if cursor is Some(cur) {
     match read_cursor_pos(store.cursor_pos_path()) {
       Some((cx, cy)) => {
-        let (arrow, mask) = match style {
-          Soft => ("cursor-arrow.png", "cursor-mask.png")
-          Neg => ("cursor-mask.png", "cursor-mask.png")
-        }
+        let (arrow, mask, cursor_w, cursor_h) = cur.assets()
         let out = store.next_tmp(fmt)
         let magick = match store.magick() {
           Some(m) => m
           None => ""
         }
         let args = cursor_args(
-          style,
+          cur.style,
           store.shot(),
           out,
           cx,
           cy,
           arrow,
           mask,
+          cursor_w,
+          cursor_h,
           width,
         )
         let ok = @process.run(magick, args) catch { _ => 1 }
