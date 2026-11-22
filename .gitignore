@@ -4,3 +4,5 @@ target/
 target
 .mooncakes/
 .moonagent/
+# 测试探针留下的临时文件
+cwd-probe.txt
