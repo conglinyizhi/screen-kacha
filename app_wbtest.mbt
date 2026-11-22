@@ -279,3 +279,19 @@ test "PipeWire 降级后仍然要去重新申请" {
   assert_true(portal_step(true) is Watch)
   assert_true(portal_step(false) is Reacquire)
 }
+
+///|
+/// accept 出错要退避重试，只有连着失败很久才认输。
+///
+/// 原来是 `catch { _ => break }`：EMFILE / ECONNABORTED / EINTR 都被当成
+/// 「正常收工」，循环直接退出，进程以 0 结束。单元写的是 Restart=on-failure，
+/// systemd 不会拉起，服务静默消失。这条锁住「别一有错就认输」。
+test "accept 连续失败要给够次数才放弃" {
+  assert_false(accept_gave_up(0))
+  assert_false(accept_gave_up(1))
+  // 瞬时错误连着来几次很常见，不能在这时候就退出
+  assert_false(accept_gave_up(10))
+  assert_false(accept_gave_up(99))
+  assert_true(accept_gave_up(100))
+  assert_true(accept_gave_up(101))
+}

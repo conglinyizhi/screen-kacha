@@ -16,6 +16,27 @@ const WRITE_TIMEOUT_MS : Int32 = 15000
 const REJECT_TIMEOUT_MS : Int32 = 2000
 
 ///|
+/// accept 连续失败到这个次数就认定监听坏了，需要死掉等重启。
+///
+/// 阈值给足：瞬时错误（对端中途跑掉、信号打断）连着来几次很正常，
+/// 攒到 100 次、每次退避 20ms，意味着已经持续两秒完全接不到连接。
+const ACCEPT_MAX_CONSEC_FAILS : Int32 = 100
+
+///|
+/// accept 失败后的退避。EMFILE 要等 fd 还回来，空转会烧 CPU。
+const ACCEPT_RETRY_SLEEP_MS : Int32 = 20
+
+///|
+/// 连续失败到这个次数就放弃，交给 systemd 重启。
+pub fn accept_gave_up(consecutive : Int32) -> Bool {
+  consecutive >= ACCEPT_MAX_CONSEC_FAILS
+}
+
+///|
+/// 以非零码立刻结束进程。
+extern "c" fn exit_now(code : Int32) -> Unit = "moonbit_screenstream_exit"
+
+///|
 /// 带访问控制的监听循环。
 ///
 /// crescent 的 `serve_on` 在 accept 之后就把地址丢了，拿不到对端 IP，
@@ -43,23 +64,51 @@ pub async fn serve_with_access(
   let limit = if max_conns > 0 { max_conns } else { 256 }
   let gate = @async.Semaphore(limit)
   @async.with_task_group(group => {
+    let mut accept_errs = 0
     for ;; {
-      let (conn, addr) = server.accept() catch { _ => break }
-      let peer = addr.to_string()
-      if !access.allows(peer) {
-        // 拒绝也要 spawn：读请求可能永远等不到数据，
-        // 在循环里等会把整个服务卡死，这不只是慢，是可用性问题。
-        group.spawn_bg(no_wait=true, allow_failure=true, () => {
-          reject(conn, peer)
-        })
-        continue
+      // accept 出错不要 break。
+      //
+      // 原来写的是 `catch { _ => break }`：EMFILE（fd 用光）、ECONNABORTED
+      // （对端在握手途中跑了）、EINTR 全都当成「正常收工」，循环退出、
+      // 进程以 0 结束，而单元写的是 Restart=on-failure —— systemd 不会拉起，
+      // 服务就这么静默消失，日志里只有启动那两行。
+      let accepted = Some(server.accept()) catch {
+        err => {
+          accept_errs = accept_errs + 1
+          if accept_gave_up(accept_errs) {
+            eprintln(
+              "accept 连续失败 \{accept_errs} 次，监听已经不可用：\{err}",
+            )
+            // 非零退出，让 systemd 按 Restart= 重新拉起
+            exit_now(1)
+          }
+          // 退一步再试：EMFILE 这类等 fd 还回来就能恢复，
+          // 立刻重试只会在错误上空转烧 CPU
+          @async.sleep(ACCEPT_RETRY_SLEEP_MS)
+          None
+        }
       }
-      // 放行的连接占一个槽位；满了就停在 accept 上形成背压
-      gate.acquire()
-      group.spawn_bg(no_wait=true, allow_failure=true, () => {
-        defer gate.release()
-        handle_one(app, conn)
-      })
+      match accepted {
+        None => continue
+        Some((conn, addr)) => {
+          accept_errs = 0
+          let peer = addr.to_string()
+          if !access.allows(peer) {
+            // 拒绝也要 spawn：读请求可能永远等不到数据，
+            // 在循环里等会把整个服务卡死，这不只是慢，是可用性问题。
+            group.spawn_bg(no_wait=true, allow_failure=true, () => {
+              reject(conn, peer)
+            })
+            continue
+          }
+          // 放行的连接占一个槽位；满了就停在 accept 上形成背压
+          gate.acquire()
+          group.spawn_bg(no_wait=true, allow_failure=true, () => {
+            defer gate.release()
+            handle_one(app, conn)
+          })
+        }
+      }
     }
   })
 }

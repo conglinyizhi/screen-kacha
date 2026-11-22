@@ -10,7 +10,7 @@ Environment=WAYLAND_DISPLAY=@WAYLAND@
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
 Environment=PATH=@BIN@:/usr/local/bin:/usr/bin
 ExecStart=@BIN@/screenstream-mb-tray --port @PORT@
-Restart=on-failure
+Restart=always
 RestartSec=3
 
 [Install]

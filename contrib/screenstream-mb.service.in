@@ -15,7 +15,7 @@ Environment=XDG_RUNTIME_DIR=%t
 Environment=WAYLAND_DISPLAY=@WAYLAND@
 Environment=PATH=@BIN@:/usr/local/bin:/usr/bin
 ExecStart=@BIN@/screenstream-mb --port @PORT@ --bind @BIND@ --source auto --shm %t/screenstream
-Restart=on-failure
+Restart=always
 RestartSec=3
 TimeoutStopSec=10
 NoNewPrivileges=yes
