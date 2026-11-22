@@ -132,6 +132,12 @@ curl -s -o /dev/null --max-time 10 "$B/snapshot.jpg?age=5"
 T1=$(date +%s%N)
 MS=$(( (T1-T0)/1000000 ))
 [ "$MS" -lt 200 ] && ok || bad "age=5 应命中缓存，实际 ${MS}ms"
+# 小数位不封顶的那次，`0.` 加 64 个 0 会让除数回绕成 0，一个 GET 就把服务
+# SIGFPE 打死。这里打一发，再看服务还活着没有。
+LONGZERO=$(printf '0%.0s' $(seq 1 64))
+check "超长 age 不再打崩服务" 200 "$(code "$B/snapshot.jpg?age=0.$LONGZERO")"
+check "超长 age 之后服务仍在" 200 "$(code $B/snapshot.jpg)"
+check "超界小数 age 被拒仍是 200" 200 "$(code "$B/snapshot.jpg?age=0.1234567890")"
 HEALTH=$(curl -s --max-time 5 $B/health)
 has "$HEALTH" '"ok": true' && ok || bad "health 的 ok 不是 true"
 has "$HEALTH" '"fails": 0' && ok || bad "health 里 fails 不为 0"

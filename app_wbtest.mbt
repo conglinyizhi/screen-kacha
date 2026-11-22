@@ -230,3 +230,40 @@ test "ascii_lower 只动字母" {
   assert_eq(ascii_lower("aBc-123"), "abc-123")
   assert_eq(ascii_lower(""), "")
 }
+
+///|
+/// `age` 的解析必须有长度上限。
+///
+/// 没有上限时，`0.` 后面跟 64 个 0 会让 frac_scale 乘过 Int64 回绕成 0，
+/// 最后那步 `frac * 1000 / frac_scale` 直接除零，进程 SIGFPE 死掉。
+/// 一个 GET 就能把服务打崩，所以这条要锁死。
+test "age 小数位数有上限，不会除零" {
+  // 正常值先锁住，免得修过头
+  assert_eq(parse_seconds_ms("5"), Some(5000L))
+  assert_eq(parse_seconds_ms("0.05"), Some(50L))
+  assert_eq(parse_seconds_ms("1.5"), Some(1500L))
+  assert_eq(parse_seconds_ms(".5"), Some(500L))
+  assert_eq(parse_seconds_ms("60."), Some(60000L))
+  // 崩溃用例：64 个 0
+  let long = StringBuilder()
+  long.write_string("0.")
+  for _ in 0..<64 {
+    long.write_char('0')
+  }
+  assert_true(parse_seconds_ms(long.to_string().exact_view()) is None)
+  // 刚刚超出上限的小数位数
+  assert_true(parse_seconds_ms("0.1234567890") is None)
+  // 整数部分同样不能无限长
+  assert_true(parse_seconds_ms("1234567890") is None)
+}
+
+///|
+/// 格式不对一律 None，不猜。
+test "age 非法格式返回 None" {
+  assert_true(parse_seconds_ms("") is None)
+  assert_true(parse_seconds_ms("abc") is None)
+  assert_true(parse_seconds_ms("1.2.3") is None)
+  assert_true(parse_seconds_ms("-1") is None)
+  assert_true(parse_seconds_ms("1 2") is None)
+  assert_true(parse_seconds_ms("0x10") is None)
+}

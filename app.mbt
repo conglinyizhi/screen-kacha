@@ -9,14 +9,31 @@ fn digit_of(c : UInt16) -> Int32 {
 }
 
 ///|
+/// 整数部分最多几位。输出是毫秒，六位够到 999999 秒。
+const AGE_INT_DIGITS : Int32 = 6
+
+///|
+/// 小数部分最多几位。输出精度到毫秒，三位之后没有意义。
+const AGE_FRAC_DIGITS : Int32 = 3
+
+///|
 /// 解析查询参数里的秒数，支持整数和小数，返回毫秒。
+///
+/// 位数必须封顶。不封的话 `0.` 后面跟 64 个 0 会让 `frac_scale` 乘过
+/// Int64 回绕成 0（10^64 正好是 2^64 的整数倍），最后一步除零，
+/// 进程直接 SIGFPE 死掉。一个 GET 就能打崩服务，所以这里挡两道：
+/// 先看总长度，再看分段位数。
 fn parse_seconds_ms(s : StringView) -> Int64? {
-  if s.length() == 0 {
+  // 六位整数 + 小数点 + 三位小数
+  if s.length() == 0 ||
+    s.length() > AGE_INT_DIGITS + 1 + AGE_FRAC_DIGITS {
     return None
   }
   let mut int_part = 0L
   let mut frac = 0L
   let mut frac_scale = 1L
+  let mut int_digits = 0
+  let mut frac_digits = 0
   let mut seen_dot = false
   for i in 0..<s.length() {
     let c = s[i]
@@ -30,9 +47,14 @@ fn parse_seconds_ms(s : StringView) -> Int64? {
     guard is_digit(c) else { return None }
     let d = digit_of(c).to_int64()
     if seen_dot {
+      // 多写的小数位直接拒绝，不悄悄截断：写错了还照着跑最坑
+      guard frac_digits < AGE_FRAC_DIGITS else { return None }
+      frac_digits = frac_digits + 1
       frac_scale = frac_scale * 10L
       frac = frac * 10L + d
     } else {
+      guard int_digits < AGE_INT_DIGITS else { return None }
+      int_digits = int_digits + 1
       int_part = int_part * 10L + d
     }
   }
