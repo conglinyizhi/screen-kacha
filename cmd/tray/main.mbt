@@ -193,6 +193,24 @@ fn write_access(lan : Bool, public : Bool, cgnat : Bool) -> Bool {
 ///|
 /// 在保留原有内容的前提下，改掉 allow_lan / allow_public / allow_cgnat 三行。
 /// 没有这两行就追加，其它行（注释、allow 名单、未知键）原样留着。
+///|
+/// 取一行配置的 key（`=` 左边，去掉空白）。空行和注释返回 None。
+///
+/// 服务端的 `access.mbt` 里有一份同样的 `config_line_key`。这里没有共用是
+/// 有意的：托盘不链接根包，引进来会把 pipewire / jpeg / webp / png 的链接参数
+/// 一起拖进这个只做 SNI 的小程序。两份实现都很小，改的时候要一起改。
+fn config_key(line : String) -> String? {
+  let s : String = line.trim().to_owned()
+  if s == "" || s.has_prefix("#") {
+    return None
+  }
+  match s.find("=") {
+    None => None
+    Some(eq) => Some(s[:eq].trim().to_owned())
+  }
+}
+
+///|
 fn rewrite_flags(
   old : String?,
   lan : Bool,
@@ -209,14 +227,19 @@ fn rewrite_flags(
   let mut seen_cgnat = false
   for line in src.split("\n") {
     let s : String = line.to_owned()
-    let t : String = s.trim().to_owned()
-    if t.has_prefix("allow_lan") && t.contains("=") {
+    // 按完整 key 比对，不用前缀。未知键（`allow_lan_next` 之类）原样留着，
+    // 服务端只认 key 完全相等的行，改写了反而让两边理解不一致。
+    let key = match config_key(s) {
+      Some(k) => k
+      None => ""
+    }
+    if key == "allow_lan" {
       sb.write_string("allow_lan = \{lan}\n")
       seen_lan = true
-    } else if t.has_prefix("allow_public") && t.contains("=") {
+    } else if key == "allow_public" {
       sb.write_string("allow_public = \{public}\n")
       seen_public = true
-    } else if t.has_prefix("allow_cgnat") && t.contains("=") {
+    } else if key == "allow_cgnat" {
       sb.write_string("allow_cgnat = \{cgnat}\n")
       seen_cgnat = true
     } else if s != "" {

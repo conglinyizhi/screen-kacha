@@ -101,3 +101,17 @@ test "描述里标出额外豁免" {
   )
   assert_false(parse_access("").describe().contains("100.64/10"))
 }
+
+///|
+/// key 要按完整名字取，注释和空行不算。
+///
+/// 托盘原来是前缀匹配：`allow_lan_next = false` 会被改写成
+/// `allow_lan = <值>`，而服务端只认 key 完全相等的行。
+test "config_line_key 取完整 key" {
+  assert_eq(config_line_key("allow_lan = true"), Some("allow_lan"))
+  assert_eq(config_line_key("  allow = 1.2.3.4 "), Some("allow"))
+  assert_eq(config_line_key("allow_lan_next = false"), Some("allow_lan_next"))
+  assert_true(config_line_key("# allow_lan = true") is None)
+  assert_true(config_line_key("") is None)
+  assert_true(config_line_key("没有等号") is None)
+}

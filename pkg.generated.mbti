@@ -17,6 +17,8 @@ pub fn build_app(Store, Int32, Access) -> @crescent.App
 
 pub fn clean_stale_frames(String, String, String) -> Int32
 
+pub fn config_line_key(String) -> String?
+
 pub async fn forget_portal_node(String) -> Unit
 
 pub fn frame_is_stalled(Int64, Int64, Int32) -> Bool
@@ -108,6 +110,10 @@ pub struct Store {
   pump_ms : Int32
   mut err : String
   mut seq : Int32
+  mut cursor_fails : Int32
+  mut cursor_err : String
+  missing_docs : Map[String, Bool]
+  data_dir : String
   tmp_dir : String
 }
 pub fn Store::age_ms(Self) -> Int64
@@ -115,7 +121,10 @@ pub fn Store::bytes(Self) -> Bytes?
 pub fn Store::cap_ms(Self) -> Int64
 pub fn Store::consec_fails(Self) -> Int32
 pub fn Store::count(Self) -> Int32
+pub fn Store::cursor_err(Self) -> String
+pub fn Store::cursor_fails(Self) -> Int32
 pub fn Store::cursor_pos_path(Self) -> String
+pub fn Store::data_path(Self, String) -> String
 pub fn Store::enable_pipewire(Self, Int32) -> Bool
 pub async fn Store::ensure(Self, Int64) -> Unit
 pub fn Store::err(Self) -> String
@@ -123,8 +132,11 @@ pub fn Store::fails(Self) -> Int32
 pub fn Store::idle_ms(Self) -> Int64
 pub fn Store::is_stalled(Self) -> Bool
 pub fn Store::mark_request(Self) -> Unit
-pub fn Store::new(shot~ : String, fake? : String?, wl_dir? : String, pw? : Bool, tmp_dir? : String, pump_ms? : Int32) -> Self
+pub fn Store::new(shot~ : String, fake? : String?, wl_dir? : String, pw? : Bool, tmp_dir? : String, pump_ms? : Int32, data_dir? : String) -> Self
 pub fn Store::next_tmp(Self, String) -> String
+pub fn Store::note_cursor_fail(Self, String) -> Unit
+pub fn Store::note_cursor_ok(Self) -> Unit
+pub fn Store::note_missing_doc(Self, String) -> Bool
 pub fn Store::pipewire_on(Self) -> Bool
 pub fn Store::pw_raw(Self) -> (String, Int32, Int32)?
 pub fn Store::shot(Self) -> String

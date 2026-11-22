@@ -182,18 +182,35 @@ pub fn Access::allows(self : Access, peer : String) -> Bool {
 }
 
 ///|
+/// 取一行配置的 key（`=` 左边，去掉空白）。空行和注释返回 None。
+///
+/// 服务端和托盘共用这一个判定。托盘原来是 `has_prefix("allow_lan")`，
+/// 于是 `allow_lan_next = false` 这种未知键会被改写成 `allow_lan = <值>`，
+/// 而服务端只认 key 完全相等的行。
+pub fn config_line_key(line : String) -> String? {
+  let s : String = line.trim().to_owned()
+  if s == "" || s.has_prefix("#") {
+    return None
+  }
+  match s.find("=") {
+    None => None
+    Some(eq) => Some(s[:eq].trim().to_owned())
+  }
+}
+
+///|
 /// 解析配置。坏行忽略；老配置里的 `local_only = true` 仍然认。
 pub fn parse_access(text : String) -> Access {
   let a = Access::default()
   for line in text.split("\n") {
     let s : String = line.trim().to_owned()
-    if s == "" || s.has_prefix("#") {
-      continue
+    let key : String = match config_line_key(s) {
+      Some(k) => k
+      None => continue
     }
     match s.find("=") {
       None => ()
       Some(eq) => {
-        let key : String = s[:eq].trim().to_owned()
         let value : String = s[eq + 1:].trim().to_owned()
         let on = value == "true" || value == "1" || value == "yes"
         if key == "allow_lan" {

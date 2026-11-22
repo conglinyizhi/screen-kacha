@@ -2,6 +2,7 @@
 // 所以这里补两个最小的 C 入口：起一个 shell 命令，或者同步抓一段输出。
 #include <moonbit.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -66,10 +67,36 @@ int moonbit_screenstream_write_file(const char *path, const char *data) {
       buf[i] = '/';
     }
   }
-  FILE *f = fopen(path, "w");
-  if (f == NULL) return -1;
-  fputs(data, f);
-  fclose(f);
+  /* 先写临时文件再 rename。
+   *
+   * 原来是 fopen(path,"w") 直接截断：写完之前主服务要是正在读，读到半截
+   * 会让 parse_access 退回默认值（默认 allow_lan = true），安全开关就翻到
+   * 放开那一侧。tmp + rename 是原子的，读到的要么是旧内容要么是新内容。
+   * 权限 0600：配置里装的是安全开关，不需要给同机其它用户看。 */
+  char tmp[1100];
+  if ((size_t)snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= sizeof(tmp)) {
+    return -1;
+  }
+  int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (fd < 0) return -1;
+  size_t len = strlen(data);
+  size_t off = 0;
+  while (off < len) {
+    ssize_t w = write(fd, data + off, len - off);
+    if (w <= 0) {
+      close(fd);
+      unlink(tmp);
+      return -1;
+    }
+    off += (size_t)w;
+  }
+  fchmod(fd, 0600);
+  fsync(fd);
+  close(fd);
+  if (rename(tmp, path) != 0) {
+    unlink(tmp);
+    return -1;
+  }
   return 0;
 }
 
