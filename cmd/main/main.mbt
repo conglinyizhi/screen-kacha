@@ -44,8 +44,13 @@ fn cli_cmd() -> @argparse.Command {
       default_values=[""],
     ),
     @argparse.OptionArg(
+      "pump-idle",
+      about="没人取图时后台泵放慢到的间隔（毫秒）",
+      default_values=["3000"],
+    ),
+    @argparse.OptionArg(
       "source",
-      about="取帧来源：auto / pipewire / spectacle",
+      about="取帧来源：auto 和 pipewire 都是优先 PipeWire（拿不到退回 spectacle），spectacle 只用 spectacle",
       default_values=["auto"],
     ),
     @argparse.OptionArg(
@@ -108,6 +113,15 @@ async fn idle_loop(store : @store.Store, seconds : Int32) -> Unit {
     @async.sleep(seconds * 1000)
     store.ensure(0L)
   }
+}
+
+///|
+/// `--source` 的合法取值。
+///
+/// 非法值原来被静默当成 auto：用户写了 `--source spectacl`，以为限定了取帧方式，
+/// 实际照旧优先 PipeWire。启动就报错比事后查 /health 便宜。
+pub fn source_valid(s : String) -> Bool {
+  s == "auto" || s == "pipewire" || s == "spectacle"
 }
 
 ///|
@@ -188,6 +202,12 @@ async fn main {
   let fake = pick(m, "fake", "")
   let pw_node = parse_int(pick(m, "pw-node", "0"), 0)
   let source = pick(m, "source", "auto")
+  if !source_valid(source) {
+    eprintln(
+      "--source 只认 auto / pipewire / spectacle，收到的是「\{source}」",
+    )
+    @store.exit_process(2)
+  }
   let shm = pick(m, "shm", "/tmp/screenstream-mb")
   let data_dir = pick(m, "data", ".")
   let max_conns = parse_int(pick(m, "max-conns", "64"), 64)
@@ -275,8 +295,7 @@ async fn main {
   // 光标素材缺了不致命，但必须说一声：否则 ?cursor=1 会一直返回没箭头的图，
   // 从外面看不出区别。
   let cursor_assets : Array[String] = [
-    "cursor-arrow.png", "cursor-mask.png", "cursor-arrow-classic.png",
-    "cursor-mask-classic.png",
+    "cursor-arrow.png", "cursor-mask.png", "cursor-arrow-classic.png", "cursor-mask-classic.png",
   ]
   for name in cursor_assets {
     let path = store.data_path(name)

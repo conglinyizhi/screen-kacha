@@ -23,9 +23,13 @@ pub fn config_line_key(String) -> String?
 
 pub fn config_warnings(String) -> Array[String]
 
+pub fn exit_process(Int32) -> Unit
+
 pub async fn forget_portal_node(String) -> Unit
 
 pub fn frame_is_stalled(Int64, Int64, Int32) -> Bool
+
+pub fn host_allowed(String) -> Bool
 
 pub fn is_cgnat(String) -> Bool
 

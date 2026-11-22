@@ -61,6 +61,12 @@ pub fn reject_slots(max_conns : Int32) -> Int32 {
 extern "c" fn exit_now(code : Int32) -> Unit = "moonbit_screenstream_exit"
 
 ///|
+/// 给别的包用的版本（本包内部的 extern 不对外）。
+pub fn exit_process(code : Int32) -> Unit {
+  exit_now(code)
+}
+
+///|
 /// 带访问控制的监听循环。
 ///
 /// crescent 的 `serve_on` 在 accept 之后就把地址丢了，拿不到对端 IP，

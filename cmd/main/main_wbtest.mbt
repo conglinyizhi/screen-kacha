@@ -62,3 +62,30 @@ test "base_name 取路径最后一段" {
   assert_eq(base_name("/"), "")
   assert_eq(base_name(""), "")
 }
+
+///|
+/// --source 只认三个值，写错了启动就报错。
+///
+/// 原来非法值被静默当成 auto：用户写 `--source spectacl` 以为限定了取帧方式，
+/// 实际照旧优先 PipeWire。
+test "source 只认 auto / pipewire / spectacle" {
+  assert_true(source_valid("auto"))
+  assert_true(source_valid("pipewire"))
+  assert_true(source_valid("spectacle"))
+  assert_false(source_valid("spectacl"))
+  assert_false(source_valid(""))
+  assert_false(source_valid("Auto"))
+}
+
+///|
+/// --pump-idle 现在真的接在 CLI 上。
+///
+/// 原来 main 里去 pick 它，但 cli_cmd 里没声明：用户真传会被 argparse
+/// 当成未知参数直接退出，空闲泵间隔事实上是硬编码的。
+test "pump-idle 是声明过的参数" {
+  let cmd = cli_cmd()
+  let m = cmd.parse(argv=["--pump-idle", "5000"])
+  assert_eq(pick(m, "pump-idle", "3000"), "5000")
+  let d = cmd.parse(argv=[])
+  assert_eq(pick(d, "pump-idle", "3000"), "3000")
+}

@@ -2,6 +2,7 @@
 package "conglinyizhi/screenstream/cmd/main"
 
 // Values
+pub fn source_valid(String) -> Bool
 
 // Errors
 
