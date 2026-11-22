@@ -66,6 +66,10 @@ check "带 Accept 的 / 回 HTML" "text/html; charset=utf-8" \
 # 用 meta 而不是 302 是为了不坑不跟随重定向的 agent 客户端。
 curl -s --max-time 5 -H 'Accept: text/html' $B/ \
   | grep -q 'http-equiv="refresh".*url=/human.html' && ok || bad "/ 的浏览器分支不是跳转中间页"
+# 中间页还得对「发了 text/html 的 LLM/自动化客户端」有用：
+# 它们会被跳转带走，但至少要知道去读 llms.txt
+curl -s --max-time 5 -H 'Accept: text/html' $B/ \
+  | grep -q '/llms.txt' && ok || bad "/ 的中间页没给 LLM 留 llms.txt 指引"
 check "/health 状态" 200 "$(code $B/health)"
 check "/health 类型" "application/json" "$(ctype $B/health)"
 check "/skill.md 类型" "text/markdown; charset=utf-8" "$(ctype $B/skill.md)"

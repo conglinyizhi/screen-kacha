@@ -37,16 +37,23 @@ pub fn wants_html(accept : String?) -> Bool {
 ///   被误导成"内容就是这一行"。
 /// - 浏览器地址栏会变成 `/human.html`，链接可以直接分享。
 ///
-/// 页面本身做得尽量小：一行提示 + 一个真链接兜底。
-/// 不执行跳转的客户端（比如纯文本浏览器、带 noscript 的）至少能看到链接。
+/// 页面本身做得尽量小：只有 refresh 和几行纯文本。
+///
+/// 那几行是给「发了 Accept: text/html 的 LLM/自动化客户端」看的 ——
+/// 它们会被跳转带走，需要在这里就能看到「去读 llms.txt」，
+/// 否则拿到的就是一个空壳页面。
+///
+/// 不写「正在跳转…」这类话：它们对机器没有信息量，对人也是多余的。
 let human_redirect : String =
   $|<!doctype html><meta charset="utf-8">
   $|<title>screenstream</title>
   $|<meta http-equiv="refresh" content="0; url=/human.html">
-  $|<link rel="canonical" href="/human.html">
-  $|<body style="font:15px system-ui;padding:2em;background:#161618;color:#e6e6e8">
-  $|<p>正在转到 <a href="/human.html" style="color:#4ad0e8">/human.html</a>…</p>
-  $|<noscript><p style="color:#8b8b93">浏览器没有自动跳转，点上面的链接。</p></noscript>
+  $|<pre>
+  $|screenstream — 本机屏幕快照服务
+  $|
+  $|浏览器会自动跳到 /human.html（人看的页面）
+  $|程序或 LLM 请读 /llms.txt（端点索引和参数说明）
+  $|</pre>
 
 ///|
 let fallback_human : String =
