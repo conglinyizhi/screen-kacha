@@ -106,6 +106,31 @@ async fn idle_loop(store : @store.Store, seconds : Int32) -> Unit {
 }
 
 ///|
+/// 启动时告诉用户「谁真的能取图」。
+///
+/// 只陈述事实。原来的写法是 `访问控制：\{if restricted { 启用（…） } else { 未启用 }}`，
+/// 判据是 `allow_public`，于是「局域网放行」也被写成「启用」，读起来像有一层
+/// 防护，实际上同网段任何设备都能取整屏。要不要提醒、怎么提醒，在这里定，
+/// 好单测；`main` 只负责打印。
+fn access_banner(
+  access : @store.Access,
+  bind : String,
+  port : Int32,
+) -> Array[String] {
+  let lines : Array[String] = ["允许来源：\{access.describe()}"]
+  if access.allow_public {
+    lines.push(
+      "注意：allow_public = true，任何能连到 \{bind}:\{port} 的地址都能取整屏",
+    )
+  } else if access.allow_lan {
+    lines.push(
+      "注意：放行的是整个局域网网段，同网段其它设备也能取整屏；只信自己的设备请用 allow 名单并关掉 allow_lan",
+    )
+  }
+  lines
+}
+
+///|
 /// 后台拿 portal 屏幕流：拿到就切 PipeWire，拿不到就保持 spectacle。
 /// portal 首次可能需要人工授权，所以这里允许长时间等待，期间服务照常可用。
 async fn portal_bg(store : @store.Store, shm : String) -> Unit {
@@ -184,9 +209,10 @@ async fn main {
     p => p
   }
   let access = @store.load_access(access_path)
-  eprintln(
-    "访问控制：\{if access.restricted() { "启用（\{access.describe()}）" } else { "未启用" }}  配置 \{access_path}",
-  )
+  for line in access_banner(access, bind, port) {
+    eprintln(line)
+  }
+  eprintln("访问配置：\{access_path}")
   let app = @store.build_app(store, port, access)
   if pw_node > 0 {
     if store.enable_pipewire(pw_node) {
