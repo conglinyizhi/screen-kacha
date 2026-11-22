@@ -253,6 +253,20 @@ async fn handle_one(app : @crescent.App, conn : @http.ServerConnection) -> Unit 
       let hdrs : Map[String, String] = Map([])
       res_headers.each((k, v) => hdrs.set(k, v))
       hdrs.set("Connection", "close")
+      // HEAD 不能带 body。
+      //
+      // crescent 的 dispatch 已经把 payload 清空了，而底层 http 的
+      // `send_response` 是按 Content-Length 等 body 的：收到的头写着 N 字节、
+      // 实际一个字节都不写，`end_response` 会抛 IncorrectBodyLength，
+      // 连接直接断掉，客户端只看到「Empty reply from server」。
+      // 健康检查、curl -I、反代探活全都走 HEAD，这就是「服务挂了」的假信号。
+      //
+      // 所以这里把 Content-Length 显式改成 0：HEAD 回的是「这次没有 body」，
+      // 客户端拿不到真实长度（真要长度得发 GET），但连接是干净的。
+      let is_head = verb == "HEAD"
+      if is_head {
+        hdrs.set("Content-Length", "0")
+      }
       // 写响应也有超时：客户端不读就会阻塞在 socket 缓冲上，
       // 一直占着槽位等于把并发上限一点点吃光。
       let _ : Unit? = @async.with_timeout_opt(WRITE_TIMEOUT_MS, () => {
@@ -261,9 +275,13 @@ async fn handle_one(app : @crescent.App, conn : @http.ServerConnection) -> Unit 
           status.to_string(),
           extra_headers=hdrs,
         )
-        conn.write(payload)
+        if !is_head {
+          conn.write(payload)
+        }
         conn.end_response()
       }) catch {
+        // 客户端中途断开是常态（扫描器、超时挂断），这里不刷日志；
+        // HEAD 那条 IncorrectBodyLength 由冒烟的 HEAD 断言守住。
         _ => None
       }
       conn.close()

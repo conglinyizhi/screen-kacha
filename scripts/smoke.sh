@@ -112,6 +112,11 @@ has "$UI_JS" 'for_llm' && ok || bad "界面脚本没把内容插到 for_llm 前�
 # <pre> 默认不换行，窄屏会把这段话右侧切掉。折行样式由 JS 注入到那个元素上。
 has "$UI_JS" "querySelector('#for_llm > pre')" && ok || bad "界面脚本没精确指到 for_llm 的 pre"
 has "$UI_JS" 'pre-wrap' && ok || bad "界面脚本没给 pre 注入折行样式"
+# 健康检查、反代探活常用 HEAD。这条路径不能回空包，否则对方会以为服务挂了。
+head_code() { curl -s -o /dev/null -w '%{http_code}' --max-time 10 -I "$1"; }
+check "HEAD /snapshot.jpg" 200 "$(head_code $B/snapshot.jpg)"
+check "HEAD /health" 200 "$(head_code $B/health)"
+check "HEAD 之后 GET 仍可用" 200 "$(code $B/health)"
 check "/health 状态" 200 "$(code $B/health)"
 check "/health 类型" "application/json" "$(ctype $B/health)"
 check "/health.json 别名" 200 "$(code $B/health.json)"
