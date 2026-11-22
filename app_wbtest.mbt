@@ -59,10 +59,10 @@ test "next_tmp 带时间戳和 pid，不撞名" {
   // 扩展名对
   assert_true(a.has_suffix(".jpg"))
   assert_true(b.has_suffix(".webp"))
-  // 前缀对，中间是时间戳-pid-序号这种结构化名字
-  assert_true(a.has_prefix("/tmp/screenstream-mb-"))
+  // 落在 Store 自己的目录里，文件名是时间戳-pid-序号这种结构化名字
+  assert_true(a.has_prefix("/tmp/screenstream-mb/out-"))
   // 不能再是纯序号那套（那种重启就撞名）
-  assert_false(a == "/tmp/screenstream-mb-1.jpg")
+  assert_false(a == "/tmp/screenstream-mb/out-1.jpg")
 }
 
 ///|
@@ -319,4 +319,16 @@ test "拒绝路径的并发上限有界" {
 test "拒绝路径用的是短超时" {
   assert_true(reject_timeout_ms() < WRITE_TIMEOUT_MS)
   assert_eq(reject_timeout_ms(), REJECT_TIMEOUT_MS)
+}
+
+///|
+/// 临时输出落在 Store 自己的目录里，不再散在 /tmp 根下。
+///
+/// 原来直接写 `/tmp/screenstream-mb-<时间>-<pid>-<序号>.jpg`：目录谁都能读、
+/// 名字可预测，截图还是 0644，本机别的用户能直接看到屏幕内容。
+test "临时输出落在私有目录里" {
+  let store = Store::new(shot="/tmp/none.jpg", tmp_dir="/tmp/ssmb-test-tmp")
+  let p = store.next_tmp("jpg")
+  assert_true(p.has_prefix("/tmp/ssmb-test-tmp/"))
+  assert_false(p.has_prefix("/tmp/screenstream-mb-"))
 }

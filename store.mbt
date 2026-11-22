@@ -58,6 +58,12 @@ pub struct Store {
   /// 别的请求可能插进来生成新文件。用环形 + 编号，删除时跳过
   /// 最近 TMP_KEEP 个以内的，就不会删到别人正在读的。
   mut tmp_ring : Array[String]
+  /// 临时输出文件的目录。
+  ///
+  /// 不再直接落在 /tmp 根下：那个目录谁都能读、谁都能写，截图 0644 摆着，
+  /// 名字又是可预测的（时间戳 + pid + 序号），本地别的用户可以读到屏幕内容，
+  /// 也能预置符号链接把写入引走。这里用服务自己的目录，权限 0700。
+  tmp_dir : String
 }
 
 ///|
@@ -66,6 +72,7 @@ pub fn Store::new(
   fake~ : String? = None,
   wl_dir~ : String = default_runtime_dir(),
   pw~ : Bool = false,
+  tmp_dir~ : String = "/tmp/screenstream-mb",
 ) -> Store {
   {
     shot,
@@ -93,6 +100,7 @@ pub fn Store::new(
     err: "",
     seq: 0,
     tmp_ring: [],
+    tmp_dir,
   }
 }
 
@@ -290,15 +298,14 @@ const TMP_KEEP : Int32 = 10
 ///|
 pub fn Store::next_tmp(self : Store, ext : String) -> String {
   self.seq += 1
-  // 文件名带时间和 pid，别用纯自增序号。
+  // 文件名带时间和 pid，别用纯自增序号：进程重启后序号从 1 开始，
+  // 会和上一个实例的同名文件撞上。时间戳 + pid + 序号在进程内保证唯一，
+  // 跨进程也几乎不会撞。
   //
-  // 纯序号有两个问题：进程重启后从 1 开始，会和上一个实例（或同一台
-  // 机器上的另一个用户）正在用的同名文件撞上；名字完全可预测，
-  // /tmp 又是全局可写的，有本地攻击者时可以预置符号链接把写入引到别处。
-  //
-  // 时间戳 + pid + 序号：进程内保证唯一，跨进程也几乎不会撞。
-  // 序号还留着，防止同一毫秒内连续两次调用撞名。
-  let path = "/tmp/screenstream-mb-\{@async.now()}-\{current_pid()}-\{self.seq}.\{ext}"
+  // 光靠名字防不住本地攻击者（可预测就是可预测），真正的防线是 `tmp_dir`：
+  // 目录由服务自己按 0700 建，别的用户进不去，也放不进东西。C 侧再叠一层
+  // O_NOFOLLOW + 0600。
+  let path = "\{self.tmp_dir}/out-\{@async.now()}-\{current_pid()}-\{self.seq}.\{ext}"
   self.tmp_ring.push(path)
   // 先把列表压到上限，再返回路径。
   //

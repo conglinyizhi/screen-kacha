@@ -103,6 +103,7 @@ pub struct Store {
   mut err : String
   mut seq : Int32
   mut tmp_ring : Array[String]
+  tmp_dir : String
 }
 pub fn Store::age_ms(Self) -> Int64
 pub fn Store::bytes(Self) -> Bytes?
@@ -115,7 +116,7 @@ pub fn Store::err(Self) -> String
 pub fn Store::fails(Self) -> Int32
 pub fn Store::idle_ms(Self) -> Int64
 pub fn Store::mark_request(Self) -> Unit
-pub fn Store::new(shot~ : String, fake? : String?, wl_dir? : String, pw? : Bool) -> Self
+pub fn Store::new(shot~ : String, fake? : String?, wl_dir? : String, pw? : Bool, tmp_dir? : String) -> Self
 pub fn Store::next_tmp(Self, String) -> String
 pub fn Store::pipewire_on(Self) -> Bool
 pub fn Store::pw_raw(Self) -> (String, Int32, Int32)?

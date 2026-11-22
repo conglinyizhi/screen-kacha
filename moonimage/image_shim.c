@@ -13,10 +13,50 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <jpeglib.h>
 #include <png.h>
 #include <setjmp.h>
 #include <webp/encode.h>
+
+/* 建一个只有本用户能读的输出文件。
+ *
+ * 直接用 fopen(path,"wb") 会用 0666 & ~umask，常态就是 0644：同一台机器上
+ * 别的用户能读到刚落盘的截图。而且 fopen 会跟随符号链接，本地用户可以在
+ * 已知路径上预置一个链接，把写入引到他想要的任意文件。
+ *
+ * 这里做三件事：把父目录建成 0700、用 O_NOFOLLOW 拒绝符号链接、文件 0600。
+ * 目录建好之后，别的用户既进不来也没法在里面放东西，路径可预测就不再是问题。
+ */
+static FILE *create_private(const char *path) {
+  if (path == NULL || *path == '\0') return NULL;
+  char dir[4096];
+  size_t n = strlen(path);
+  if (n >= sizeof(dir)) return NULL;
+  memcpy(dir, path, n + 1);
+  char *slash = strrchr(dir, '/');
+  if (slash != NULL) {
+    *slash = '\0';
+    if (dir[0] != '\0') {
+      /* 已存在时 mkdir 返回 EEXIST，不动内容 */
+      if (mkdir(dir, 0700) == 0) {
+        chmod(dir, 0700);
+      }
+    }
+  }
+  int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
+  if (fd < 0) return NULL;
+  FILE *f = fdopen(fd, "wb");
+  if (f == NULL) {
+    close(fd);
+    return NULL;
+  }
+  return f;
+}
 
 /* 读整个文件到堆上。调用方负责 free。失败返回 NULL。 */
 static uint8_t *read_file(const char *path, size_t expect) {
@@ -249,7 +289,7 @@ static int encode_bgra(const uint8_t *bgra, int w, int h, int dst_w,
     size_t out_len = WebPEncodeRGB(rgb, dw, dh, dw * 3, (float)quality, &out);
     free(rgb);
     if (out_len == 0 || out == NULL) return 5;
-    FILE *fp = fopen(out_path, "wb");
+    FILE *fp = create_private(out_path);
     if (fp == NULL) {
       WebPFree(out);
       return 4;
@@ -265,7 +305,7 @@ static int encode_bgra(const uint8_t *bgra, int w, int h, int dst_w,
   cinfo.err = jpeg_std_error(&jerr);
   jpeg_create_compress(&cinfo);
 
-  FILE *fp = fopen(out_path, "wb");
+  FILE *fp = create_private(out_path);
   if (fp == NULL) {
     jpeg_destroy_compress(&cinfo);
     free(rgb);

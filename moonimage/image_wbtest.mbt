@@ -550,3 +550,27 @@ async test "素材路径不存在时返回 false，不崩" {
   )
   assert_false(ok)
 }
+
+///|
+/// 输出文件必须拒绝符号链接。
+///
+/// 原来是 `fopen(path,"wb")`：会跟随链接，权限是 `0666 & ~umask`（常态 0644）。
+/// 本地用户在可预测的路径上预置一个链接，就能把截图写到任意文件；
+/// 写出来的图本机别的用户也读得到。现在 O_NOFOLLOW 加 0600，父目录 0700。
+async test "输出不跟随符号链接" {
+  let dir = "/tmp/moonimage-test"
+  let _ = @fs.mkdir(dir, permission=0o700, recursive=true) catch { _ => () }
+  let victim = "\{dir}/victim.txt"
+  let sentinel = "ORIGINAL-CONTENT"
+  @fs.write_file(victim, @utf8.encode(sentinel), create_mode=CreateOrTruncate) catch {
+    _ => ()
+  }
+  let link = "\{dir}/link-out.jpg"
+  let _ = @fs.remove(link) catch { _ => () }
+  @fs.symlink(target=victim, link)
+  let src = put_bgra("sym.bgra", make_bgra(8, 8, fn(_x, _y) { (10, 20, 30) }))
+  // 不该成功：O_NOFOLLOW 会让 open 直接失败
+  assert_false(bgra_to_jpeg(src, 8, 8, 0, 82, link))
+  // 哨兵文件必须一个字节都没被动过
+  assert_eq(@utf8.decode_lossy(slurp(victim)), sentinel)
+}
