@@ -40,6 +40,13 @@ pub struct Store {
   mut cap_ms : Int64
   mut count : Int32
   mut fails : Int32
+  /// 连续失败次数，成功一次就清零。
+  ///
+  /// `fails` 是累计值，只增不减，看不出「现在是不是还在坏」。
+  /// 这两个分开：累计值给「出过多少次问题」，连续值给「现在有没有好」。
+  mut consec_fails : Int32
+  /// 后台泵的节奏，用来判断帧是不是该更新了
+  pump_ms : Int32
   mut err : String
   mut seq : Int32
   /// 最近生成的临时文件，环形滚动。
@@ -73,6 +80,7 @@ pub fn Store::new(
   wl_dir~ : String = default_runtime_dir(),
   pw~ : Bool = false,
   tmp_dir~ : String = "/tmp/screenstream-mb",
+  pump_ms~ : Int32 = 500,
 ) -> Store {
   {
     shot,
@@ -97,6 +105,8 @@ pub fn Store::new(
     cap_ms: 0L,
     count: 0,
     fails: 0,
+    consec_fails: 0,
+    pump_ms,
     err: "",
     seq: 0,
     tmp_ring: [],
@@ -256,6 +266,40 @@ pub fn Store::bytes(self : Store) -> Bytes? {
 }
 
 ///|
+/// 有人在取图，帧却迟迟不更新，说明后台泵停了。
+///
+/// 光看 `err` 判断不出来：泵线程要是整个卡死，就没有任何一次采集失败，
+/// `err` 一直是空的，`/health` 会一直说 ok，而画面停在几分钟前。
+///
+/// 两个前提都要满足才算停摆：
+/// - 最近真的有人在取图（`idle_ms` 小）。没人用的时候泵会主动放慢，
+///   帧变旧是应该的，不能报错。
+/// - 帧龄超过泵节奏的十倍再加五秒余量，避免把正常的调度抖动算进去。
+pub fn frame_is_stalled(
+  frame_age_ms : Int64,
+  idle_ms : Int64,
+  pump_ms : Int32,
+) -> Bool {
+  if frame_age_ms < 0L {
+    // 一帧都还没有：那是「还没抓到」，不是「停摆」
+    return false
+  }
+  let pump = pump_ms.to_int64()
+  let demand = idle_ms < pump * 20L
+  demand && frame_age_ms > pump * 10L + 5000L
+}
+
+///|
+pub fn Store::is_stalled(self : Store) -> Bool {
+  frame_is_stalled(self.age_ms(), self.idle_ms(), self.pump_ms)
+}
+
+///|
+pub fn Store::consec_fails(self : Store) -> Int32 {
+  self.consec_fails
+}
+
+///|
 pub fn Store::age_ms(self : Store) -> Int64 {
   match self.frame {
     Some(f) => @async.now() - f.ts
@@ -353,10 +397,7 @@ extern "c" fn current_pid_raw() -> Int32 = "moonbit_current_pid"
 ///|
 /// 删掉帧目录里上一次运行留下的原始帧，返回删掉的数量。
 #borrow(dir, prefix)
-extern "c" fn clean_stale_frames_raw(
-  dir : Bytes,
-  prefix : Bytes,
-) -> Int32 = "moonbit_clean_stale_frames"
+extern "c" fn clean_stale_frames_raw(dir : Bytes, prefix : Bytes) -> Int32 = "moonbit_clean_stale_frames"
 
 ///|
 /// 清掉上次运行留下的 `*.bgra`。
@@ -382,13 +423,39 @@ fn Store::record_ok(self : Store, bytes : Bytes, cap_ms : Int64) -> Unit {
   // 启动期更危险：PipeWire::connect 立刻返回不等第一帧，
   // 泵 500ms 一拍，协商超过 1.5 秒就会被判死，一开机就没救了。
   self.pw_fails = 0
+  self.consec_fails = 0
   self.frame = Some({ bytes, ts: @async.now(), })
 }
 
 ///|
 /// 采集失败记一笔，保留失败原因。
+
+///|
+/// 连续失败到第几次该往日志里写一行。
+///
+/// 泵 500ms 一拍，同一个错误会一直重复。只在「错误内容变了」或者
+/// 「连续次数是 30 的倍数」时写，既不丢信息，也不会把 journal 刷掉。
+const FAIL_LOG_EVERY : Int32 = 30
+
+///|
+fn should_log_failure(consec : Int32, err_changed : Bool) -> Bool {
+  if err_changed {
+    return true
+  }
+  consec % FAIL_LOG_EVERY == 0
+}
+
+///|
 fn Store::record_fail(self : Store, msg : String) -> Unit {
   self.fails += 1
+  self.consec_fails += 1
+  // 失败必须落到日志里。
+  //
+  // 原来只更新内存字段：服务一直抓不到帧，journal 里却只有启动那两行，
+  // 只能靠 /health 才发现，而 /health 也要人主动去问。
+  if should_log_failure(self.consec_fails, msg != self.err) {
+    eprintln("采集失败（连续 \{self.consec_fails} 次）：\{msg}")
+  }
   self.err = msg
 }
 

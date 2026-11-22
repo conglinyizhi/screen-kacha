@@ -388,3 +388,51 @@ test "health 的 JSON 对引号和换行做转义" {
   // 不能有裸换行进正文
   assert_false(json.contains("\n"))
 }
+
+///|
+/// 累计失败只增不减，连续失败成功一次就清零。
+///
+/// 只有一个只增不减的计数器时，`/health` 看不出「现在是不是还在坏」：
+/// 跑一天几千次成功也会留着历史失败数。
+test "连续失败会清零，累计失败只增不减" {
+  let store = Store::new(shot="/tmp/none.jpg")
+  store.record_fail("坏了一次")
+  store.record_fail("又坏一次")
+  assert_eq(store.fails(), 2)
+  assert_eq(store.consec_fails(), 2)
+  store.record_ok(b"ok", 5L)
+  assert_eq(store.fails(), 2)
+  assert_eq(store.consec_fails(), 0)
+  store.record_fail("再来")
+  assert_eq(store.fails(), 3)
+  assert_eq(store.consec_fails(), 1)
+}
+
+///|
+/// 泵停了但没有采集错误时，也要能看出帧不再更新。
+///
+/// 只看 `err` 是看不出来的：线程整个卡死就没有任何一次采集失败。
+test "帧不更新要能看出来，没人用的时候不算" {
+  // 有人在取图（idle 小），帧却十分钟没动：停摆
+  assert_true(frame_is_stalled(600000L, 100L, 500))
+  // 刚取过图，帧是新的：正常
+  assert_false(frame_is_stalled(300L, 100L, 500))
+  // 没人取图，泵按设计放慢，帧旧是应该的
+  assert_false(frame_is_stalled(600000L, 1L << 40, 500))
+  // 一帧都还没有：那是「还没抓到」，不是「停摆」
+  assert_false(frame_is_stalled(-1L, 100L, 500))
+  // 边界：阈值是 pump*10 + 5000 = 10000
+  assert_false(frame_is_stalled(9999L, 100L, 500))
+  assert_true(frame_is_stalled(10001L, 100L, 500))
+}
+
+///|
+/// 失败日志要降频：错误内容变了立刻记，同一个错误按倍数少量记。
+test "失败日志降频，错误变了立刻记" {
+  assert_true(should_log_failure(1, true))
+  assert_false(should_log_failure(2, false))
+  assert_false(should_log_failure(29, false))
+  assert_true(should_log_failure(30, false))
+  assert_true(should_log_failure(60, false))
+  assert_false(should_log_failure(31, false))
+}

@@ -225,6 +225,8 @@ async fn main {
     // 临时输出跟帧文件放同一个目录：这个目录是按 0700 建的，
     // 别的本机用户既读不到截图，也没法在里面预置符号链接
     tmp_dir=shm,
+    // 停摆判定要知道泵的节奏
+    pump_ms=pump,
   )
   // reuse_addr：服务重启时旧连接还处于 TIME-WAIT，不开这个 bind 会失败
   let server = @http.Server(

@@ -19,6 +19,8 @@ pub fn clean_stale_frames(String, String) -> Int32
 
 pub async fn forget_portal_node(String) -> Unit
 
+pub fn frame_is_stalled(Int64, Int64, Int32) -> Bool
+
 pub fn is_cgnat(String) -> Bool
 
 pub fn is_lan(String) -> Bool
@@ -102,6 +104,8 @@ pub struct Store {
   mut cap_ms : Int64
   mut count : Int32
   mut fails : Int32
+  mut consec_fails : Int32
+  pump_ms : Int32
   mut err : String
   mut seq : Int32
   mut tmp_ring : Array[String]
@@ -110,6 +114,7 @@ pub struct Store {
 pub fn Store::age_ms(Self) -> Int64
 pub fn Store::bytes(Self) -> Bytes?
 pub fn Store::cap_ms(Self) -> Int64
+pub fn Store::consec_fails(Self) -> Int32
 pub fn Store::count(Self) -> Int32
 pub fn Store::cursor_pos_path(Self) -> String
 pub fn Store::enable_pipewire(Self, Int32) -> Bool
@@ -117,8 +122,9 @@ pub async fn Store::ensure(Self, Int64) -> Unit
 pub fn Store::err(Self) -> String
 pub fn Store::fails(Self) -> Int32
 pub fn Store::idle_ms(Self) -> Int64
+pub fn Store::is_stalled(Self) -> Bool
 pub fn Store::mark_request(Self) -> Unit
-pub fn Store::new(shot~ : String, fake? : String?, wl_dir? : String, pw? : Bool, tmp_dir? : String) -> Self
+pub fn Store::new(shot~ : String, fake? : String?, wl_dir? : String, pw? : Bool, tmp_dir? : String, pump_ms? : Int32) -> Self
 pub fn Store::next_tmp(Self, String) -> String
 pub fn Store::pipewire_on(Self) -> Bool
 pub fn Store::pw_raw(Self) -> (String, Int32, Int32)?

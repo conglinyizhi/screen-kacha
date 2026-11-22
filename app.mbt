@@ -25,8 +25,7 @@ const AGE_FRAC_DIGITS : Int32 = 3
 /// 先看总长度，再看分段位数。
 fn parse_seconds_ms(s : StringView) -> Int64? {
   // 六位整数 + 小数点 + 三位小数
-  if s.length() == 0 ||
-    s.length() > AGE_INT_DIGITS + 1 + AGE_FRAC_DIGITS {
+  if s.length() == 0 || s.length() > AGE_INT_DIGITS + 1 + AGE_FRAC_DIGITS {
     return None
   }
   let mut int_part = 0L
@@ -134,6 +133,7 @@ fn not_found(path : String) -> @crescent.HttpResponse {
 }
 
 ///|
+
 ///|
 /// 把一个字符串转成能安全放进 JSON 双引号里的形式。
 ///
@@ -180,7 +180,7 @@ fn json_escape_text(s : String) -> String {
 }
 
 ///|
-fn hex_digit_of(n : Int) -> Byte {
+fn hex_digit_of(n : Int32) -> Byte {
   if n < 10 {
     (48 + n).to_byte()
   } else {
@@ -191,11 +191,16 @@ fn hex_digit_of(n : Int) -> Byte {
 ///|
 /// `/health` 的响应正文。抽成纯函数，好直接测转义。
 fn health_json(store : Store, port : Int32, access : Access) -> String {
+  // ok 要同时看三件事：有帧、最近一次采集没失败、帧还在更新。
+  //
+  // 只看前两个是不够的：泵线程要是整个卡死，就不会有任何一次采集失败，
+  // err 一直是空的，ok 会一直说 true，而画面停在几分钟前。
+  let stalled = store.is_stalled()
   let ok = match store.bytes() {
-    Some(_) => store.err() == ""
+    Some(_) => store.err() == "" && !stalled
     None => false
   }
-  "{\"ok\": \{ok}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"err\": \"\{json_escape_text(store.err())}\", \"port\": \{port}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{json_escape_text(store.source())}\", \"access\": \"\{json_escape_text(access.describe())}\"}"
+  "{\"ok\": \{ok}, \"stalled\": \{stalled}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"fails_consecutive\": \{store.consec_fails()}, \"err\": \"\{json_escape_text(store.err())}\", \"port\": \{port}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{json_escape_text(store.source())}\", \"access\": \"\{json_escape_text(access.describe())}\"}"
 }
 
 ///|
