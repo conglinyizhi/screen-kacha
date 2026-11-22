@@ -115,3 +115,50 @@ test "config_line_key 取完整 key" {
   assert_true(config_line_key("") is None)
   assert_true(config_line_key("没有等号") is None)
 }
+
+///|
+/// 布尔值大小写不敏感。
+///
+/// 原来只认全小写，`allow_public = True` 会被静默当成 false：
+/// 用户以为放开了，实际没开，而且没有任何提示。
+test "布尔值解析大小写不敏感" {
+  assert_true(parse_flag_value("true"))
+  assert_true(parse_flag_value("True"))
+  assert_true(parse_flag_value("TRUE"))
+  assert_true(parse_flag_value(" yes "))
+  assert_true(parse_flag_value("1"))
+  assert_true(parse_flag_value("On"))
+  assert_false(parse_flag_value("false"))
+  assert_false(parse_flag_value("False"))
+  assert_false(parse_flag_value("0"))
+  assert_false(parse_flag_value("乱写"))
+}
+
+///|
+/// local_only 要按值处理，托盘和服务端得是同一个结论。
+///
+/// 原来不看值：`local_only = false` 也被当成两档全关，而托盘根本不认这个键，
+/// 显示的是「放行局域网」。
+test "local_only 按值生效" {
+  let on = parse_access("local_only = true\n")
+  assert_false(on.allow_lan)
+  assert_false(on.allow_public)
+  // false 就当没写，不能把开关关掉
+  let off = parse_access("local_only = false\n")
+  assert_true(off.allow_lan)
+  assert_false(off.allow_public)
+}
+
+///|
+/// 废弃键和拼错的键都要能被指出来。
+test "配置警告能指出废弃键和未知键" {
+  let warns = config_warnings(
+    "# 注释\nallow_lan = true\nlocal_only = true\nalow_lan = false\n",
+  )
+  let joined = warns.join("|")
+  assert_true(joined.contains("local_only 已废弃"))
+  assert_true(joined.contains("alow_lan"))
+  // 正常的键不该报警
+  let clean = config_warnings("allow_lan = true\nallow_public = false\nallow = 10.0.0.1\n")
+  assert_eq(clean.length(), 0)
+}

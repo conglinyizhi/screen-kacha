@@ -182,6 +182,16 @@ pub fn Access::allows(self : Access, peer : String) -> Bool {
 }
 
 ///|
+/// 解析布尔值。大小写不敏感：`True`、`TRUE`、`On` 都算真。
+///
+/// 原来只认全小写的 `true`/`1`/`yes`，`allow_public = True` 会被静默当成
+/// false：用户以为放开了，实际没开，而且没人报错。
+pub fn parse_flag_value(v : String) -> Bool {
+  let s = ascii_lower(v.trim().to_owned())
+  s == "true" || s == "1" || s == "yes" || s == "on"
+}
+
+///|
 /// 取一行配置的 key（`=` 左边，去掉空白）。空行和注释返回 None。
 ///
 /// 服务端和托盘共用这一个判定。托盘原来是 `has_prefix("allow_lan")`，
@@ -199,6 +209,34 @@ pub fn config_line_key(line : String) -> String? {
 }
 
 ///|
+/// 配置里值得提醒一句的地方：废弃键、不认识的键。
+///
+/// 原来全都不响：拼错的键（`alow_lan`）被静默忽略，跑的是默认值；
+/// `local_only` 这种老写法也不提示，用户不知道自己该改。
+pub fn config_warnings(text : String) -> Array[String] {
+  let known : Array[String] = [
+    "allow_lan", "allow_public", "allow_cgnat", "allow", "local_only",
+  ]
+  let warns : Array[String] = []
+  let mut said_deprecated = false
+  for line in text.split("\n") {
+    let key = match config_line_key(line.to_owned()) {
+      Some(k) => k
+      None => continue
+    }
+    if key == "local_only" {
+      if !said_deprecated {
+        warns.push("local_only 已废弃：请改用 allow_lan / allow_public")
+        said_deprecated = true
+      }
+    } else if !known.contains(key) {
+      warns.push("未知配置项 \{key}，已忽略")
+    }
+  }
+  warns
+}
+
+///|
 /// 解析配置。坏行忽略；老配置里的 `local_only = true` 仍然认。
 pub fn parse_access(text : String) -> Access {
   let a = Access::default()
@@ -212,7 +250,7 @@ pub fn parse_access(text : String) -> Access {
       None => ()
       Some(eq) => {
         let value : String = s[eq + 1:].trim().to_owned()
-        let on = value == "true" || value == "1" || value == "yes"
+        let on = parse_flag_value(value)
         if key == "allow_lan" {
           a.allow_lan = on
         } else if key == "allow_public" {
@@ -220,8 +258,13 @@ pub fn parse_access(text : String) -> Access {
         } else if key == "allow_cgnat" {
           a.allow_cgnat = on
         } else if key == "local_only" {
-          a.allow_lan = false
-          a.allow_public = false
+          // 老写法，按值处理：只有 true 才是「仅本机」。
+          // 原来不看值，`local_only = false` 也被当成两档全关，
+          // 而托盘根本不认这个键，显示的是「放行局域网」。
+          if on {
+            a.allow_lan = false
+            a.allow_public = false
+          }
         } else if key == "allow" {
           for item in value.split(",") {
             let t : String = item.trim().to_owned()
@@ -250,6 +293,9 @@ pub async fn load_access(path : String) -> Access {
     @utf8.decode_lossy(b)
   } catch {
     _ => ""
+  }
+  for w in config_warnings(text) {
+    eprintln("配置警告：\{w}")
   }
   parse_access(text)
 }

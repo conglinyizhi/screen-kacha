@@ -113,6 +113,24 @@ fn access_path() -> String {
 
 ///|
 /// 从配置文本里读一个布尔项，缺省用 dflt。
+///|
+/// 解析布尔值。大小写不敏感，跟服务端的 `parse_flag_value` 同一套规则。
+fn flag_value(v : String) -> Bool {
+  let s = v.trim().to_owned()
+  let buf = StringBuilder()
+  for i = 0; i < s.length(); i = i + 1 {
+    let c = s[i].to_int()
+    if c >= 65 && c <= 90 {
+      buf.write_char((c + 32).unsafe_to_char())
+    } else {
+      buf.write_char(c.unsafe_to_char())
+    }
+  }
+  let t = buf.to_string()
+  t == "true" || t == "1" || t == "yes" || t == "on"
+}
+
+///|
 fn read_flag(text : String, key : String, dflt : Bool) -> Bool {
   for line in text.split("\n") {
     let s : String = line.trim().to_owned()
@@ -123,8 +141,7 @@ fn read_flag(text : String, key : String, dflt : Bool) -> Bool {
       None => ()
       Some(eq) =>
         if s[:eq].trim().to_owned() == key {
-          let v : String = s[eq + 1:].trim().to_owned()
-          return v == "true" || v == "1" || v == "yes"
+          return flag_value(s[eq + 1:].trim().to_owned())
         }
     }
   }
@@ -142,11 +159,18 @@ fn read_access() -> (Bool, Bool, Bool) {
   let text = capture_whole(access_path())
   match text {
     Some(t) =>
-      (
-        read_flag(t, "allow_lan", true),
-        read_flag(t, "allow_public", false),
-        read_flag(t, "allow_cgnat", false),
-      )
+      // 老配置的 local_only 要跟服务端一样认：true 就是「仅本机」。
+      // 否则托盘显示「放行局域网」，实际只放行本机，用户从界面上推不出
+      // 「现在谁能看我的屏幕」。
+      if read_flag(t, "local_only", false) {
+        (false, false, false)
+      } else {
+        (
+          read_flag(t, "allow_lan", true),
+          read_flag(t, "allow_public", false),
+          read_flag(t, "allow_cgnat", false),
+        )
+      }
     // 读不出来（不存在 / 太大 / 权限）就当作默认，但绝不用它去覆盖
     None => (true, false, false)
   }

@@ -50,3 +50,25 @@ test "写配置不留临时文件，内容完整" {
     Some("allow_lan = false\nallow_public = false\n"),
   )
 }
+
+///|
+/// 托盘读布尔值也要大小写不敏感，跟服务端同一套规则。
+test "托盘读布尔值大小写不敏感" {
+  assert_true(flag_value("true"))
+  assert_true(flag_value("True"))
+  assert_true(flag_value("TRUE"))
+  assert_true(flag_value(" yes "))
+  assert_false(flag_value("false"))
+  assert_false(flag_value("乱写"))
+}
+
+///|
+/// read_flag 按完整 key 取，取不到用默认值。
+test "read_flag 精确取键并支持大小写" {
+  let text = "allow_lan = True\nallow_lan_next = false\n"
+  assert_true(read_flag(text, "allow_lan", false))
+  // 前缀相同的键不能被误取：取不到就返回默认值（这里给 false）。
+  // 要是按前缀匹配，就会拿到 allow_lan 的 true。
+  assert_false(read_flag(text, "allow_lan_nex", false))
+  assert_true(read_flag(text, "不存在的键", true))
+}
