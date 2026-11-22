@@ -13,10 +13,10 @@
 /// 新鲜度靠文件 mtime 判断，省得自己维护时间戳。
 
 ///|
-const BUS_NAME : String = "org.kde.screen-kacha"
+const BUS_NAME : String = "io.github.conglinyizhi.screenkacha"
 
 ///|
-const IFACE : String = "org.kde.screen-kacha"
+const IFACE : String = "io.github.conglinyizhi.screenkacha"
 
 ///|
 const OBJ_PATH : String = "/cursor"

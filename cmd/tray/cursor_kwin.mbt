@@ -13,7 +13,7 @@ let kwin_script_src : String = "var t = new QTimer();\n" +
   "t.timeout.connect(function () {\n" +
   "    var p = workspace.cursorPos;\n" +
   "    if (!p) return;\n" +
-  "    callDBus('org.kde.screen-kacha', '/cursor', 'org.kde.screen-kacha', 'Moved', p.x, p.y);\n" +
+  "    callDBus('io.github.conglinyizhi.screenkacha', '/cursor', 'io.github.conglinyizhi.screenkacha', 'Moved', p.x, p.y);\n" +
   "});\n" +
   "t.start(200);\n"
 
@@ -30,7 +30,10 @@ fn kwin_script_path() -> String {
 ///|
 /// 坐标服务在不在跑（它就是那个 D-Bus 名字的持有者）。
 fn cursor_helper_alive() -> Bool {
-  run_status("busctl --user status org.kde.screen-kacha >/dev/null 2>&1") == 0
+  run_status(
+    "busctl --user status io.github.conglinyizhi.screenkacha >/dev/null 2>&1",
+  ) ==
+  0
 }
 
 ///|
