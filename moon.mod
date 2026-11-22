@@ -19,7 +19,14 @@ repository = ""
 
 license = "Apache-2.0"
 
-keywords = [ ]
+keywords = [
+  "screenshot",
+  "screen-capture",
+  "pipewire",
+  "wayland",
+  "jpeg",
+  "webp",
+]
 
 preferred_target = "native"
 

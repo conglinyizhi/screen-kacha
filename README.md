@@ -14,7 +14,8 @@ v0.1，自己日常在用。核心链路（PipeWire 取帧 → HTTP 快照）、
 
 | 路径 | 返回 |
 | --- | --- |
-| `GET /` | 网页，2 秒刷新 |
+| `GET /` | 按 `Accept` 分叉：浏览器给外壳，其余给 `llms.txt` |
+| `GET /for_human_use_browser.js` | 界面脚本，由 `human.html` 现场生成 |
 | `GET /health` | 采集状态 JSON，含 `source`、`cap_ms`、`fails`、`access` |
 | `GET /skill.md` | 用法说明（读当前目录的 skill.md，缺失用内置兜底） |
 | `GET /error.md` | 出错排查步骤 |
@@ -26,10 +27,19 @@ v0.1，自己日常在用。核心链路（PipeWire 取帧 → HTTP 快照）、
 | `GET /ui/err?code=xxx` | 出错兜底页，正文由服务端按代号给出 |
 | 其它 | 404 纯文本，指向 `/skill.md` |
 
-`GET /` 按 `Accept` 分叉：带 `text/html` 给 `human.html`（页面），
-不带就给 `llms.txt` 原文（agent 拿到的没有 HTML 噪音）。
+`GET /` 按 `Accept` 分叉：带 `text/html` 给一个外壳，不带就给 `llms.txt`
+原文（agent 拿到的没有 HTML 噪音）。
+
+外壳里只有一段给 agent 的说明文字，加一行指向
+`/for_human_use_browser.js` 的脚本。界面本体存在 `human.html`，由服务端在
+响应时转义进模板字符串、现场生成那段 JS。不执行 JS 的客户端永远不会请求它，
+所以不会下载那十几 KB 界面，两边都不为对方付流量。
+
+页面插在那段说明文字前面，说明文字落在页面最下方；页面顶部有可展开的
+「关于刚刚一闪而过的文本」，里面的按钮能平滑滚到底部去看原文。
+
 `human.html` 上有「参数实验」：改 `w`、`age`、格式会实时显示实际返回的图、
-尺寸、体积和耗时；带参数访问（如 `/human.html?w=640&age=0.5`）会弹框说明
+尺寸、体积和耗时；带参数访问（如 `/?w=640&age=0.5`）会弹框说明
 这些参数发给图片端点意味着什么。
 
 ## 安装
@@ -152,7 +162,7 @@ PSNR 在 33–37（原尺寸 49），视觉上基本看不出，文件反而略�
 - 缺 ImageMagick 时缩放与 WebP 降级为原图，不会报错。
 - 采集失败时 `/snapshot.jpg` 返回 503 带错误原因。
 - 启用访问控制后走 `serve_with_access`（自己写的 accept 循环），它和
-  `serve_on` 行为基本对齐，但少了请求体大小上限——本服务只收 GET，
+  `serve_on` 行为基本对齐，但少了请求体大小上限，本服务只收 GET，
   不影响使用，换成支持 POST 时要补。
 - 临时文件落在 `/tmp/screenstream-mb-*.jpg`，退出不清理。
 
@@ -184,7 +194,7 @@ PSNR 在 33–37（原尺寸 49），视觉上基本看不出，文件反而略�
 
 托盘每 5 秒查一次 `/health`，按结果换图标名。
 
-安装：`./install-icons.sh`。三个必踩的坑——文件名必须是 `<图标名>.png`
+安装：`./install-icons.sh`。三个必踩的坑：文件名必须是 `<图标名>.png`
 （不能带 `-22` 这种尺寸后缀，否则主题按名找不到）、PNG 必须是 8 位深
 （16 位 KDE 加载不了，图标位置会留空）、用户 hicolor 目录要有 `index.theme`。
 
@@ -194,7 +204,7 @@ PSNR 在 33–37（原尺寸 49），视觉上基本看不出，文件反而略�
 
 ```text
 allow_lan    = true    # 局域网放行
-allow_public = false   # 非局域网放行 —— 危险
+allow_public = false   # 非局域网放行，危险
 allow =                # 预留：显式放行名单
 ```
 
