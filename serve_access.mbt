@@ -180,7 +180,7 @@ async fn reject(conn : @http.ServerConnection, peer : String) -> Unit {
   let _ = try {
     match
       @async.with_timeout_opt(reject_timeout_ms(), () => {
-        conn.send_response(403, "Forbidden", extra_headers=hdrs)
+        conn.send_response(403, "Forbidden", extra_headers=headers_to_http(hdrs))
         conn.write("这个服务只对本机开放\n")
         conn.end_response()
       }) {
@@ -207,6 +207,27 @@ fn verb_of(m : @http.RequestMethod) -> String {
     Trace => "TRACE"
     Patch => "PATCH"
   }
+}
+
+///|
+/// `@http` 的 header 键是大小写不敏感的包装类型，我们内部用普通字符串。
+///
+/// 只在进出的边界上转一次：路由、日志、测试都在普通 `Map[String, String]` 上做，
+/// 不用到处处理这个包装。
+fn headers_from_http(
+  h : Map[@http.CaseInsensitiveString, String],
+) -> Map[String, String] {
+  let out : Map[String, String] = Map([])
+  h.each((k, v) => out.set(k.to_string(), v))
+  out
+}
+
+///|
+/// 反过来：把我们的 header 交给 `send_response`。
+fn headers_to_http(h : Map[String, String]) -> Map[@http.CaseInsensitiveString, String] {
+  let out : Map[@http.CaseInsensitiveString, String] = Map([])
+  h.each((k, v) => out.set(@http.CaseInsensitiveString(k), v))
+  out
 }
 
 ///|
@@ -289,7 +310,7 @@ async fn handle_one(router : Router, conn : @http.ServerConnection) -> Unit {
   }
   let verb = verb_of(request.meth)
   let path = request.path
-  let headers = request.headers
+  let headers = headers_from_http(request.headers)
   // DNS rebinding 挡在分发之前：Host 是域名就拒，IP 字面量放行
   match header_lookup(headers, "host") {
     Some(h) =>
@@ -298,7 +319,7 @@ async fn handle_one(router : Router, conn : @http.ServerConnection) -> Unit {
         bad_hdrs.set("Content-Type", "text/plain; charset=utf-8")
         bad_hdrs.set("Connection", "close")
         let _ : Unit? = @async.with_timeout_opt(REJECT_TIMEOUT_MS, () => {
-          conn.send_response(403, "Forbidden", extra_headers=bad_hdrs)
+          conn.send_response(403, "Forbidden", extra_headers=headers_to_http(bad_hdrs))
           conn.write("Host 只接受 IP 和 localhost（防 DNS rebinding）\n")
           conn.end_response()
         }) catch {
@@ -325,7 +346,7 @@ async fn handle_one(router : Router, conn : @http.ServerConnection) -> Unit {
       hdrs.set("Content-Type", "text/plain; charset=utf-8")
       hdrs.set("Connection", "close")
       let _ : Unit? = @async.with_timeout_opt(WRITE_TIMEOUT_MS, () => {
-        conn.send_response(504, "Gateway Timeout", extra_headers=hdrs)
+        conn.send_response(504, "Gateway Timeout", extra_headers=headers_to_http(hdrs))
         conn.write("处理超时了，稍后重试\n")
         conn.end_response()
       }) catch {
@@ -357,7 +378,7 @@ async fn handle_one(router : Router, conn : @http.ServerConnection) -> Unit {
         conn.send_response(
           resp.status,
           status_reason(resp.status),
-          extra_headers=hdrs,
+          extra_headers=headers_to_http(hdrs),
         )
         if !is_head {
           conn.write(resp.body)

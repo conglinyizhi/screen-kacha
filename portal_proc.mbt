@@ -3,12 +3,12 @@
 async fn read_bytes_or_empty(path : String) -> Bytes {
   let f = Some(@fs.open(path, mode=ReadOnly)) catch { _ => None }
   match f {
-    None => Bytes::new(0)
+    None => Bytes::make(0, b'\x00')
     Some(file) => {
       let data = Some(file.read_all()) catch { _ => None }
       file.close()
       match data {
-        None => Bytes::new(0)
+        None => Bytes::make(0, b'\x00')
         Some(r) => r.binary()
       }
     }

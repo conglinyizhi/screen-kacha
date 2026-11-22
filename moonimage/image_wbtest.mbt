@@ -39,7 +39,7 @@ async fn slurp(path : String) -> Bytes {
     f.close()
     b
   } catch {
-    _ => Bytes::new(0)
+    _ => Bytes::make(0, b'\x00')
   }
 }
 
