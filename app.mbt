@@ -228,10 +228,17 @@ const JPEG_QUALITY : Int32 = 82
 ///
 /// `ok` 是编码器自己的返回值：它已经失败了就别再去开文件，省一次必然失败的读。
 async fn read_result(out : String, ok : Bool) -> Bytes? {
+  // 读完就删。
+  //
+  // 原来是「读完不管，靠 next_tmp 的环形滚动兜底」，而环上只留 10 个、
+  // 并发上限却是 64：一批请求同时进来，最早的那些文件会被后面的人删掉，
+  // 而它们可能正被读。现在读回只有这一个入口，就地删最干净。
   if !ok {
+    // 编码器失败时可能已经建了个空文件，顺手清掉
+    @fs.remove(out) catch { _ => () }
     return None
   }
-  try {
+  let got = try {
     let f = @fs.open(out, mode=ReadOnly)
     let b = f.read_all().binary()
     f.close()
@@ -239,6 +246,8 @@ async fn read_result(out : String, ok : Bool) -> Bytes? {
   } catch {
     _ => None
   }
+  @fs.remove(out) catch { _ => () }
+  got
 }
 
 ///|

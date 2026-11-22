@@ -208,9 +208,18 @@ async fn main {
   }
   // 上一次运行留下的原始帧不会被这次覆盖（序号每进程从 1 重来），先扫掉。
   // 每帧 8MB，而 /run 是内存盘。
-  let cleaned = @store.clean_stale_frames(shm, "\{base_name(shot_path)}.")
-  if cleaned > 0 {
-    eprintln("清掉上次运行留下的原始帧 \{cleaned} 个")
+  let cleaned_frames = @store.clean_stale_frames(
+    shm,
+    "\{base_name(shot_path)}.",
+    ".bgra",
+  )
+  if cleaned_frames > 0 {
+    eprintln("清掉上次运行留下的原始帧 \{cleaned_frames} 个")
+  }
+  // 临时输出正常情况读完就删，进程被 kill 时会剩几个
+  let cleaned_tmp = @store.clean_stale_frames(shm, "out-", "")
+  if cleaned_tmp > 0 {
+    eprintln("清掉上次运行留下的临时输出 \{cleaned_tmp} 个")
   }
   let wl_dir = match @env.get_env_var("XDG_RUNTIME_DIR") {
     Some(d) => d

@@ -66,33 +66,48 @@ test "next_tmp 带时间戳和 pid，不撞名" {
 }
 
 ///|
-/// 临时文件列表滚动：超过上限就丢最旧的，而不是无限涨。
+/// 临时输出读完就删，不攒着。
 ///
-/// 三个调用点都是「建文件 → 写 → 读 → 返回」，读完从不删，
-/// 所以每次请求都会在 /tmp 留一个。没有这个滚动，请求一多就一直涨。
-test "临时文件列表滚动，不超过上限" {
-  let store = Store::new(shot="/tmp/none.jpg")
-  let mut first = ""
-  for i = 0; i < 40; i = i + 1 {
-    let p = store.next_tmp("jpg")
-    if i == 0 {
-      first = p
-    }
+/// 原来是「读完不管，靠 next_tmp 的环形滚动删最旧的」，而环上只留 10 个、
+/// 并发上限却是 64：一批请求同时进来，最早的文件会被后面的人删掉，
+/// 而它们可能正被读。现在读回只有一个入口，读完就地删。
+async test "临时输出读完就删" {
+  // 每个测试用自己的目录。
+  //
+  // MoonBit 的测试是并发跑的，而两个测试各自 new 一个 Store，seq 都从 1 开始、
+  // 进程号相同、时间戳可能落在同一毫秒 —— 路径会撞在一起，一个测试把另一个
+  // 正在用的文件删掉。（这个坑在光标那组测试里踩过一次。）
+  let dir = "/tmp/ssmb-tmp-del-a"
+  let store = Store::new(shot="/tmp/none.jpg", tmp_dir=dir)
+  @fs.mkdir(dir, permission=0o700, recursive=true) catch {
+    _ => ()
   }
-  // 列表长度被压在上限以内
-  assert_true(store.tmp_ring.length() <= 10)
-  // 最早那个已经被滚出去了
-  assert_false(store.tmp_ring.contains(first))
+  // 造一个文件当编码器产物
+  let out = store.next_tmp("jpg")
+  @fs.write_file(out, b"payload", create_mode=CreateOrTruncate) catch {
+    _ => ()
+  }
+  assert_true(@fs.exists(out) catch { _ => false })
+  let got = read_result(out, true)
+  assert_eq(got, Some(b"payload"))
+  // 读完就没了
+  assert_false(@fs.exists(out) catch { _ => true })
 }
 
 ///|
-/// 刚建的那个绝不能被自己的滚动删掉 —— 返回路径之后调用方还要往里写。
-test "滚动不会删掉刚返回的路径" {
-  let store = Store::new(shot="/tmp/none.jpg")
-  for i = 0; i < 30; i = i + 1 {
-    let p = store.next_tmp("jpg")
-    assert_true(store.tmp_ring.contains(p))
+/// 编码失败时也要把可能建了一半的文件清掉。
+async test "编码失败时清掉半成品" {
+  let dir = "/tmp/ssmb-tmp-del-b"
+  let store = Store::new(shot="/tmp/none.jpg", tmp_dir=dir)
+  @fs.mkdir(dir, permission=0o700, recursive=true) catch {
+    _ => ()
   }
+  let out = store.next_tmp("jpg")
+  @fs.write_file(out, b"half", create_mode=CreateOrTruncate) catch {
+    _ => ()
+  }
+  assert_true(read_result(out, false) is None)
+  assert_false(@fs.exists(out) catch { _ => true })
 }
 
 ///|

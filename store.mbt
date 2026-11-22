@@ -49,22 +49,6 @@ pub struct Store {
   pump_ms : Int32
   mut err : String
   mut seq : Int32
-  /// 最近生成的临时文件，环形滚动。
-  ///
-  /// 三个调用点都是「建文件 → 写 → 读 → 返回字节」，读完从不删，
-  /// 所以每次请求都会在 /tmp 留一个文件。请求频率一高就会一直涨，
-  /// 只能靠系统 tmpfiles 定期清。
-  ///
-  /// 这里保留最近 TMP_KEEP 个，超了就删最旧的。
-  /// 为什么不是在「读出字节之后立刻删」：那看着更干净，但三个调用点
-  /// 分散在 app.mbt 的不同分支里（有一个还要等外部编码跑完），
-  /// 每个分支都得记得删，漏一处就是新的泄漏。
-  /// 统一在这里滚动，只在 next_tmp 一个地方管，不会漏。
-  ///
-  /// 必须是环形而不是"删第一个"：读文件时中间有 await，
-  /// 别的请求可能插进来生成新文件。用环形 + 编号，删除时跳过
-  /// 最近 TMP_KEEP 个以内的，就不会删到别人正在读的。
-  mut tmp_ring : Array[String]
   /// 临时输出文件的目录。
   ///
   /// 不再直接落在 /tmp 根下：那个目录谁都能读、谁都能写，截图 0644 摆着，
@@ -109,7 +93,6 @@ pub fn Store::new(
     pump_ms,
     err: "",
     seq: 0,
-    tmp_ring: [],
     tmp_dir,
   }
 }
@@ -332,12 +315,6 @@ pub fn Store::shot(self : Store) -> String {
   self.shot
 }
 
-///|
-/// 临时文件保留几个。超过就删最旧的。
-///
-/// 10 足够宽：并发请求上限虽然有 64，但每个请求拿到路径到读完只有几毫秒，
-/// 而删除只针对 10 个之前生成的，轮不到正在读的那个。
-const TMP_KEEP : Int32 = 10
 
 ///|
 pub fn Store::next_tmp(self : Store, ext : String) -> String {
@@ -349,21 +326,12 @@ pub fn Store::next_tmp(self : Store, ext : String) -> String {
   // 光靠名字防不住本地攻击者（可预测就是可预测），真正的防线是 `tmp_dir`：
   // 目录由服务自己按 0700 建，别的用户进不去，也放不进东西。C 侧再叠一层
   // O_NOFOLLOW + 0600。
-  let path = "\{self.tmp_dir}/out-\{@async.now()}-\{current_pid()}-\{self.seq}.\{ext}"
-  self.tmp_ring.push(path)
-  // 先把列表压到上限，再返回路径。
+  // 只管发路径，不在这里删旧文件。
   //
-  // 顺序很关键：push 在前、删在后，所以刚建的这个一定在列表尾部，
-  // 不会被自己的滚动删掉。删掉的是 10 个之前生成的那些。
-  //
-  // 为什么多留 1：读完文件到返回响应之间还有几步，这期间列表里
-  // 最新的那个必须是活的。多留一个位置相当于给最近一次调用留了缓冲。
-  while self.tmp_ring.length() > TMP_KEEP {
-    let oldest = self.tmp_ring[0]
-    self.tmp_ring = self.tmp_ring[1:].to_owned()
-    tmp_remove(oldest)
-  }
-  path
+  // 原来是「环形滚动，超了删最旧的」，而并发上限是 64、环上只留 10 个：
+  // 并发一高，还在被别的请求读的文件就被后面的人删掉了。现在由读回那头
+  // 读完即删（见 `read_result`），这里再删只会误伤。
+  "\{self.tmp_dir}/out-\{@async.now()}-\{current_pid()}-\{self.seq}.\{ext}"
 }
 
 ///|
@@ -375,17 +343,6 @@ fn cstr(s : String) -> Bytes {
 }
 
 ///|
-/// 删一个临时文件。失败不管：可能已经被清了，或者权限不对，
-/// 清理失败不该影响这次请求。
-fn tmp_remove(path : String) -> Unit {
-  let _ = tmp_remove_raw(cstr(path))
-}
-
-///|
-#borrow(path)
-extern "c" fn tmp_remove_raw(path : Bytes) -> Int32 = "moonbit_tmp_remove"
-
-///|
 /// 当前进程号，来自 C 的 getpid()。
 fn current_pid() -> Int32 {
   current_pid_raw()
@@ -395,17 +352,26 @@ fn current_pid() -> Int32 {
 extern "c" fn current_pid_raw() -> Int32 = "moonbit_current_pid"
 
 ///|
-/// 删掉帧目录里上一次运行留下的原始帧，返回删掉的数量。
-#borrow(dir, prefix)
-extern "c" fn clean_stale_frames_raw(dir : Bytes, prefix : Bytes) -> Int32 = "moonbit_clean_stale_frames"
+/// 删掉目录里匹配「前缀 + 后缀」的文件，返回删掉的数量。
+#borrow(dir, prefix, suffix)
+extern "c" fn clean_stale_frames_raw(
+  dir : Bytes,
+  prefix : Bytes,
+  suffix : Bytes,
+) -> Int32 = "moonbit_clean_stale_frames"
 
 ///|
-/// 清掉上次运行留下的 `*.bgra`。
+/// 清掉上次运行留下的临时文件。
 ///
 /// 原始帧每帧 8MB，文件名里的序号每个进程都从 1 重来，上个进程跑到几千号的
-/// 那些再也不会被覆盖，会一直躺在 tmpfs（也就是内存）里。启动时扫一遍。
-pub fn clean_stale_frames(dir : String, prefix : String) -> Int32 {
-  clean_stale_frames_raw(cstr(dir), cstr(prefix))
+/// 那些再也不会被覆盖，会一直躺在 tmpfs（也就是内存）里。临时输出正常情况
+/// 读完就删了，但进程被 kill 时会留下几个。启动时各扫一遍。
+pub fn clean_stale_frames(
+  dir : String,
+  prefix : String,
+  suffix : String,
+) -> Int32 {
+  clean_stale_frames_raw(cstr(dir), cstr(prefix), cstr(suffix))
 }
 
 ///|
