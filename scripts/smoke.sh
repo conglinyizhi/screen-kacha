@@ -62,14 +62,30 @@ check "/human.html 类型" "text/html; charset=utf-8" "$(ctype $B/human.html)"
 # 模拟浏览器
 check "带 Accept 的 / 回 HTML" "text/html; charset=utf-8" \
   "$(curl -s -o /dev/null -w '%{content_type}' --max-time 5 -H 'Accept: text/html,*/*' $B/)"
-# 浏览器拿到的是 meta refresh 中间页，不是 302、也不是页面本体本身。
-# 用 meta 而不是 302 是为了不坑不跟随重定向的 agent 客户端。
+# 浏览器拿到的是外壳：一个外链脚本 + 给 LLM 的说明文字。
+# 界面本体在那个 .js 里，所以不执行 JS 的客户端不会下载它。
 curl -s --max-time 5 -H 'Accept: text/html' $B/ \
-  | grep -q 'http-equiv="refresh".*url=/human.html' && ok || bad "/ 的浏览器分支不是跳转中间页"
-# 中间页还得对「发了 text/html 的 LLM/自动化客户端」有用：
-# 它们会被跳转带走，但至少要知道去读 llms.txt
+  | grep -q 'src="/for_human_use_browser.js"' && ok || bad "/ 外壳没引用界面脚本"
 curl -s --max-time 5 -H 'Accept: text/html' $B/ \
-  | grep -q '/llms.txt' && ok || bad "/ 的中间页没给 LLM 留 llms.txt 指引"
+  | grep -q 'id="for_llm"' && ok || bad "/ 外壳缺 for_llm 锚点"
+curl -s --max-time 5 -H 'Accept: text/html' $B/ \
+  | grep -q '/llms.txt' && ok || bad "/ 外壳没给 LLM 留 llms.txt 指引"
+# 给 LLM 的那段文本必须保持纯文本，样式由 JS 注入而不是写进外壳
+curl -s --max-time 5 -H 'Accept: text/html' $B/ \
+  | grep -q 'style=' && bad "/ 外壳给 LLM 的文本里混进了 style 属性" || ok
+# 界面本体
+check "界面脚本状态" 200 "$(code $B/for_human_use_browser.js)"
+case "$(ctype $B/for_human_use_browser.js)" in
+  application/javascript*) ok ;;
+  *) bad "界面脚本类型不对：$(ctype $B/for_human_use_browser.js)" ;;
+esac
+curl -s --max-time 5 $B/for_human_use_browser.js \
+  | grep -q 'for_llm' && ok || bad "界面脚本没把内容插到 for_llm 前面"
+# <pre> 默认不换行，窄屏会把这段话右侧切掉。折行样式由 JS 注入到那个元素上。
+curl -s --max-time 5 $B/for_human_use_browser.js \
+  | grep -q "querySelector('#for_llm > pre')" && ok || bad "界面脚本没精确指到 for_llm 的 pre"
+curl -s --max-time 5 $B/for_human_use_browser.js \
+  | grep -q 'pre-wrap' && ok || bad "界面脚本没给 pre 注入折行样式"
 check "/health 状态" 200 "$(code $B/health)"
 check "/health 类型" "application/json" "$(ctype $B/health)"
 check "/skill.md 类型" "text/markdown; charset=utf-8" "$(ctype $B/skill.md)"

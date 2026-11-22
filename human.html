@@ -76,6 +76,25 @@
   pre code { background: none; padding: 0; }
 
   .note { color: var(--dim); font-size: .85rem; margin: 10px 0 0; }
+  .flash {
+    border: 1px solid var(--line); border-radius: 8px;
+    background: var(--panel); padding: 0 16px; margin: 0 0 24px;
+  }
+  .flash > summary {
+    cursor: pointer; padding: 11px 0; color: var(--dim);
+    font-size: .9rem; list-style-position: inside;
+  }
+  .flash[open] > summary { padding-bottom: 4px; }
+  .flash p { font-size: .9rem; color: var(--dim); margin: 8px 0; }
+  .flash p:last-child { margin-bottom: 14px; }
+  /* 链接做成按钮：它是页面内的定位动作，不是外链 */
+  .flash a.go {
+    display: inline-block; padding: 6px 14px; margin-left: 4px;
+    font: inherit; font-size: .85rem; text-decoration: none;
+    color: var(--accent); background: var(--panel); cursor: pointer;
+    border: 1px solid var(--accent); border-radius: 6px;
+  }
+  .flash a.go:hover { background: var(--accent); color: var(--bg); }
   a.inline { color: var(--accent); text-decoration: none; }
   a.inline:hover { text-decoration: underline; }
 
@@ -144,6 +163,12 @@
 
   <h1>screenstream</h1>
   <p class="lede">本机屏幕的 HTTP 快照服务。取一张 JPEG 就能看见现在屏幕上是什么，给本地 agent 用。</p>
+
+  <details class="flash">
+    <summary>关于刚刚一闪而过的文本</summary>
+    <p>刚刚你可能看到了一段一闪而过的文本，那段文本是给 agent 看的，用这种方式能让 agent 以更少的成本理解这个服务端的具体作用。</p>
+    <p>现在你仍然可以在这个页面的最底端看到这段文本，你可以点击这里<a href="#for_llm" id="jump-llm" class="go">跳转</a>过去；这样 agent 会读到文本，然后读 llms.txt 文件。而人类几乎不会因此受到太多影响</p>
+  </details>
 
   <div class="top">
     <figure>
@@ -277,6 +302,19 @@ curl -s http://127.0.0.1:8930/health</code></pre>
   img.addEventListener('load', function () { setTimeout(tick, 2000); });
   img.addEventListener('error', function () { setTimeout(tick, 5000); });
   tick();
+
+  // 「点这里跳转」滚到页面最底端那段给 LLM 的原文。
+  // href="#for_llm" 本身就能跳，这里只负责平滑滚动；
+  // 目标在页面外面（由 / 的外壳提供），所以找不到就直接走原生锚点。
+  var jump = document.getElementById('jump-llm');
+  if (jump) {
+    jump.addEventListener('click', function (e) {
+      var t = document.getElementById('for_llm');
+      if (!t) return;
+      e.preventDefault();
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
 </script>
 
 <script>

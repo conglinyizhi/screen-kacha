@@ -353,19 +353,28 @@ pub fn build_app(store : Store, port : Int32) -> @crescent.App {
   // 两边各拿到干净的东西。
   app.get("/", async fn(ev) {
     if wants_html(ev.req.get_header("accept")) {
-      // 浏览器：给一个 meta refresh 的中间页，让地址栏落到 /human.html。
-      // 不用 302 —— 有些 agent 的 HTTP 客户端不跟随重定向，
-      // 而它们发的 Accept 里可能带 text/html，那样会拿到空的响应。
+      // 浏览器：给外壳。界面本体在 /for_human_use_browser.js 里，
+      // 由那段脚本插到 #for_llm 前面。不执行 JS 的客户端只看到文本。
       make_res(
         @crescent.StatusCode::OK,
         "text/html; charset=utf-8",
-        @utf8.encode(human_redirect),
+        @utf8.encode(index_shell),
       ).to_responder()
     } else {
       handle_text_file("llms.txt", "text/plain; charset=utf-8", fallback_llms).to_responder()
     }
   })
-  app.get("/human.html", async fn(_ev) { handle_human_page().to_responder() })
+  app.get("/for_human_use_browser.js", async fn(_ev) {
+    handle_human_js().to_responder()
+  })
+  // 老链接还认：和 / 给同一个外壳
+  app.get("/human.html", fn(_ev) {
+    make_res(
+      @crescent.StatusCode::OK,
+      "text/html; charset=utf-8",
+      @utf8.encode(index_shell),
+    ).to_responder()
+  })
   app.get("/health", fn(_ev) { handle_health(store, port).to_responder() })
   // 出错兜底页：只认代号，正文从固定表里查
   app.get("/ui/err", fn(ev) {

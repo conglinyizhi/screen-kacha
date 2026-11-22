@@ -116,7 +116,7 @@ install -m 0755 "$ROOT/contrib/screenstream-portal-loop" "$BIN/screenstream-port
 say "screenstream-portal-loop"
 
 echo "== 装文档 =="
-for f in README.md error.md skill.md llms.txt robots.txt; do
+for f in README.md error.md skill.md llms.txt robots.txt human.html; do
   [ -f "$ROOT/$f" ] && install -m 0644 "$ROOT/$f" "$DATA/$f" && say "$f"
 done
 
