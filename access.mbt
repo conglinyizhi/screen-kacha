@@ -4,26 +4,29 @@
 /// 两级开关 + 一份预留名单。配置是纯文本，一行一项，`#` 开头是注释：
 ///
 ///   allow_lan    = true    # 局域网放行
-///   allow_public = false   # 非局域网放行 —— 危险，默认关
+///   allow_public = false   # 非局域网放行，危险，默认关
+///   allow_cgnat  = false   # 把 100.64/10 也算局域网（穿透工具用）
 ///   allow        =         # 预留：显式放行的地址，优先于上面两档
 ///
 /// 回环地址永远放行。
 pub struct Access {
   mut allow_lan : Bool
   mut allow_public : Bool
+  /// 把 100.64/10 也当局域网。默认关，见 `is_cgnat` 的说明。
+  mut allow_cgnat : Bool
   allow : Array[String]
 }
 
 ///|
 /// 默认：局域网放行、公网不放行、没有额外名单。
 pub fn Access::default() -> Access {
-  { allow_lan: true, allow_public: false, allow: [], }
+  { allow_lan: true, allow_public: false, allow_cgnat: false, allow: [], }
 }
 
 ///|
 /// 完全放开。
 pub fn Access::open() -> Access {
-  { allow_lan: true, allow_public: true, allow: [], }
+  { allow_lan: true, allow_public: true, allow_cgnat: false, allow: [], }
 }
 
 ///|
@@ -132,6 +135,31 @@ pub fn is_lan(ip : String) -> Bool {
 }
 
 ///|
+/// 运营商级 NAT 段 100.64.0.0/10（100.64 到 100.127）。
+///
+/// Tailscale、内网穿透这类工具常把地址落在这里。它不属于 RFC1918，
+/// 公网上确实分配过这段，所以默认不当局域网：放宽会模糊「局域网」
+/// 这个词的含义，而多数人根本用不到。需要的人自己在托盘里打开。
+pub fn is_cgnat(ip : String) -> Bool {
+  if ip.contains(":") {
+    return false
+  }
+  let parts : Array[String] = ip
+    .split(".")
+    .map(fn(x) { x.to_owned() })
+    .to_array()
+  if parts.length() != 4 {
+    return false
+  }
+  let a = parse_octet(parts[0])
+  let b = parse_octet(parts[1])
+  if a < 0 || b < 0 {
+    return false
+  }
+  a == 100 && b >= 64 && b <= 127
+}
+
+///|
 /// 这条连接能不能访问。
 pub fn Access::allows(self : Access, peer : String) -> Bool {
   let ip = peer_ip(peer)
@@ -147,7 +175,7 @@ pub fn Access::allows(self : Access, peer : String) -> Bool {
       return true
     }
   }
-  if is_lan(ip) {
+  if is_lan(ip) || (self.allow_cgnat && is_cgnat(ip)) {
     return self.allow_lan
   }
   self.allow_public
@@ -172,6 +200,8 @@ pub fn parse_access(text : String) -> Access {
           a.allow_lan = on
         } else if key == "allow_public" {
           a.allow_public = on
+        } else if key == "allow_cgnat" {
+          a.allow_cgnat = on
         } else if key == "local_only" {
           a.allow_lan = false
           a.allow_public = false
@@ -217,6 +247,9 @@ pub fn Access::describe(self : Access) -> String {
     parts.push("局域网放行")
   } else {
     parts.push("仅本机")
+  }
+  if self.allow_cgnat {
+    parts.push("含 100.64/10")
   }
   if self.allow.length() > 0 {
     parts.push("名单 " + self.allow.join(","))

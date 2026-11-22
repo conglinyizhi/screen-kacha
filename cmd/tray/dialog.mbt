@@ -76,6 +76,25 @@ pub fn alert(title : String, body : String, code : String) -> Unit {
 }
 
 ///|
+/// 普通提示框：告诉用户一件事，不写错误记录。
+///
+/// 和 `alert` 的区别是它不调用 `record_error`。用 `alert` 做说明会把
+/// 正常操作写进错误日志，之后排查真问题就被这些噪音埋了。
+pub fn inform(title : String, body : String) -> Unit {
+  if has("kdialog") {
+    sh("kdialog --title '\{title}' --msgbox '\{body}'")
+    return
+  }
+  if has("zenity") {
+    sh("zenity --info --title='\{title}' --text='\{body}'")
+    return
+  }
+  if has("notify-send") {
+    sh("notify-send -a screenstream '\{title}' '\{body}'")
+  }
+}
+
+///|
 /// 系统级（非 --user）有没有同名的 unit。
 ///
 /// 有的话，托盘用 `systemctl --user` 是管不到它的：点击开机启动会静默无效，

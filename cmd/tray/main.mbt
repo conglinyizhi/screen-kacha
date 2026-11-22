@@ -120,24 +120,28 @@ fn read_flag(text : String, key : String, dflt : Bool) -> Bool {
 }
 
 ///|
-/// 读当前访问策略：返回 (局域网放行, 公网放行)。
+/// 读当前访问策略：返回 (局域网放行, 公网放行, 100.64/10 也算局域网)。
 ///
 /// 上限放到 64KB 且要求读满：原来是 4096，配置一旦超过就会被截断，
-/// 后半个文件里的真实值读不到，`read_flag` 只能退回默认值 ——
+/// 后半个文件里的真实值读不到，`read_flag` 只能退回默认值，
 /// 然后 `write_access` 拿这个默认值把用户的配置覆盖掉，
 /// 等于「点一次菜单，设置被静默重置」。
-fn read_access() -> (Bool, Bool) {
+fn read_access() -> (Bool, Bool, Bool) {
   let text = capture_whole(access_path())
   match text {
     Some(t) =>
-      (read_flag(t, "allow_lan", true), read_flag(t, "allow_public", false))
+      (
+        read_flag(t, "allow_lan", true),
+        read_flag(t, "allow_public", false),
+        read_flag(t, "allow_cgnat", false),
+      )
     // 读不出来（不存在 / 太大 / 权限）就当作默认，但绝不用它去覆盖
-    None => (true, false)
+    None => (true, false, false)
   }
 }
 
 ///|
-/// 把整个文件读进来。读不全返回 None —— 宁可不改，也不拿半截内容去写。
+/// 把整个文件读进来。读不全返回 None，宁可不改，也不拿半截内容去写。
 fn capture_whole(path : String) -> String? {
   let limit = 65536
   let out = capture("cat '\{path}' 2>/dev/null", limit)
@@ -150,17 +154,17 @@ fn capture_whole(path : String) -> String? {
 
 ///|
 /// 把两档开关写回配置并重启服务让它生效。失败返回 false。
-fn write_access(lan : Bool, public : Bool) -> Bool {
+fn write_access(lan : Bool, public : Bool, cgnat : Bool) -> Bool {
   // 只改这两行，别的一律原样保留。
   //
   // 原来是整文件重写（只留三行）：用户手写的注释、`allow` 名单
   // 全都会在一次点击里消失。那个 `allow` 名单是有用的配置，不是垃圾。
   let old = capture_whole(access_path())
-  let body = rewrite_flags(old, lan, public)
+  let body = rewrite_flags(old, lan, public, cgnat)
   if !write_file(access_path(), body) {
     return false
   }
-  // 服务重启失败时，配置文件里已经是新值了，勾选却被回滚 ——
+  // 服务重启失败时，配置文件里已经是新值了，勾选却被回滚，
   // 两边相反，下次服务重启又突然生效。这里把写入也退回去。
   if run_status("systemctl --user restart screenstream-mb.service") != 0 {
     match old {
@@ -175,9 +179,14 @@ fn write_access(lan : Bool, public : Bool) -> Bool {
 }
 
 ///|
-/// 在保留原有内容的前提下，改掉 allow_lan / allow_public 两行。
+/// 在保留原有内容的前提下，改掉 allow_lan / allow_public / allow_cgnat 三行。
 /// 没有这两行就追加，其它行（注释、allow 名单、未知键）原样留着。
-fn rewrite_flags(old : String?, lan : Bool, public : Bool) -> String {
+fn rewrite_flags(
+  old : String?,
+  lan : Bool,
+  public : Bool,
+  cgnat : Bool,
+) -> String {
   let sb = StringBuilder()
   let src = match old {
     Some(t) => t
@@ -185,6 +194,7 @@ fn rewrite_flags(old : String?, lan : Bool, public : Bool) -> String {
   }
   let mut seen_lan = false
   let mut seen_public = false
+  let mut seen_cgnat = false
   for line in src.split("\n") {
     let s : String = line.to_owned()
     let t : String = s.trim().to_owned()
@@ -194,6 +204,9 @@ fn rewrite_flags(old : String?, lan : Bool, public : Bool) -> String {
     } else if t.has_prefix("allow_public") && t.contains("=") {
       sb.write_string("allow_public = \{public}\n")
       seen_public = true
+    } else if t.has_prefix("allow_cgnat") && t.contains("=") {
+      sb.write_string("allow_cgnat = \{cgnat}\n")
+      seen_cgnat = true
     } else if s != "" {
       sb.write_string("\{s}\n")
     }
@@ -203,6 +216,9 @@ fn rewrite_flags(old : String?, lan : Bool, public : Bool) -> String {
   }
   if !seen_public {
     sb.write_string("allow_public = \{public}\n")
+  }
+  if !seen_cgnat {
+    sb.write_string("allow_cgnat = \{cgnat}\n")
   }
   sb.to_string()
 }
@@ -261,12 +277,12 @@ fn main raise {
   t.on("open", "打开 :\{port} 页面", fn(_) { sh("xdg-open '\{base}/'") })
   |> ignore
   t.separator()
-  let (lan_on, public_on) = read_access()
+  let (lan_on, public_on, cgnat_on) = read_access()
   let cb_lan = t.checkbox("allow_lan", "放行局域网请求", lan_on, fn(
     item,
   ) {
-    let (_, cur_public) = read_access()
-    if !write_access(item.checked(), cur_public) {
+    let (_, cur_public, cur_cgnat) = read_access()
+    if !write_access(item.checked(), cur_public, cur_cgnat) {
       alert(
         "访问控制设置失败", "写配置或重启服务失败了。可以检查 ~/.config/screenstream-mb/ 是否可写，或用 journalctl --user -xe 看原因。",
         "access",
@@ -279,13 +295,41 @@ fn main raise {
     "[危险] 放行非局域网请求",
     public_on,
     fn(item) {
-      let (cur_lan, _) = read_access()
-      if !write_access(cur_lan, item.checked()) {
+      let (cur_lan, _, cur_cgnat) = read_access()
+      if !write_access(cur_lan, item.checked(), cur_cgnat) {
         alert(
           "访问控制设置失败", "写配置或重启服务失败了。可以检查 ~/.config/screenstream-mb/ 是否可写，或用 journalctl --user -xe 看原因。",
           "access",
         )
         item.set_checked(!item.checked())
+      }
+    },
+  )
+  // 额外豁免：把 100.64/10 也算局域网。
+  //
+  // 这一段不属于 RFC1918，公网上确实分配过，所以默认关着。
+  // Tailscale、内网穿透这些工具会把流量落在 100.64.x.x，用户遇到
+  // 「明明在同一张网里却 403」时才需要它。开启时给一段说明，
+  // 让人知道刚才放宽了什么，而不是点完不知道发生了什么。
+  let cb_cgnat = t.checkbox(
+    "allow_cgnat",
+    "额外豁免 100.64/10（内网穿透）",
+    cgnat_on,
+    fn(item) {
+      let (cur_lan, cur_public, _) = read_access()
+      let on = item.checked()
+      if !write_access(cur_lan, cur_public, on) {
+        alert(
+          "访问控制设置失败", "写配置或重启服务失败了。可以检查 ~/.config/screenstream-mb/ 是否可写，或用 journalctl --user -xe 看原因。",
+          "access",
+        )
+        item.set_checked(!on)
+        return
+      }
+      if on {
+        inform(
+          "已放宽 100.64/10", "运营商级 NAT 段现在也算局域网，和「放行局域网请求」用同一个开关。\n\nTailscale、内网穿透这类工具常把地址落在这里。如果你的穿透地址不是这段，用不到这个选项，建议关掉。",
+        )
       }
     },
   )
@@ -327,7 +371,7 @@ fn main raise {
       }
     },
   )
-  let _ = (cb_lan, cb_public, cb_boot)
+  let _ = (cb_lan, cb_public, cb_cgnat, cb_boot)
   t.separator()
   // 光标跟踪：临时挂一个 KWin 脚本 + 一个收坐标的小进程，勾掉就全撤
   let helper = match @env.get_env_var("HOME") {
@@ -375,7 +419,7 @@ fn main raise {
     // 退出前把光标跟踪收掉。
     //
     // 不收的话：脚本还挂在 KWin 里、helper 进程还在跑、坐标还在刷新，
-    // 而唯一能关掉它的入口（这个菜单）已经没了 —— 用户只能重启 KWin
+    // 而唯一能关掉它的入口（这个菜单）已经没了，用户只能重启 KWin
     // 或重启机器。systemd 重启托盘服务（SIGTERM）走的也是这条路径，
     // 每重启一次就多一个 helper 和一个叠加的定时器。
     cursor_tracking_off()

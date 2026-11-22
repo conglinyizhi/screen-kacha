@@ -6,6 +6,8 @@ pub fn alert(String, String, String) -> Unit
 
 pub fn icons_for(String) -> Array[@conglinyizhi/moonsni/src/tray.PixelIcon]
 
+pub fn inform(String, String) -> Unit
+
 pub fn render_icon(Int32, Int32) -> @conglinyizhi/moonsni/src/tray.PixelIcon
 
 pub fn system_unit_conflict() -> Bool

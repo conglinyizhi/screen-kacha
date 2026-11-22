@@ -23,6 +23,8 @@ pub async fn find_magick(Array[String]) -> String?
 
 pub async fn forget_portal_node(String) -> Unit
 
+pub fn is_cgnat(String) -> Bool
+
 pub fn is_lan(String) -> Bool
 
 pub fn is_loopback(String) -> Bool
@@ -55,6 +57,7 @@ pub fn wants_html(String?) -> Bool
 pub struct Access {
   mut allow_lan : Bool
   mut allow_public : Bool
+  mut allow_cgnat : Bool
   allow : Array[String]
 }
 pub fn Access::allows(Self, String) -> Bool
