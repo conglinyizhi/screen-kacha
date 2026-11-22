@@ -138,7 +138,7 @@ fn wrap_human_js(page : String) -> String {
 ///
 /// 它只被 `index_shell` 里那个 `<script src>` 拉起。不执行 JS 的客户端
 /// LLM、curl、agent 都不会请求它，也就不会下载这十几 KB。
-async fn handle_human_js(store : Store, port : Int32) -> @crescent.HttpResponse {
+async fn handle_human_js(store : Store, port : Int32) -> Resp {
   let path = store.data_path("human.html")
   let page = try {
     let f = @fs.open(path, mode=ReadOnly)
@@ -163,11 +163,7 @@ async fn handle_human_js(store : Store, port : Int32) -> @crescent.HttpResponse 
       }
     None => fallback_human_js
   }
-  make_res(
-    @crescent.StatusCode::OK,
-    "application/javascript; charset=utf-8",
-    @utf8.encode(body),
-  )
+  make_res(200, "application/javascript; charset=utf-8", @utf8.encode(body))
 }
 
 ///|
@@ -208,7 +204,7 @@ async fn handle_text_file(
   ctype : String,
   fallback : String,
   port : Int32,
-) -> @crescent.HttpResponse {
+) -> Resp {
   let path = store.data_path(name)
   let text = try {
     let f = @fs.open(path, mode=ReadOnly)
@@ -225,7 +221,7 @@ async fn handle_text_file(
       fallback
     }
   }
-  make_res(@crescent.StatusCode::OK, ctype, @utf8.encode(fill_port(text, port)))
+  make_res(200, ctype, @utf8.encode(fill_port(text, port)))
 }
 
 ///|

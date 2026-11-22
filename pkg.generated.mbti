@@ -2,7 +2,6 @@
 package "conglinyizhi/screen-kacha"
 
 import {
-  "bobzhang/crescent",
   "conglinyizhi/screen-kacha/moonpipewire",
   "moonbitlang/async",
   "moonbitlang/async/http",
@@ -15,7 +14,7 @@ pub fn acquire_instance_lock(String) -> Bool
 
 pub async fn acquire_portal_node(String) -> Int32?
 
-pub fn build_app(Store, Int32, Access) -> @crescent.App
+pub fn build_router(Store, Int32, Access) -> Router
 
 pub fn capture_too_soon(Int64, Int64) -> Bool
 
@@ -35,6 +34,8 @@ pub fn frame_is_stalled(Int64, Int64, Int32) -> Bool
 
 pub fn host_allowed(String) -> Bool
 
+pub fn html_res(String) -> Resp
+
 pub fn is_cgnat(String) -> Bool
 
 pub fn is_lan(String) -> Bool
@@ -42,6 +43,10 @@ pub fn is_lan(String) -> Bool
 pub fn is_loopback(String) -> Bool
 
 pub async fn load_access(String) -> Access
+
+pub fn make_res(Int32, String, Bytes) -> Resp
+
+pub fn normalize_path(String) -> String
 
 pub fn not_found_text(String) -> String
 
@@ -53,6 +58,8 @@ pub fn parse_cursor_pos_text(String) -> (Int32, Int32)?
 
 pub fn parse_flag_value(String) -> Bool
 
+pub fn parse_query(String) -> Map[String, String]
+
 pub fn peer_ip(String) -> String
 
 pub fn portal_step(Bool) -> PortalStep
@@ -63,7 +70,13 @@ pub fn reject_slots(Int32) -> Int32
 
 pub fn reject_timeout_ms() -> Int32
 
-pub async fn serve_with_access(@crescent.App, @http.Server, Access, Int32) -> Unit
+pub async fn serve_with_access(Router, @http.Server, Access, Int32) -> Unit
+
+pub fn single_segment(String) -> String?
+
+pub fn status_reason(Int32) -> String
+
+pub fn text_res(Int32, String) -> Resp
 
 pub fn unmap_ipv4(String) -> String
 
@@ -113,6 +126,48 @@ pub enum PortalStep {
   Watch
   Reacquire
 }
+
+pub struct Req {
+  meth : String
+  raw_path : String
+  path : String
+  headers : Map[String, String]
+  query : Map[String, String]
+  params : Map[String, String]
+  body : Bytes
+}
+pub fn Req::get_header(Self, String) -> String?
+pub fn Req::get_query(Self, String) -> String?
+pub fn Req::meth_word(Self) -> String
+pub fn Req::new(String, String, String, Map[String, String], Map[String, String], Map[String, String], Bytes) -> Self
+pub fn Req::param(Self, String) -> String?
+pub fn Req::path(Self) -> String
+
+pub struct Resp {
+  status : Int32
+  headers : Map[String, String]
+  body : Bytes
+}
+pub fn Resp::new(Int32, String, Bytes) -> Self
+
+pub struct Route {
+  kind : RouteKind
+  pattern : String
+  handler : async (Req) -> Resp
+}
+
+pub enum RouteKind {
+  Exact
+  Param(String)
+  CatchAll
+}
+
+pub struct Router {
+  routes : Array[Route]
+}
+pub async fn Router::dispatch(Self, String, String, Map[String, String], Bytes) -> Resp
+pub fn Router::get(Self, String, async (Req) -> Resp) -> Unit
+pub fn Router::new() -> Self
 
 pub struct Store {
   shot : String

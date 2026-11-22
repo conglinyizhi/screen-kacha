@@ -86,7 +86,7 @@ pub fn exit_process(code : Int32) -> Unit {
 /// - 并发上限用信号量在 accept 后立刻 `acquire`，满了就停在原地，
 ///   由内核的 listen backlog 兜住新连接（跟 `serve_on` 的做法一致）
 pub async fn serve_with_access(
-  app : @crescent.App,
+  router : Router,
   server : @http.Server,
   access : Access,
   max_conns : Int32,
@@ -146,7 +146,7 @@ pub async fn serve_with_access(
           gate.acquire()
           group.spawn_bg(no_wait=true, allow_failure=true, () => {
             defer gate.release()
-            handle_one(app, conn)
+            handle_one(router, conn)
           })
         }
       }
@@ -270,7 +270,7 @@ pub fn host_allowed(host : String) -> Bool {
 
 ///|
 /// 读一个请求、分发给 app、把结果写回去。三段各有超时。
-async fn handle_one(app : @crescent.App, conn : @http.ServerConnection) -> Unit {
+async fn handle_one(router : Router, conn : @http.ServerConnection) -> Unit {
   let request = try {
     match @async.with_timeout_opt(READ_TIMEOUT_MS, () => conn.read_request()) {
       Some(r) => Some(r)
@@ -314,7 +314,7 @@ async fn handle_one(app : @crescent.App, conn : @http.ServerConnection) -> Unit 
   // 超时只包 dispatch（handler 已经算完、payload 已经序列化），
   // 不包写响应：写一半被掐会留下截断的报文，比回 504 更糟。
   let result = @async.with_timeout_opt(HANDLER_TIMEOUT_MS, () => {
-    app.dispatch(verb, path, headers, body)
+    router.dispatch(verb, path, headers, body)
   }) catch {
     _ => None
   }
@@ -333,14 +333,14 @@ async fn handle_one(app : @crescent.App, conn : @http.ServerConnection) -> Unit 
       }
       conn.close()
     }
-    Some((status, res_headers, payload)) => {
+    Some(resp) => {
       let hdrs : Map[String, String] = Map([])
-      res_headers.each((k, v) => hdrs.set(k, v))
+      resp.headers.each((k, v) => hdrs.set(k, v))
       hdrs.set("Connection", "close")
       // HEAD 不能带 body。
       //
-      // crescent 的 dispatch 已经把 payload 清空了，而底层 http 的
-      // `send_response` 是按 Content-Length 等 body 的：收到的头写着 N 字节、
+      // 底层 http 的 `send_response` 是按 Content-Length 等 body 的：
+      // 头里写着 N 字节、
       // 实际一个字节都不写，`end_response` 会抛 IncorrectBodyLength，
       // 连接直接断掉，客户端只看到「Empty reply from server」。
       // 健康检查、curl -I、反代探活全都走 HEAD，这就是「服务挂了」的假信号。
@@ -355,12 +355,12 @@ async fn handle_one(app : @crescent.App, conn : @http.ServerConnection) -> Unit 
       // 一直占着槽位等于把并发上限一点点吃光。
       let _ : Unit? = @async.with_timeout_opt(WRITE_TIMEOUT_MS, () => {
         conn.send_response(
-          status.to_int(),
-          status.to_string(),
+          resp.status,
+          status_reason(resp.status),
           extra_headers=hdrs,
         )
         if !is_head {
-          conn.write(payload)
+          conn.write(resp.body)
         }
         conn.end_response()
       }) catch {

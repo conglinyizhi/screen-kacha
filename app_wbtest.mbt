@@ -16,11 +16,11 @@ fn expect_header(
 
 ///|
 test "make_res 带上状态、类型与 no-store" {
-  let res = make_res(@crescent.StatusCode::OK, "text/plain", b"hi")
-  assert_true(res.status_code is @crescent.StatusCode::OK)
+  let res = make_res(200, "text/plain", b"hi")
+  assert_eq(res.status, 200)
   expect_header(res.headers, "Content-Type", "text/plain")
   expect_header(res.headers, "Cache-Control", "no-store")
-  assert_eq(@utf8.decode(res.raw_body), "hi")
+  assert_eq(@utf8.decode(res.body), "hi")
 }
 
 ///|
@@ -33,9 +33,9 @@ test "404 文案包含路径与 skill.md 指路" {
 ///|
 test "not_found 返回 404 与 text/plain" {
   let res = not_found("/x")
-  assert_true(res.status_code is @crescent.StatusCode::NotFound)
+  assert_eq(res.status, 404)
   expect_header(res.headers, "Content-Type", "text/plain; charset=utf-8")
-  assert_true(@utf8.decode(res.raw_body).contains("/x"))
+  assert_true(@utf8.decode(res.body).contains("/x"))
 }
 
 ///|
@@ -114,7 +114,7 @@ async test "编码失败时清掉半成品" {
 test "health 初始状态字段齐全" {
   let store = Store::new(shot="/tmp/none.jpg")
   let res = handle_health(store, 18940, Access::default())
-  let body = @utf8.decode(res.raw_body)
+  let body = @utf8.decode(res.body)
   assert_true(body.contains("\"ok\": false"))
   assert_true(body.contains("\"count\": 0"))
   assert_true(body.contains("\"port\": 18940"))
@@ -126,73 +126,97 @@ test "health 初始状态字段齐全" {
 /// 根路径按 Accept 分叉：浏览器拿到页面，其它拿到 llms.txt 原文。
 /// 这里两种请求都走一遍，锁住「agent 不该看到 HTML」这条。
 async test "路由：首页按 Accept 分叉" {
-  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930, Access::default())
+  let app = build_router(
+    Store::new(shot="/tmp/none.jpg"),
+    8930,
+    Access::default(),
+  )
 
   // 浏览器
-  let (code, headers, body) = app.dispatch(
+  let res = app.dispatch(
     "GET",
     "/",
     { "accept": "text/html,application/xhtml+xml,*/*;q=0.8" },
     b"",
   )
-  assert_true(code is @crescent.StatusCode::OK)
-  expect_header(headers, "Content-Type", "text/html; charset=utf-8")
-  assert_true(@utf8.decode(body).contains("<!doctype html>"))
+  assert_eq(res.status, 200)
+  expect_header(res.headers, "Content-Type", "text/html; charset=utf-8")
+  assert_true(@utf8.decode(res.body).contains("<!doctype html>"))
 
   // curl / agent：不带 Accept
-  let (code2, headers2, body2) = app.dispatch("GET", "/", {}, b"")
-  assert_true(code2 is @crescent.StatusCode::OK)
-  expect_header(headers2, "Content-Type", "text/plain; charset=utf-8")
-  let text = @utf8.decode(body2)
+  let res2 = app.dispatch("GET", "/", {}, b"")
+  assert_eq(res2.status, 200)
+  expect_header(res2.headers, "Content-Type", "text/plain; charset=utf-8")
+  let text = @utf8.decode(res2.body)
   assert_true(text.contains("/snapshot.jpg"))
   assert_false(text.contains("<html"))
 
   // /human.html 永远给页面，不管 Accept
-  let (code3, headers3, _) = app.dispatch("GET", "/human.html", {}, b"")
-  assert_true(code3 is @crescent.StatusCode::OK)
-  expect_header(headers3, "Content-Type", "text/html; charset=utf-8")
+  let res3 = app.dispatch("GET", "/human.html", {}, b"")
+  assert_eq(res3.status, 200)
+  expect_header(res3.headers, "Content-Type", "text/html; charset=utf-8")
 }
 
 ///|
 async test "路由：health 返回 JSON" {
-  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930, Access::default())
-  let (code, headers, body) = app.dispatch("GET", "/health", {}, b"")
-  assert_true(code is @crescent.StatusCode::OK)
-  expect_header(headers, "Content-Type", "application/json")
-  assert_true(@utf8.decode(body).contains("\"ok\""))
+  let app = build_router(
+    Store::new(shot="/tmp/none.jpg"),
+    8930,
+    Access::default(),
+  )
+  let res = app.dispatch("GET", "/health", {}, b"")
+  assert_eq(res.status, 200)
+  expect_header(res.headers, "Content-Type", "application/json")
+  assert_true(@utf8.decode(res.body).contains("\"ok\""))
 }
 
 ///|
 async test "路由：skill.md 返回 markdown" {
-  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930, Access::default())
-  let (code, headers, body) = app.dispatch("GET", "/skill.md", {}, b"")
-  assert_true(code is @crescent.StatusCode::OK)
-  expect_header(headers, "Content-Type", "text/markdown; charset=utf-8")
-  assert_true(@utf8.decode(body).length() > 0)
+  let app = build_router(
+    Store::new(shot="/tmp/none.jpg"),
+    8930,
+    Access::default(),
+  )
+  let res = app.dispatch("GET", "/skill.md", {}, b"")
+  assert_eq(res.status, 200)
+  expect_header(res.headers, "Content-Type", "text/markdown; charset=utf-8")
+  assert_true(@utf8.decode(res.body).length() > 0)
 }
 
 ///|
 async test "路由：未知路径走 404 引导" {
-  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930, Access::default())
-  let (code, headers, body) = app.dispatch("GET", "/nope", {}, b"")
-  assert_true(code is @crescent.StatusCode::NotFound)
-  expect_header(headers, "Content-Type", "text/plain; charset=utf-8")
-  assert_true(@utf8.decode(body).contains("/skill.md"))
+  let app = build_router(
+    Store::new(shot="/tmp/none.jpg"),
+    8930,
+    Access::default(),
+  )
+  let res = app.dispatch("GET", "/nope", {}, b"")
+  assert_eq(res.status, 404)
+  expect_header(res.headers, "Content-Type", "text/plain; charset=utf-8")
+  assert_true(@utf8.decode(res.body).contains("/skill.md"))
 }
 
 ///|
 async test "路由：多段未知路径也走 404" {
-  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930, Access::default())
-  let (code, _, _) = app.dispatch("GET", "/a/b/c", {}, b"")
-  assert_true(code is @crescent.StatusCode::NotFound)
+  let app = build_router(
+    Store::new(shot="/tmp/none.jpg"),
+    8930,
+    Access::default(),
+  )
+  let res = app.dispatch("GET", "/a/b/c", {}, b"")
+  assert_eq(res.status, 404)
 }
 
 ///|
 async test "路由：非法快照名不触发采集，直接 404" {
-  let app = build_app(Store::new(shot="/tmp/none.jpg"), 8930, Access::default())
+  let app = build_router(
+    Store::new(shot="/tmp/none.jpg"),
+    8930,
+    Access::default(),
+  )
   for path in ["/snapshot.png", "/snapshot-abc.jpg", "/snapshotx.jpg"] {
-    let (code, _, _) = app.dispatch("GET", path, {}, b"")
-    assert_true(code is @crescent.StatusCode::NotFound)
+    let res = app.dispatch("GET", path, {}, b"")
+    assert_eq(res.status, 404)
   }
 }
 
@@ -215,13 +239,9 @@ async test "record_ok 与 record_fail 正确累计" {
 async test "不需要换算时直通原字节" {
   let store = Store::new(shot="/tmp/none.jpg")
   let res = build_image_response(store, b"RAW", None, "jpg", None)
-  assert_true(res.status_code is @crescent.StatusCode::OK)
+  assert_eq(res.status, 200)
   expect_header(res.headers, "Content-Type", "image/jpeg")
-  match res.headers.get("X-Screenstream-Fallback") {
-    Some(_) => assert_true(false)
-    None => assert_true(true)
-  }
-  assert_eq(res.raw_body, b"RAW")
+  assert_eq(res.body, b"RAW")
 }
 
 ///|

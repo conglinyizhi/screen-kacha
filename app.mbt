@@ -111,25 +111,8 @@ fn clamp_width(w : Int32?) -> Int32? {
 }
 
 ///|
-fn make_res(
-  code : @crescent.StatusCode,
-  ctype : String,
-  body : Bytes,
-) -> @crescent.HttpResponse {
-  @crescent.HttpResponse::HttpResponse(
-    status_code=code,
-    headers={ "Content-Type": ctype, "Cache-Control": "no-store" },
-    raw_body=body,
-  )
-}
-
-///|
-fn not_found(path : String) -> @crescent.HttpResponse {
-  make_res(
-    @crescent.StatusCode::NotFound,
-    "text/plain; charset=utf-8",
-    @utf8.encode(not_found_text(path)),
-  )
+fn not_found(path : String) -> Resp {
+  make_res(404, "text/plain; charset=utf-8", @utf8.encode(not_found_text(path)))
 }
 
 ///|
@@ -226,13 +209,9 @@ fn health_json(store : Store, port : Int32, access : Access) -> String {
 }
 
 ///|
-fn handle_health(
-  store : Store,
-  port : Int32,
-  access : Access,
-) -> @crescent.HttpResponse {
+fn handle_health(store : Store, port : Int32, access : Access) -> Resp {
   make_res(
-    @crescent.StatusCode::OK,
+    200,
     "application/json",
     @utf8.encode(health_json(store, port, access)),
   )
@@ -288,7 +267,7 @@ async fn build_image_response(
   width : Int32?,
   fmt : String,
   cursor : Cursor?,
-) -> @crescent.HttpResponse {
+) -> Resp {
   let ctype = if fmt == "webp" { "image/webp" } else { "image/jpeg" }
   let webp = fmt == "webp"
   // 尺寸写 0 表示保持原尺寸，编码器认这个约定
@@ -342,7 +321,7 @@ async fn build_image_response(
         match read_result(out, code == 0) {
           Some(b) => {
             store.note_cursor_ok()
-            return make_res(@crescent.StatusCode::OK, ctype, b)
+            return make_res(200, ctype, b)
           }
           // 合成失败不能静默：调用方拿到的还是 200 的普通截图，
           // 从外面分不出「没开跟踪」和「开了但坏了」。
@@ -354,7 +333,7 @@ async fn build_image_response(
   }
   // 原始尺寸直出，什么都不用做
   if !need_work {
-    return make_res(@crescent.StatusCode::OK, ctype, data)
+    return make_res(200, ctype, data)
   }
   // 走到这里必须重编码：有原始像素就在 BGRA 上做，否则解一次已抓到的 JPEG。
   let out = store.next_tmp(fmt)
@@ -368,10 +347,10 @@ async fn build_image_response(
     @image.jpeg_to_file(src, dst_w, JPEG_QUALITY, webp, out)
   }
   match read_result(out, ok) {
-    Some(b) => make_res(@crescent.StatusCode::OK, ctype, b)
+    Some(b) => make_res(200, ctype, b)
     None =>
       make_res(
-        @crescent.StatusCode::InternalServerError,
+        500,
         "application/json",
         @utf8.encode("{\"error\":\"图像转换失败\"}"),
       )
@@ -385,7 +364,7 @@ async fn handle_snapshot(
   query_w : String?,
   query_age : String?,
   query_cursor : String?,
-) -> @crescent.HttpResponse {
+) -> Resp {
   store.mark_request()
   match parse_snapshot(name) {
     None => not_found("/\{name}")
@@ -413,7 +392,7 @@ async fn handle_snapshot(
       match store.bytes() {
         None =>
           make_res(
-            @crescent.StatusCode::ServiceUnavailable,
+            503,
             "application/json",
             @utf8.encode("{\"error\":\"还没有可用帧\"}"),
           )
@@ -431,15 +410,15 @@ async fn handle_snapshot(
 }
 
 ///|
-async fn handle_skill(store : Store, port : Int32) -> @crescent.HttpResponse {
+async fn handle_skill(store : Store, port : Int32) -> Resp {
   handle_text_file(
     store, "skill.md", "text/markdown; charset=utf-8", fallback_skill, port,
   )
 }
 
 ///|
-pub fn build_app(store : Store, port : Int32, access : Access) -> @crescent.App {
-  let app = @crescent.App()
+pub fn build_router(store : Store, port : Int32, access : Access) -> Router {
+  let router = Router::new()
   // 根路径分叉：浏览器给人看的页面，其它（curl、agent）直接给 llms.txt 原文。
   //
   // 判断用 Accept 而不是 User-Agent：浏览器一定会带 text/html，curl 默认是
@@ -449,76 +428,66 @@ pub fn build_app(store : Store, port : Int32, access : Access) -> @crescent.App 
   // 也不做 meta refresh 跳转：那样 agent 拿到的仍是 HTML 原文，
   // `<meta>`、`<style>`、脚本会一起进它的 context。分叉在服务端做，
   // 两边各拿到干净的东西。
-  app.get("/", async fn(ev) {
-    if wants_html(ev.req.get_header("accept")) {
+  router.get("/", async fn(ev) {
+    if wants_html(ev.get_header("accept")) {
       // 浏览器：给外壳。界面本体在 /for_human_use_browser.js 里，
       // 由那段脚本插到 #for_llm 前面。不执行 JS 的客户端只看到文本。
-      make_res(
-        @crescent.StatusCode::OK,
-        "text/html; charset=utf-8",
-        @utf8.encode(index_shell),
-      ).to_responder()
+      make_res(200, "text/html; charset=utf-8", @utf8.encode(index_shell))
     } else {
       handle_text_file(
         store, "llms.txt", "text/plain; charset=utf-8", fallback_llms, port,
-      ).to_responder()
+      )
     }
   })
-  app.get("/for_human_use_browser.js", async fn(_ev) {
-    handle_human_js(store, port).to_responder()
+  router.get("/for_human_use_browser.js", async fn(_ev) {
+    handle_human_js(store, port)
   })
   // 老链接还认：和 / 给同一个外壳
-  app.get("/human.html", fn(_ev) {
-    make_res(
-      @crescent.StatusCode::OK,
-      "text/html; charset=utf-8",
-      @utf8.encode(index_shell),
-    ).to_responder()
+  router.get("/human.html", fn(_ev) {
+    make_res(200, "text/html; charset=utf-8", @utf8.encode(index_shell))
   })
   // 健康状态。`/health.json` 是别名：别的端点全带后缀（/snapshot.jpg、
   // /skill.md），agent 容易顺手多敲一个 .json，这里认下来，省一次 404 往返。
   for path in ["/health", "/health.json"] {
-    app.get(path, fn(_ev) { handle_health(store, port, access).to_responder() })
+    router.get(path, fn(_ev) { handle_health(store, port, access) })
   }
   // 出错兜底页：只认代号，正文从固定表里查
-  app.get("/ui/err", fn(ev) {
-    let code = match ev.req.get_query("code") {
+  router.get("/ui/err", fn(ev) {
+    let code = match ev.get_query("code") {
       Some(c) => c
       None => ""
     }
-    @crescent.html(err_page(code))
+    html_res(err_page(code))
   })
-  app.get("/skill.md", async fn(_ev) {
-    handle_skill(store, port).to_responder()
-  })
-  app.get("/error.md", async fn(_ev) {
+  router.get("/skill.md", async fn(_ev) { handle_skill(store, port) })
+  router.get("/error.md", async fn(_ev) {
     handle_text_file(
       store, "error.md", "text/markdown; charset=utf-8", fallback_error, port,
-    ).to_responder()
+    )
   })
-  app.get("/robots.txt", async fn(_ev) {
+  router.get("/robots.txt", async fn(_ev) {
     handle_text_file(
       store, "robots.txt", "text/plain; charset=utf-8", fallback_robots, port,
-    ).to_responder()
+    )
   })
-  app.get("/llms.txt", async fn(_ev) {
+  router.get("/llms.txt", async fn(_ev) {
     handle_text_file(
       store, "llms.txt", "text/plain; charset=utf-8", fallback_llms, port,
-    ).to_responder()
+    )
   })
-  app.get("/:file", async fn(ev) {
+  router.get("/:file", async fn(ev) {
     match ev.param("file") {
       Some(name) =>
         handle_snapshot(
           store,
           name,
-          ev.req.get_query("w"),
-          ev.req.get_query("age"),
-          ev.req.get_query("cursor"),
-        ).to_responder()
-      None => not_found("/").to_responder()
+          ev.get_query("w"),
+          ev.get_query("age"),
+          ev.get_query("cursor"),
+        )
+      None => not_found("/")
     }
   })
-  app.get("/**", fn(ev) { not_found(ev.req.path()).to_responder() })
-  app
+  router.get("/**", fn(ev) { not_found(ev.path()) })
+  router
 }

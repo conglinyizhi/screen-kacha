@@ -8,7 +8,6 @@ import {
   "moonbitlang/async/http",
   "moonbitlang/async/socket",
   "moonbitlang/core/argparse",
-  "bobzhang/crescent",
 }
 
 supported_targets = "+native"
