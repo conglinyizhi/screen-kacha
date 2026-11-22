@@ -38,14 +38,6 @@ extern "c" fn exit_now(code : Int32) -> Unit = "moonbit_cursor_exit"
 extern "c" fn remove_pos_raw(path : Bytes) -> Int32 = "moonbit_cursor_remove"
 
 ///|
-/// MoonBit 字符串 → 带结尾 0 的 C 字符串。
-fn cstr(s : String) -> Bytes {
-  let src = @utf8.encode(s)
-  let n = src.length()
-  Bytes::makei(n + 1, fn(i) { if i < n { src[i] } else { 0 } })
-}
-
-///|
 /// 坐标文件路径。放 runtime 目录，重启就没了，本来也是瞬时状态。
 fn pos_path() -> String {
   let rt = match @env.get_env_var("XDG_RUNTIME_DIR") {
@@ -73,7 +65,7 @@ fn read_i32(b : Bytes, at : Int32) -> Int32 {
 /// 原来用 `let _ = ...` 把结果丢掉：写不进去就永远没有箭头，主服务那边
 /// 只会看到「坐标文件不存在」，跟「没开跟踪」完全一样，没有任何线索。
 fn save_pos(x : Int32, y : Int32) -> Bool {
-  write_pos_raw(cstr(pos_path()), cstr("\{x} \{y}")) == 0
+  write_pos_raw(@util.cstr(pos_path()), @util.cstr("\{x} \{y}")) == 0
 }
 
 ///|
@@ -122,7 +114,7 @@ fn main {
     fn(_s) {
       tick_no.val = tick_no.val + 1
       if tick_no.val - seen_tick.val > STALE_TICKS {
-        let _ = remove_pos_raw(cstr(pos_path()))
+        let _ = remove_pos_raw(@util.cstr(pos_path()))
       }
     },
     500,

@@ -11,8 +11,8 @@ async fn main {
     return
   }
   let src = args[1]
-  let w = parse_int(args[2], 0)
-  let h = parse_int(args[3], 0)
+  let w = @util.parse_int(args[2], 0)
+  let h = @util.parse_int(args[3], 0)
   let dir = args[4]
 
   for dst_w in [0, 640, 1280] {
@@ -48,24 +48,6 @@ async fn main {
     let a = size_of(ours) catch { _ => 0L }
     let b = size_of(theirs) catch { _ => 0L }
     println("\{tag}: moonimage \{ms_ours}ms \{a}B   magick \{b}B")
-  }
-}
-
-///|
-fn parse_int(s : String, dflt : Int32) -> Int32 {
-  let mut n : Int32 = 0
-  let mut any = false
-  for i = 0; i < s.length(); i = i + 1 {
-    let c = s[i].to_int()
-    if c >= 48 && c <= 57 {
-      n = n * 10 + (c - 48)
-      any = true
-    }
-  }
-  if any {
-    n
-  } else {
-    dflt
   }
 }
 

@@ -31,14 +31,6 @@ extern "c" fn bgra_to_webp_raw(
 ) -> Int32 = "moonbit_image_bgra_to_webp"
 
 ///|
-/// MoonBit 字符串 → 带结尾 0 的 C 字符串。
-fn cstr(s : String) -> Bytes {
-  let src = @utf8.encode(s)
-  let n = src.length()
-  Bytes::makei(n + 1, fn(i) { if i < n { src[i] } else { 0 } })
-}
-
-///|
 /// C 侧实现，见 `image_shim.c` 的 `moonbit_image_cursor`。
 #borrow(src_path, overlay_png, mask_png, out_path)
 extern "c" fn cursor_overlay_raw(
@@ -80,7 +72,7 @@ pub fn bgra_to_jpeg(
   quality : Int32,
   out : String,
 ) -> Bool {
-  bgra_to_jpeg_raw(cstr(src), w, h, dst_w, quality, cstr(out)) == 0
+  bgra_to_jpeg_raw(@util.cstr(src), w, h, dst_w, quality, @util.cstr(out)) == 0
 }
 
 ///|
@@ -93,7 +85,7 @@ pub fn bgra_to_webp(
   quality : Int32,
   out : String,
 ) -> Bool {
-  bgra_to_webp_raw(cstr(src), w, h, dst_w, quality, cstr(out)) == 0
+  bgra_to_webp_raw(@util.cstr(src), w, h, dst_w, quality, @util.cstr(out)) == 0
 }
 
 ///|
@@ -121,18 +113,18 @@ pub fn cursor_overlay(
   let raw_flag : Int32 = if src_is_raw { 1 } else { 0 }
   let webp_flag : Int32 = if webp { 1 } else { 0 }
   cursor_overlay_raw(
-    cstr(src),
+    @util.cstr(src),
     raw_flag,
     src_w,
     src_h,
-    cstr(overlay),
-    cstr(mask),
+    @util.cstr(overlay),
+    @util.cstr(mask),
     x,
     y,
     dst_w,
     quality,
     webp_flag,
-    cstr(out),
+    @util.cstr(out),
   ) ==
   0
 }
@@ -149,7 +141,7 @@ pub fn jpeg_to_file(
   out : String,
 ) -> Bool {
   let webp_flag : Int32 = if webp { 1 } else { 0 }
-  jpeg_to_file_raw(cstr(src), dst_w, quality, webp_flag, cstr(out)) == 0
+  jpeg_to_file_raw(@util.cstr(src), dst_w, quality, webp_flag, @util.cstr(out)) == 0
 }
 
 ///|
@@ -170,7 +162,7 @@ pub fn cursor_overlay_code(
   out : String,
 ) -> Int32 {
   cursor_overlay_raw(
-    cstr(src),
+    @util.cstr(src),
     if src_is_raw {
       1
     } else {
@@ -178,8 +170,8 @@ pub fn cursor_overlay_code(
     },
     src_w,
     src_h,
-    cstr(overlay),
-    cstr(mask),
+    @util.cstr(overlay),
+    @util.cstr(mask),
     x,
     y,
     dst_w,
@@ -189,6 +181,6 @@ pub fn cursor_overlay_code(
     } else {
       0
     },
-    cstr(out),
+    @util.cstr(out),
   )
 }

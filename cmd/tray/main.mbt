@@ -24,51 +24,22 @@ extern "c" fn write_file_raw(path : Bytes, data : Bytes) -> Int32 = "moonbit_scr
 ///|
 /// 写配置文件。同步调用，托盘菜单里用。
 fn write_file(path : String, data : String) -> Bool {
-  write_file_raw(cstr(path), cstr(data)) == 0
-}
-
-///|
-fn cstr(s : String) -> Bytes {
-  let src = @utf8.encode(s)
-  let n = src.length()
-  Bytes::makei(n + 1, fn(i) { if i < n { src[i] } else { 0 } })
+  write_file_raw(@util.cstr(path), @util.cstr(data)) == 0
 }
 
 ///|
 fn sh(cmd : String) -> Unit {
-  run_shell(cstr(cmd)) |> ignore
+  run_shell(@util.cstr(cmd)) |> ignore
 }
 
 ///|
 fn capture(cmd : String, limit : Int32) -> String {
   let buf = Bytes::makei(limit + 1, fn(_) { 0 })
-  let n = capture_shell(cstr(cmd), buf, limit + 1)
+  let n = capture_shell(@util.cstr(cmd), buf, limit + 1)
   if n <= 0 {
     return ""
   }
   @utf8.decode_lossy(buf[0:n])
-}
-
-///|
-fn parse_int(s : StringView, dflt : Int32) -> Int32 {
-  if s.length() == 0 {
-    return dflt
-  }
-  let mut n = 0
-  for i in 0..<s.length() {
-    let c = s[i]
-    guard c >= 48 && c <= 57 else { return dflt }
-    n = n * 10 + (c.to_int() - 48)
-  }
-  n
-}
-
-///|
-fn pick(m : @argparse.Matches, name : String, dflt : String) -> String {
-  match m.values.get(name) {
-    Some([v, ..]) => v
-    _ => dflt
-  }
 }
 
 ///|
@@ -298,7 +269,7 @@ fn boot_enabled() -> Bool {
     "systemctl --user is-enabled screenstream-mb.service screenstream-mb-tray.service 2>/dev/null | grep -c enabled",
     64,
   )
-  parse_int(out.trim(), 0) >= 2
+  @util.parse_int(out.trim(), 0) >= 2
 }
 
 ///|
@@ -334,7 +305,7 @@ fn main raise {
     ],
   )
   let m = cmd.parse()
-  let port = parse_int(pick(m, "port", "8930"), 8930)
+  let port = @util.parse_int(@util.pick(m, "port", "8930"), 8930)
   let helper = match @env.get_env_var("HOME") {
     Some(h) => "\{h}/.local/bin/screenstream-cursor"
     None => "screenstream-cursor"

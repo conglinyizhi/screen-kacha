@@ -1,26 +1,4 @@
 ///|
-fn parse_int(s : StringView, dflt : Int32) -> Int32 {
-  if s.length() == 0 {
-    return dflt
-  }
-  let mut n = 0
-  for i in 0..<s.length() {
-    let c = s[i]
-    guard c >= 48 && c <= 57 else { return dflt }
-    n = n * 10 + (c.to_int() - 48)
-  }
-  n
-}
-
-///|
-fn pick(m : @argparse.Matches, name : String, dflt : String) -> String {
-  match m.values.get(name) {
-    Some([v, ..]) => v
-    _ => dflt
-  }
-}
-
-///|
 /// 命令行定义单独抽出来，方便测试直接解析 argv。
 fn cli_cmd() -> @argparse.Command {
   @argparse.Command("screenstream", about="本机屏幕快照服务", options=[
@@ -194,23 +172,23 @@ async fn portal_bg(store : @store.Store, shm : String) -> Unit {
 ///|
 async fn main {
   let m = cli_cmd().parse()
-  let port = parse_int(pick(m, "port", "18940"), 18940)
-  let bind = pick(m, "bind", "0.0.0.0")
-  let idle = parse_int(pick(m, "idle", "20"), 20)
-  let pump = parse_int(pick(m, "pump", "500"), 500)
-  let pump_idle = parse_int(pick(m, "pump-idle", "3000"), 3000)
-  let fake = pick(m, "fake", "")
-  let pw_node = parse_int(pick(m, "pw-node", "0"), 0)
-  let source = pick(m, "source", "auto")
+  let port = @util.parse_int(@util.pick(m, "port", "18940"), 18940)
+  let bind = @util.pick(m, "bind", "0.0.0.0")
+  let idle = @util.parse_int(@util.pick(m, "idle", "20"), 20)
+  let pump = @util.parse_int(@util.pick(m, "pump", "500"), 500)
+  let pump_idle = @util.parse_int(@util.pick(m, "pump-idle", "3000"), 3000)
+  let fake = @util.pick(m, "fake", "")
+  let pw_node = @util.parse_int(@util.pick(m, "pw-node", "0"), 0)
+  let source = @util.pick(m, "source", "auto")
   if !source_valid(source) {
     eprintln(
       "--source 只认 auto / pipewire / spectacle，收到的是「\{source}」",
     )
     @store.exit_process(2)
   }
-  let shm = pick(m, "shm", "/tmp/screenstream-mb")
-  let data_dir = pick(m, "data", ".")
-  let max_conns = parse_int(pick(m, "max-conns", "64"), 64)
+  let shm = @util.pick(m, "shm", "/tmp/screenstream-mb")
+  let data_dir = @util.pick(m, "data", ".")
+  let max_conns = @util.parse_int(@util.pick(m, "max-conns", "64"), 64)
   @fs.mkdir(shm, permission=0o700, recursive=true) catch {
     err =>
       // 目录已存在是正常情况（重启时），只有真的建不出来才报
@@ -271,7 +249,7 @@ async fn main {
     @socket.Addr::parse("\{bind}:\{port}"),
     reuse_addr=true,
   )
-  let access_path = match pick(m, "access", "") {
+  let access_path = match @util.pick(m, "access", "") {
     "" =>
       match @env.get_env_var("HOME") {
         Some(h) => "\{h}/.config/screenstream-mb/access.conf"

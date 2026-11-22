@@ -1,31 +1,31 @@
 ///|
 test "parse_int：正常、空串与非法字符" {
-  assert_eq(parse_int("18940", 0), 18940)
-  assert_eq(parse_int("0", 7), 0)
-  assert_eq(parse_int("", 7), 7)
-  assert_eq(parse_int("12a", 7), 7)
-  assert_eq(parse_int("--1", 7), 7)
+  assert_eq(@util.parse_int("18940", 0), 18940)
+  assert_eq(@util.parse_int("0", 7), 0)
+  assert_eq(@util.parse_int("", 7), 7)
+  assert_eq(@util.parse_int("12a", 7), 7)
+  assert_eq(@util.parse_int("--1", 7), 7)
 }
 
 ///|
 test "pick：取到值、回落默认、未知键" {
   let cmd = cli_cmd()
   let m = cmd.parse(argv=["--port", "9999", "--idle", "0"])
-  assert_eq(pick(m, "port", "1"), "9999")
-  assert_eq(pick(m, "idle", "20"), "0")
-  assert_eq(pick(m, "bind", "0.0.0.0"), "0.0.0.0")
-  assert_eq(pick(m, "nope", "dflt"), "dflt")
+  assert_eq(@util.pick(m, "port", "1"), "9999")
+  assert_eq(@util.pick(m, "idle", "20"), "0")
+  assert_eq(@util.pick(m, "bind", "0.0.0.0"), "0.0.0.0")
+  assert_eq(@util.pick(m, "nope", "dflt"), "dflt")
 }
 
 ///|
 test "cli_cmd：五个选项都有默认值" {
   let cmd = cli_cmd()
   let m = cmd.parse(argv=[])
-  assert_eq(pick(m, "port", ""), "18940")
-  assert_eq(pick(m, "bind", ""), "0.0.0.0")
-  assert_eq(pick(m, "idle", ""), "20")
-  assert_eq(pick(m, "shm", ""), "/tmp/screenstream-mb")
-  assert_eq(pick(m, "max-conns", ""), "64")
+  assert_eq(@util.pick(m, "port", ""), "18940")
+  assert_eq(@util.pick(m, "bind", ""), "0.0.0.0")
+  assert_eq(@util.pick(m, "idle", ""), "20")
+  assert_eq(@util.pick(m, "shm", ""), "/tmp/screenstream-mb")
+  assert_eq(@util.pick(m, "max-conns", ""), "64")
 }
 
 ///|
@@ -85,7 +85,7 @@ test "source 只认 auto / pipewire / spectacle" {
 test "pump-idle 是声明过的参数" {
   let cmd = cli_cmd()
   let m = cmd.parse(argv=["--pump-idle", "5000"])
-  assert_eq(pick(m, "pump-idle", "3000"), "5000")
+  assert_eq(@util.pick(m, "pump-idle", "3000"), "5000")
   let d = cmd.parse(argv=[])
-  assert_eq(pick(d, "pump-idle", "3000"), "3000")
+  assert_eq(@util.pick(d, "pump-idle", "3000"), "3000")
 }

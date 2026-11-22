@@ -1,5 +1,5 @@
 import {
-  "moonbitlang/core/encoding/utf8",
+  "conglinyizhi/screenstream/moonutil" @util,
 }
 
 supported_targets = "+native"

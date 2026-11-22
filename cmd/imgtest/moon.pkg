@@ -1,4 +1,5 @@
 import {
+  "conglinyizhi/screenstream/moonutil" @util,
   "conglinyizhi/screenstream/moonimage" @image,
   "moonbitlang/async",
   "moonbitlang/async/fs",

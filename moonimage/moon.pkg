@@ -1,10 +1,11 @@
 import {
-  "moonbitlang/core/encoding/utf8",
+  "conglinyizhi/screenstream/moonutil" @util,
 }
 
 // 这些只在白盒测试里用：造临时文件、调 magick 验通道顺序。
 // 主库本身不碰文件系统，也不需要跑外部程序。
 import {
+  "moonbitlang/core/encoding/utf8",
   "moonbitlang/async",
   "moonbitlang/async/fs",
   "moonbitlang/async/process",

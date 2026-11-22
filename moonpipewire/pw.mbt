@@ -1,12 +1,4 @@
 ///|
-/// MoonBit 字符串没有结尾 NUL，传给 C 之前补一个。
-fn cstr(s : String) -> Bytes {
-  let b = @utf8.encode(s)
-  let n = b.length()
-  Bytes::makei(n + 1, fn(i) { if i < n { b[i] } else { 0 } })
-}
-
-///|
 #borrow(app)
 extern "c" fn c_start(node_id : Int32, app : Bytes) -> Int32 = "moonbit_pw_shim_start"
 
@@ -71,7 +63,7 @@ pub fn PipeWire::new(app_name~ : String = "moonpipewire") -> PipeWire {
 ///
 /// `app_name` 只决定这条流在 pw-dump / pavucontrol 里怎么显示，不影响权限。
 pub fn PipeWire::connect(self : PipeWire, node_id : Int32) -> Int32 {
-  let rc = c_start(node_id, cstr(self.app_name))
+  let rc = c_start(node_id, @util.cstr(self.app_name))
   if rc == 0 {
     self.started = true
   }
@@ -119,7 +111,7 @@ pub fn PipeWire::copy_frame(self : PipeWire, dst : Bytes) -> Int32 {
 /// 把最新帧写成原始 BGRx 文件（每行 width*4 字节），返回字节数。
 pub fn PipeWire::save_frame(self : PipeWire, path : String) -> Int32 {
   let _ = self
-  c_save_raw(cstr(path))
+  c_save_raw(@util.cstr(path))
 }
 
 ///|
@@ -129,13 +121,14 @@ pub fn PipeWire::save_frame(self : PipeWire, path : String) -> Int32 {
 /// 中间可以换帧甚至换分辨率，拿到的尺寸和像素可能不是同一帧 ——
 /// 解码按错的尺寸走就是花屏。
 ///
-/// 实现上开一块 2 个 Int32 的缓冲当出参，C 侧在同一把锁里填。
+/// 实现在 C 侧：一次调用里读完尺寸、写完像素，尺寸通过静态变量回传
+/// （`c_saved_w` / `c_saved_h`），所以这里要紧接着取。
 pub fn PipeWire::save_frame_consistent(
   self : PipeWire,
   path : String,
 ) -> (Int32, Int32, Int32) {
   let _ = self
-  let n = c_save_consistent(cstr(path))
+  let n = c_save_consistent(@util.cstr(path))
   // 这两个 getter 必须在同一次抓帧里紧跟着调用：
   // C 侧只保留「最后一次写出的那一帧」的尺寸。
   (n, c_saved_w(), c_saved_h())

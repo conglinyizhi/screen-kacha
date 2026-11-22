@@ -5,7 +5,7 @@ extern "c" fn run_status_raw(cmd : Bytes) -> Int32 = "moonbit_screenstream_run_s
 
 ///|
 fn run_status(cmd : String) -> Int32 {
-  run_status_raw(cstr(cmd))
+  run_status_raw(@util.cstr(cmd))
 }
 
 ///|
@@ -104,5 +104,5 @@ pub fn system_unit_conflict() -> Bool {
     "systemctl list-unit-files 'screenstream*' --no-pager 2>/dev/null | grep -c screenstream",
     256,
   )
-  parse_int(out.trim(), 0) > 0
+  @util.parse_int(out.trim(), 0) > 0
 }

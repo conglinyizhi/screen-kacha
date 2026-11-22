@@ -428,14 +428,6 @@ pub fn Store::next_tmp(self : Store, ext : String) -> String {
 }
 
 ///|
-/// MoonBit 字符串 → 带结尾 0 的 C 字符串。
-fn cstr(s : String) -> Bytes {
-  let src = @utf8.encode(s)
-  let n = src.length()
-  Bytes::makei(n + 1, fn(i) { if i < n { src[i] } else { 0 } })
-}
-
-///|
 /// 当前进程号，来自 C 的 getpid()。
 fn current_pid() -> Int32 {
   current_pid_raw()
@@ -464,7 +456,7 @@ pub fn clean_stale_frames(
   prefix : String,
   suffix : String,
 ) -> Int32 {
-  clean_stale_frames_raw(cstr(dir), cstr(prefix), cstr(suffix))
+  clean_stale_frames_raw(@util.cstr(dir), @util.cstr(prefix), @util.cstr(suffix))
 }
 
 ///|
