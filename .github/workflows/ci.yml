@@ -26,9 +26,13 @@ jobs:
             curl \
             python3
 
+      # 钉版本：依赖是精确 pin 的（moonbitlang/async@0.20.3 等），而 latest
+      # 工具链的核心库会往前动 —— 2026-11-19 那版就让 async 的源码编译不过，
+      # CI 直接红在 .mooncakes 里，跟本仓库的代码无关。
+      # 升工具链时连着升级依赖一起做，别让 CI 自己漂。
       - name: 装 MoonBit
         run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s 0.1.20261113
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: 工具链版本

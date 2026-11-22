@@ -107,7 +107,7 @@ fn main {
           exit_now(1)
         }
       }
-      Some(@dbus.Reply::make(Bytes::new(0), ""))
+      Some(@dbus.Reply::make(Bytes::make(0, b'\x00'), ""))
     },
     fn(_s) {
       tick_no.val = tick_no.val + 1
