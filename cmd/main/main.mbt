@@ -1,58 +1,70 @@
 ///|
 /// 命令行定义单独抽出来，方便测试直接解析 argv。
 fn cli_cmd() -> @argparse.Command {
-  @argparse.Command("screen-kacha", about="本机屏幕快照服务", options=[
-    @argparse.OptionArg("port", short='p', about="监听端口", default_values=[
-      "18940",
-    ]),
-    @argparse.OptionArg("bind", about="监听地址", default_values=["0.0.0.0"]),
-    @argparse.OptionArg(
-      "access",
-      about="访问控制配置文件；留空用 ~/.config/screen-kacha/access.conf",
-      default_values=[""],
-    ),
-    @argparse.OptionArg(
-      "idle",
-      about="无人请求时的保活间隔（秒），0 表示不保活",
-      default_values=["20"],
-    ),
-    @argparse.OptionArg(
-      "fake",
-      about="测试用：用这张图片当帧源，不跑 spectacle",
-      default_values=[""],
-    ),
-    @argparse.OptionArg(
-      "pump-idle",
-      about="没人取图时后台泵放慢到的间隔（毫秒）",
-      default_values=["3000"],
-    ),
-    @argparse.OptionArg(
-      "source",
-      about="取帧来源：auto 和 pipewire 都是优先 PipeWire（拿不到退回 spectacle），spectacle 只用 spectacle",
-      default_values=["auto"],
-    ),
-    @argparse.OptionArg(
-      "pw-node",
-      about="用 PipeWire 指定 node id 取帧（0 表示不用）",
-      default_values=["0"],
-    ),
-    @argparse.OptionArg(
-      "pump",
-      about="后台抓帧间隔（毫秒），0 表示不启动后台泵",
-      default_values=["500"],
-    ),
-    @argparse.OptionArg("shm", about="帧文件存放目录", default_values=[
-      "/tmp/screen-kacha",
-    ]),
-    @argparse.OptionArg(
-      "data",
-      about="素材与文档所在目录（光标 PNG、skill.md、llms.txt 等）",
-      default_values=["."],
-    ),
-    @argparse.OptionArg("max-conns", about="并发连接上限", default_values=[
-      "64",
-    ]),
-  ])
+  @argparse.Command(
+    "screen-kacha",
+    about="本机屏幕快照服务",
+    flags=[
+      @argparse.FlagArg(
+        "no-port-fallback",
+        about="端口被占时不要换端口，直接报错退出",
+      ),
+    ],
+    options=[
+      @argparse.OptionArg("port", short='p', about="监听端口", default_values=[
+        "18940",
+      ]),
+      @argparse.OptionArg("bind", about="监听地址", default_values=[
+        "0.0.0.0",
+      ]),
+      @argparse.OptionArg(
+        "access",
+        about="访问控制配置文件；留空用 ~/.config/screen-kacha/access.conf",
+        default_values=[""],
+      ),
+      @argparse.OptionArg(
+        "idle",
+        about="无人请求时的保活间隔（秒），0 表示不保活",
+        default_values=["20"],
+      ),
+      @argparse.OptionArg(
+        "fake",
+        about="测试用：用这张图片当帧源，不跑 spectacle",
+        default_values=[""],
+      ),
+      @argparse.OptionArg(
+        "pump-idle",
+        about="没人取图时后台泵放慢到的间隔（毫秒）",
+        default_values=["3000"],
+      ),
+      @argparse.OptionArg(
+        "source",
+        about="取帧来源：auto 和 pipewire 都是优先 PipeWire（拿不到退回 spectacle），spectacle 只用 spectacle",
+        default_values=["auto"],
+      ),
+      @argparse.OptionArg(
+        "pw-node",
+        about="用 PipeWire 指定 node id 取帧（0 表示不用）",
+        default_values=["0"],
+      ),
+      @argparse.OptionArg(
+        "pump",
+        about="后台抓帧间隔（毫秒），0 表示不启动后台泵",
+        default_values=["500"],
+      ),
+      @argparse.OptionArg("shm", about="帧文件存放目录", default_values=[
+        "/tmp/screen-kacha",
+      ]),
+      @argparse.OptionArg(
+        "data",
+        about="素材与文档所在目录（光标 PNG、skill.md、llms.txt 等）",
+        default_values=["."],
+      ),
+      @argparse.OptionArg("max-conns", about="并发连接上限", default_values=[
+        "64",
+      ]),
+    ],
+  )
 }
 
 ///|
@@ -204,6 +216,20 @@ async fn main {
   @fs.chmod(shm, 0o700) catch {
     err => eprintln("收紧帧目录权限失败（不影响运行）：\{err}")
   }
+
+  // 先确认本机只有这一份在跑。
+  //
+  // 拿到锁才继续：拿不到说明已经有实例在用同一个帧目录，这时候再起一份
+  // 只会抢同一批临时文件。端口那条路上「被占就换口」的兜底，前提正是
+  // 「占着端口的不是自己」——由这把锁保证。
+  if !@store.acquire_instance_lock(shm) {
+    eprintln(
+      "帧目录 \{shm} 已经被另一个 screen-kacha 占着，这次不重复启动",
+    )
+    eprintln("它在哪个端口：cat ~/.local/state/screen-kacha/port")
+    @store.exit_process(0)
+    return
+  }
   let fake_source = if fake == "" { None } else { Some(fake) }
   // 假帧模式下 shot 直接指向那张图，连拷贝都省了
   let shot_path = match fake_source {
@@ -244,11 +270,13 @@ async fn main {
     // 光标就静默失效而托盘上的勾还亮着
     data_dir~,
   )
-  // reuse_addr：服务重启时旧连接还处于 TIME-WAIT，不开这个 bind 会失败
-  let server = @http.Server(
-    @socket.Addr::parse("\{bind}:\{port}"),
-    reuse_addr=true,
-  )
+  // 端口被占时先退避重试，再换口或干净退出，细节见 bind.mbt
+  let (server, port) = match
+    bind_with_retry(bind, port, !flag_on(m, "no-port-fallback")) {
+    Some(pair) => pair
+    None => return
+  }
+  write_port_file(port)
   let access_path = match @util.pick(m, "access", "") {
     "" =>
       match @env.get_env_var("HOME") {

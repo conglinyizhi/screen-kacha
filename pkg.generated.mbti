@@ -11,6 +11,8 @@ import {
 // Values
 pub fn accept_gave_up(Int32) -> Bool
 
+pub fn acquire_instance_lock(String) -> Bool
+
 pub async fn acquire_portal_node(String) -> Int32?
 
 pub fn build_app(Store, Int32, Access) -> @crescent.App

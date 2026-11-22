@@ -25,8 +25,11 @@ done
 # 两个 unit 都要：崩溃循环要停，异常退出要拉起
 for f in "$MAIN" "$TRAY"; do
   want "$f" '^Restart=always$' "$(basename "$f")：缺 Restart=always"
-  want "$f" '^StartLimitIntervalSec=60$' "$(basename "$f")：缺 StartLimitIntervalSec"
-  want "$f" '^StartLimitBurst=5$' "$(basename "$f")：缺 StartLimitBurst"
+  want "$f" '^StartLimitIntervalSec=300$' "$(basename "$f")：缺 StartLimitIntervalSec"
+  want "$f" '^StartLimitBurst=6$' "$(basename "$f")：缺 StartLimitBurst"
+  # 指数退避：固定间隔会在端口短暂被占时过早放弃
+  want "$f" '^RestartSteps=5$' "$(basename "$f")：缺 RestartSteps"
+  want "$f" '^RestartMaxDelaySec=60$' "$(basename "$f")：缺 RestartMaxDelaySec"
   want "$f" '^NoNewPrivileges=yes$' "$(basename "$f")：缺 NoNewPrivileges"
 done
 

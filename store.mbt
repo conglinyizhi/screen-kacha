@@ -737,3 +737,16 @@ pub fn Store::pw_raw(self : Store) -> (String, Int32, Int32)? {
     None => None
   }
 }
+
+///|
+/// 帧目录上的实例锁。返回是否拿到。
+///
+/// 拿到锁说明本机没有别的 screen-kacha 在跑；拿不到就该干净退出，
+/// 而不是换个端口再起一份去抢同一份帧目录。见 pid_stub.c 里的注释。
+pub fn acquire_instance_lock(dir : String) -> Bool {
+  lock_instance(@util.cstr(dir)) == 1
+}
+
+///|
+#borrow(dir)
+extern "c" fn lock_instance(dir : Bytes) -> Int32 = "moonbit_instance_lock"

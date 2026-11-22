@@ -206,6 +206,50 @@ check "20 并发之后仍可用" 200 "$(code $B/health)"
 has "$(curl -s --max-time 5 $B/health)" '"ok": true' \
   && ok || bad "并发之后 health 的 ok 不是 true"
 
+echo "== 端口被占时换口 =="
+# 占住一个空闲端口，服务应该退避几次后自己挪到下一个口，并且把实际端口写出来
+OCC=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
+python3 - "$OCC" <<'PY' &
+import socket, sys, time
+s = socket.socket()
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", int(sys.argv[1])))
+s.listen(8)
+time.sleep(40)
+PY
+OCC_PID=$!
+sleep 0.6
+FB_DIR=$(mktemp -d "$WORK/fb.XXXXXX")
+FB_LOG="$WORK/fb.log"
+timeout 300 ./_build/native/debug/build/cmd/main/main.exe \
+  --port "$OCC" --bind 127.0.0.1 --pump 100 \
+  --shm "$FB_DIR" --fake "$WORK/frame.png" --data "$WORK/data" \
+  --access /dev/null >"$FB_LOG" 2>&1 &
+FB_PID=$!
+FB_PORT=$((OCC + 1))
+for _ in $(seq 1 120); do
+  curl -sf --max-time 1 "http://127.0.0.1:$FB_PORT/health" >/dev/null 2>&1 && break
+  sleep 0.1
+done
+check "被占后换到下一个端口" 200 "$(code "http://127.0.0.1:$FB_PORT/health")"
+has "$(curl -s --max-time 5 "http://127.0.0.1:$FB_PORT/health")" "\"port\": $FB_PORT" \
+  && ok || bad "换口之后 /health 报的端口不是 $FB_PORT"
+has "$(cat "$FB_LOG")" "被别的程序占着" \
+  && ok || bad "换口时没有说清楚原因"
+kill "$FB_PID" "$OCC_PID" 2>/dev/null
+wait "$FB_PID" 2>/dev/null
+
+echo "== 同一帧目录不重复启动 =="
+# 帧目录已经被主实例锁着，第二个实例应该干净退出而不是再起一份抢临时文件
+DUP_PORT=$((PORT + 1500))
+timeout 30 ./_build/native/debug/build/cmd/main/main.exe \
+  --port "$DUP_PORT" --bind 127.0.0.1 --pump 100 \
+  --shm "$WORK/shm" --fake "$WORK/frame.png" --data "$WORK/data" \
+  --access /dev/null >"$WORK/dup.log" 2>&1
+check "重复启动退出码" 0 "$?"
+has "$(cat "$WORK/dup.log")" "已经被另一个" \
+  && ok || bad "重复启动没给出原因"
+
 echo
 echo "通过 $PASS，失败 $FAIL"
 [ "$FAIL" -eq 0 ] || { echo "--- 服务日志 ---"; tail -20 "$PORT_LOG"; exit 1; }

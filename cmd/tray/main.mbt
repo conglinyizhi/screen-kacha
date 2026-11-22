@@ -49,6 +49,30 @@ fn flag_on(m : @argparse.Matches, name : String) -> Bool {
 }
 
 ///|
+/// 服务实际在听的端口。
+///
+/// 端口被占时服务会往上挪，挪完把实际端口写进状态目录；托盘要是死认 unit 里
+/// 写的那一个号，就会一直显示「服务没响应」，而服务其实好好跑在隔壁端口上。
+/// 只在启动时读一次：服务换端口一般发生在它重启的时候，那时托盘通常也跟着重启。
+fn resolve_port(configured : Int32) -> Int32 {
+  let path = match @env.get_env_var("HOME") {
+    Some(h) => "\{h}/.local/state/screen-kacha/port"
+    None => return configured
+  }
+  match capture_whole(path) {
+    Some(t) => {
+      let p = @util.parse_int(t.trim(), 0)
+      if p > 0 && p <= 65535 {
+        p
+      } else {
+        configured
+      }
+    }
+    None => configured
+  }
+}
+
+///|
 /// 按 /health 的返回挑图标名和一句话说明。
 ///
 /// 灯的颜色就是这个函数唯一的输出：绿=正常，黄=刚启动，灰=没响应，红=采集失败。
@@ -300,7 +324,7 @@ fn main raise {
     ],
   )
   let m = cmd.parse()
-  let port = @util.parse_int(@util.pick(m, "port", "8930"), 8930)
+  let port = resolve_port(@util.parse_int(@util.pick(m, "port", "8930"), 8930))
   let helper = match @env.get_env_var("HOME") {
     Some(h) => "\{h}/.local/bin/screen-kacha-cursor"
     None => "screen-kacha-cursor"

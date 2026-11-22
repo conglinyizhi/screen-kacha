@@ -4,8 +4,8 @@ After=graphical-session.target plasma-kwin_wayland.service screen-kacha.service
 PartOf=graphical-session.target
 # 崩溃循环要停下来。没有这个，同一个错误会把 journal 刷满，
 # 真正的第一条报错反而看不见了。
-StartLimitIntervalSec=60
-StartLimitBurst=5
+StartLimitIntervalSec=300
+StartLimitBurst=6
 
 [Service]
 Type=simple
@@ -16,6 +16,12 @@ Environment=PATH=@BIN@:/usr/local/bin:/usr/bin
 ExecStart=@BIN@/screen-kacha-tray --port @PORT@
 Restart=always
 RestartSec=3
+# 指数退避：3s → 6s → 12s → 24s → 48s → 60s（封顶）。
+# 固定 3 秒在「旧实例正在退出、端口还没放」这种场景下够用，但在 systemd
+# 这层反复重启满 5 次就放弃了（约 18 秒）；拉开间隔之后同样几次重试能覆盖
+# 到一分半，容得下慢退出的进程。真崩起来也不会刷屏。
+RestartSteps=5
+RestartMaxDelaySec=60
 
 # 托盘会跑 shell（cat、systemctl），文件系统级限制一律不加，
 # 只堵住提权这条路。

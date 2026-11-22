@@ -4,7 +4,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/file.h>
 #include <sys/types.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 /* 当前进程号。文件名里带上它，跨进程就不会撞。 */
@@ -52,4 +54,28 @@ int32_t moonbit_clean_stale_frames(const char *dir, const char *prefix,
   }
   closedir(d);
   return n;
+}
+
+/* 帧目录上的实例锁。
+ *
+ * 返回 1 = 拿到了锁（本机没有别的实例），0 = 锁在别人手里，-1 = 出错。
+ * fd 故意不关：进程活着锁就在，退出时内核自动释放，不会留下需要清理的锁文件。
+ *
+ * 为什么需要它：端口被占时服务会往上找空口，如果占着端口的是「自己」——
+ * 比如手滑起了第二份、或者 unit 和手动启动同时存在——第二份会绑到隔壁端口，
+ * 然后两个进程抢同一份帧目录和同一份临时文件。先加锁就杜绝了这条路径，
+ * 拿到锁之后端口还被占，那一定是外人占的，换口才是对的。 */
+MOONBIT_FFI_EXPORT
+int32_t moonbit_instance_lock(const char *dir) {
+  char path[4096];
+  int n = snprintf(path, sizeof(path), "%s/.instance-lock", dir);
+  if (n < 0 || (size_t)n >= sizeof(path)) return -1;
+  int fd = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+  if (fd < 0) return -1;
+  if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+    close(fd);
+    return 0;
+  }
+  /* 拿到就揣着，进程结束时内核回收 */
+  return 1;
 }

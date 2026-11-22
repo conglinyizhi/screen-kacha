@@ -72,7 +72,7 @@ pub fn alert(title : String, body : String, code : String) -> Unit {
     return
   }
   // 最后兜底：让本机服务渲染一个固定文案的错误页
-  sh("xdg-open 'http://127.0.0.1:8930/ui/err?code=\{code}'")
+  sh("xdg-open 'http://127.0.0.1:\{resolve_port(8930)}/ui/err?code=\{code}'")
 }
 
 ///|
