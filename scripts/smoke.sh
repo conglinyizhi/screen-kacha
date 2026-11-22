@@ -65,13 +65,21 @@ B="http://127.0.0.1:$PORT"
 code() { curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$1"; }
 ctype() { curl -s -o /dev/null -w '%{content_type}' --max-time 10 "$1"; }
 dims() { curl -s --max-time 10 "$1" -o "$WORK/out.bin" && python3 "$ROOT/scripts/imgsize.py" "$WORK/out.bin" 2>/dev/null; }
+# 正文含某段文字。
+#
+# 不要写成 `curl ... | grep -q 模式`：grep -q 命中就退出，curl 还在写后面的块时
+# 会收到 SIGPIPE 变成非零退出，而本脚本开了 pipefail，整条管道就判失败。
+# 实测 19 KB 的界面脚本在 12 轮里会偶发假红一次。这里先取到变量再做纯字符串匹配，
+# 一个管道都不产生。
+has() { [[ $1 == *"$2"* ]]; }
 
 echo "== 路由与类型 =="
 check "/ 状态" 200 "$(code $B/)"
 # curl 不带 Accept: text/html，所以 / 应该回 llms.txt 原文而不是页面
 check "/ 给 agent 的类型" "text/plain; charset=utf-8" "$(ctype $B/)"
-curl -s --max-time 5 $B/ | grep -q "/snapshot.jpg" && ok || bad "/ 没给出端点索引"
-curl -s --max-time 5 $B/ | grep -q "<html" && bad "/ 给 agent 回了 HTML" || ok
+SHELL_TEXT=$(curl -s --max-time 5 $B/)
+has "$SHELL_TEXT" "/snapshot.jpg" && ok || bad "/ 没给出端点索引"
+has "$SHELL_TEXT" "<html" && bad "/ 给 agent 回了 HTML" || ok
 check "/human.html 状态" 200 "$(code $B/human.html)"
 check "/human.html 类型" "text/html; charset=utf-8" "$(ctype $B/human.html)"
 # 模拟浏览器
@@ -79,28 +87,23 @@ check "带 Accept 的 / 回 HTML" "text/html; charset=utf-8" \
   "$(curl -s -o /dev/null -w '%{content_type}' --max-time 5 -H 'Accept: text/html,*/*' $B/)"
 # 浏览器拿到的是外壳：一个外链脚本 + 给 LLM 的说明文字。
 # 界面本体在那个 .js 里，所以不执行 JS 的客户端不会下载它。
-curl -s --max-time 5 -H 'Accept: text/html' $B/ \
-  | grep -q 'src="/for_human_use_browser.js"' && ok || bad "/ 外壳没引用界面脚本"
-curl -s --max-time 5 -H 'Accept: text/html' $B/ \
-  | grep -q 'id="for_llm"' && ok || bad "/ 外壳缺 for_llm 锚点"
-curl -s --max-time 5 -H 'Accept: text/html' $B/ \
-  | grep -q '/llms.txt' && ok || bad "/ 外壳没给 LLM 留 llms.txt 指引"
+HTML_SHELL=$(curl -s --max-time 5 -H 'Accept: text/html' $B/)
+has "$HTML_SHELL" 'src="/for_human_use_browser.js"' && ok || bad "/ 外壳没引用界面脚本"
+has "$HTML_SHELL" 'id="for_llm"' && ok || bad "/ 外壳缺 for_llm 锚点"
+has "$HTML_SHELL" '/llms.txt' && ok || bad "/ 外壳没给 LLM 留 llms.txt 指引"
 # 给 LLM 的那段文本必须保持纯文本，样式由 JS 注入而不是写进外壳
-curl -s --max-time 5 -H 'Accept: text/html' $B/ \
-  | grep -q 'style=' && bad "/ 外壳给 LLM 的文本里混进了 style 属性" || ok
+has "$HTML_SHELL" 'style=' && bad "/ 外壳给 LLM 的文本里混进了 style 属性" || ok
 # 界面本体
 check "界面脚本状态" 200 "$(code $B/for_human_use_browser.js)"
 case "$(ctype $B/for_human_use_browser.js)" in
   application/javascript*) ok ;;
   *) bad "界面脚本类型不对：$(ctype $B/for_human_use_browser.js)" ;;
 esac
-curl -s --max-time 5 $B/for_human_use_browser.js \
-  | grep -q 'for_llm' && ok || bad "界面脚本没把内容插到 for_llm 前面"
+UI_JS=$(curl -s --max-time 5 $B/for_human_use_browser.js)
+has "$UI_JS" 'for_llm' && ok || bad "界面脚本没把内容插到 for_llm 前面"
 # <pre> 默认不换行，窄屏会把这段话右侧切掉。折行样式由 JS 注入到那个元素上。
-curl -s --max-time 5 $B/for_human_use_browser.js \
-  | grep -q "querySelector('#for_llm > pre')" && ok || bad "界面脚本没精确指到 for_llm 的 pre"
-curl -s --max-time 5 $B/for_human_use_browser.js \
-  | grep -q 'pre-wrap' && ok || bad "界面脚本没给 pre 注入折行样式"
+has "$UI_JS" "querySelector('#for_llm > pre')" && ok || bad "界面脚本没精确指到 for_llm 的 pre"
+has "$UI_JS" 'pre-wrap' && ok || bad "界面脚本没给 pre 注入折行样式"
 check "/health 状态" 200 "$(code $B/health)"
 check "/health 类型" "application/json" "$(ctype $B/health)"
 check "/health.json 别名" 200 "$(code $B/health.json)"
@@ -111,9 +114,9 @@ check "/robots.txt 类型" "text/plain; charset=utf-8" "$(ctype $B/robots.txt)"
 check "/llms.txt 状态" 200 "$(code $B/llms.txt)"
 check "/error.md 状态" 200 "$(code $B/error.md)"
 check "/error.md 类型" "text/markdown; charset=utf-8" "$(ctype $B/error.md)"
-curl -s --max-time 5 $B/llms.txt | grep -q "/error.md" && ok || bad "llms.txt 没指向 error.md"
+has "$(curl -s --max-time 5 $B/llms.txt)" "/error.md" && ok || bad "llms.txt 没指向 error.md"
 check "/nope 状态" 404 "$(code $B/nope)"
-curl -s --max-time 5 $B/nope | grep -q "/skill.md" && ok || bad "404 文案没指向 skill.md"
+has "$(curl -s --max-time 5 $B/nope)" "/skill.md" && ok || bad "404 文案没指向 skill.md"
 
 echo "== 图像与缩放 =="
 check "原图尺寸" "800x600" "$(dims $B/snapshot.jpg)"
@@ -130,8 +133,8 @@ T1=$(date +%s%N)
 MS=$(( (T1-T0)/1000000 ))
 [ "$MS" -lt 200 ] && ok || bad "age=5 应命中缓存，实际 ${MS}ms"
 HEALTH=$(curl -s --max-time 5 $B/health)
-echo "$HEALTH" | grep -q '"ok": true' && ok || bad "health 的 ok 不是 true"
-echo "$HEALTH" | grep -q '"fails": 0' && ok || bad "health 里 fails 不为 0"
+has "$HEALTH" '"ok": true' && ok || bad "health 的 ok 不是 true"
+has "$HEALTH" '"fails": 0' && ok || bad "health 里 fails 不为 0"
 
 echo "== 并发（应合并成一次采集）=="
 BEFORE=$(curl -s --max-time 5 $B/health | grep -o '"count": [0-9]*' | grep -o '[0-9]*')
@@ -174,7 +177,7 @@ for _ in $(seq 1 20); do
 done
 for p in $LPIDS; do wait "$p"; done
 check "20 并发之后仍可用" 200 "$(code $B/health)"
-echo "$(curl -s --max-time 5 $B/health)" | grep -q '"ok": true' \
+has "$(curl -s --max-time 5 $B/health)" '"ok": true' \
   && ok || bad "并发之后 health 的 ok 不是 true"
 
 echo
