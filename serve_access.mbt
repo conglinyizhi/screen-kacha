@@ -204,6 +204,65 @@ fn verb_of(m : @http.RequestMethod) -> String {
 }
 
 ///|
+/// 按名字取 header，大小写不敏感。
+fn header_lookup(headers : Map[String, String], name : String) -> String? {
+  let want = ascii_lower(name)
+  for pair in headers.to_array() {
+    let (k, v) = pair
+    if ascii_lower(k) == want {
+      return Some(v)
+    }
+  }
+  None
+}
+
+///|
+/// Host 头只接受 IP 字面量和 localhost。
+///
+/// 不校验的话有个现成的攻击面：浏览器里的恶意页面随便找个域名解析到这台机器
+/// （DNS rebinding），就能同源读走整屏截图。浏览器发来的 Host 是那个域名，
+/// 而 IP 字面量访问（本机 127.0.0.1、局域网 192.168.x.x）不会被这种手法利用。
+///
+/// 局域网里用主机名访问的同学需要改用 IP；这条取舍写进 README。
+pub fn host_allowed(host : String) -> Bool {
+  let h = ascii_lower(host.trim().to_owned())
+  if h == "" {
+    // HTTP/1.0 可以没有 Host
+    return true
+  }
+  let name = if h.has_prefix("[") {
+    // IPv6 字面量：[::1]:8930
+    match h.find("]") {
+      Some(i) => h[:i + 1].to_owned()
+      None => h
+    }
+  } else {
+    match h.find(":") {
+      Some(i) => h[:i].to_owned()
+      None => h
+    }
+  }
+  if name == "localhost" {
+    return true
+  }
+  if name.has_prefix("[") {
+    return true
+  }
+  // IPv4 字面量：只有数字和点，且带点
+  let mut i = 0
+  let mut numeric = true
+  while i < name.length() {
+    let c = name[i].to_int()
+    if !(c >= 48 && c <= 57) && c != 46 {
+      numeric = false
+      break
+    }
+    i = i + 1
+  }
+  numeric && name.contains(".")
+}
+
+///|
 /// 读一个请求、分发给 app、把结果写回去。三段各有超时。
 async fn handle_one(app : @crescent.App, conn : @http.ServerConnection) -> Unit {
   let request = try {
@@ -225,6 +284,25 @@ async fn handle_one(app : @crescent.App, conn : @http.ServerConnection) -> Unit 
   let verb = verb_of(request.meth)
   let path = request.path
   let headers = request.headers
+  // DNS rebinding 挡在分发之前：Host 是域名就拒，IP 字面量放行
+  match header_lookup(headers, "host") {
+    Some(h) =>
+      if !host_allowed(h) {
+        let bad_hdrs : Map[String, String] = Map([])
+        bad_hdrs.set("Content-Type", "text/plain; charset=utf-8")
+        bad_hdrs.set("Connection", "close")
+        let _ : Unit? = @async.with_timeout_opt(REJECT_TIMEOUT_MS, () => {
+          conn.send_response(403, "Forbidden", extra_headers=bad_hdrs)
+          conn.write("Host 只接受 IP 和 localhost（防 DNS rebinding）\n")
+          conn.end_response()
+        }) catch {
+          _ => None
+        }
+        conn.close()
+        return
+      }
+    None => ()
+  }
   // 本服务的接口都是 GET，不读请求体
   let body : Bytes = Bytes::makei(0, fn(_) { 0 })
   // 超时只包 dispatch（handler 已经算完、payload 已经序列化），

@@ -542,3 +542,21 @@ test "请求驱动的抓帧有最小间隔" {
   // 久没抓：允许
   assert_false(capture_too_soon(1_000_000L, 1_010_000L))
 }
+
+///|
+/// Host 只认 IP 字面量和 localhost（防 DNS rebinding）。
+///
+/// 不校验的话，浏览器里的恶意页面找个域名解析到本机就能同源读走截图。
+test "Host 只接受 IP 和 localhost" {
+  assert_true(host_allowed("127.0.0.1"))
+  assert_true(host_allowed("127.0.0.1:8930"))
+  assert_true(host_allowed("localhost:8930"))
+  assert_true(host_allowed("[::1]:8930"))
+  assert_true(host_allowed("192.168.1.21:8930"))
+  // HTTP/1.0 可以没有 Host
+  assert_true(host_allowed(""))
+  // 域名一律拒
+  assert_false(host_allowed("evil.example.com"))
+  assert_false(host_allowed("evil.example.com:8930"))
+  assert_false(host_allowed("desktop.lan:8930"))
+}

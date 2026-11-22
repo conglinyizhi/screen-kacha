@@ -128,6 +128,10 @@ check "/llms.txt 状态" 200 "$(code $B/llms.txt)"
 check "/error.md 状态" 200 "$(code $B/error.md)"
 check "/error.md 类型" "text/markdown; charset=utf-8" "$(ctype $B/error.md)"
 has "$(curl -s --max-time 5 $B/llms.txt)" "/error.md" && ok || bad "llms.txt 没指向 error.md"
+# DNS rebinding：Host 写域名必须拒，写 IP 放行
+check "假 Host 被拒" 403 \
+  "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'Host: evil.example.com' $B/snapshot.jpg)"
+check "IP Host 放行" 200 "$(code $B/snapshot.jpg)"
 check "/nope 状态" 404 "$(code $B/nope)"
 has "$(curl -s --max-time 5 $B/nope)" "/skill.md" && ok || bad "404 文案没指向 skill.md"
 

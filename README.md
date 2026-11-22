@@ -27,6 +27,10 @@ v0.1，自己日常在用。核心链路（PipeWire 取帧 → HTTP 快照）、
 | `GET /ui/err?code=xxx` | 出错兜底页，正文由服务端按代号给出 |
 | 其它 | 404 纯文本，指向 `/skill.md` |
 
+`Host` 只接受 IP 字面量和 `localhost`，写成域名会回 403。这条是挡 DNS rebinding：
+浏览器里的恶意页面只要有个域名解析到这台机器，就能同源读走整屏截图。所以局域网里
+用主机名访问的需要改用 IP（例如 `http://192.168.1.21:8930/`）。
+
 `GET /` 按 `Accept` 分叉：带 `text/html` 给一个外壳，不带就给 `llms.txt`
 原文（agent 拿到的没有 HTML 噪音）。
 
