@@ -36,16 +36,8 @@
 
 ## 运行时可选
 
-### ImageMagick
+### libpng
 
-- 用途：**可选**。缩放、WebP、光标叠加有 `moonimage` 的原生实现；
-  ImageMagick 只在需要「从已有 JPEG 再缩放」等边角场景下作为后备调用。
-  通过子进程调用，不链接、不包含其代码。
-- 许可证：ImageMagick License（Apache-2.0 风格，非 copyleft）
-- 主页：https://imagemagick.org/
+- 用途：读光标箭头素材（PNG）。合成和编码都在进程内完成，不再调外部程序
+- 许可证：libpng License（permissive，允许闭源分发）
 
-## 说明
-
-`moonimage` 的缩放是自己实现的面积平均（`moonimage/image_shim.c`），
-**没有使用** libswscale 或任何 ffmpeg 组件 —— 部分发行版的 ffmpeg 是
-GPL-3.0，引入会带来传染性，这里刻意避开了。

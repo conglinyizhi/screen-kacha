@@ -21,110 +21,29 @@ test "parse_cursor 只认 0/1/2/3/4" {
 }
 
 ///|
-test "两套素材的尺寸各不相同，且和文件对得上" {
-  // 新版 29x41，旧版 29x40 —— 负片要按这个尺寸裁，
-  // 混用会差一行、边缘错位，所以专门锁一下
-  let (_, _, w1, h1) = ({ style: Soft, classic: false, } : Cursor).assets()
-  let (_, _, w2, h2) = ({ style: Soft, classic: true, } : Cursor).assets()
-  assert_eq((w1, h1), (29, 41))
-  assert_eq((w2, h2), (29, 40))
-  assert_true(h1 != h2)
+test "两套素材的文件名分得开" {
+  // 尺寸由 C 侧从 PNG 头里读，这里只管用的是哪一套
+  let (a1, m1) = ({ style: Soft, classic: false, } : Cursor).assets()
+  let (a2, m2) = ({ style: Soft, classic: true, } : Cursor).assets()
+  assert_false(a1.contains("classic"))
+  assert_false(m1.contains("classic"))
+  assert_true(a2.contains("classic"))
+  assert_true(m2.contains("classic"))
 }
 
 ///|
 test "每套素材里软边和负片用的文件名不一样" {
-  let (arrow_new, mask_new, _, _) = ({ style: Soft, classic: false, } : Cursor).assets()
-  let (arrow_new_neg, mask_new_neg, _, _) = (
-    { style: Neg, classic: false, } : Cursor).assets()
+  let (arrow_new, mask_new) = ({ style: Soft, classic: false, } : Cursor).assets()
+  let (arrow_new_neg, mask_new_neg) = ({ style: Neg, classic: false, } : Cursor).assets()
   assert_true(arrow_new.has_prefix("cursor-arrow"))
   assert_true(mask_new.has_prefix("cursor-mask"))
   // 负片只用蒙版去裁，不需要箭头图
   assert_true(arrow_new_neg.has_prefix("cursor-mask"))
   assert_eq(mask_new, mask_new_neg)
 
-  let (arrow_old, mask_old, _, _) = ({ style: Soft, classic: true, } : Cursor).assets()
+  let (arrow_old, mask_old) = ({ style: Soft, classic: true, } : Cursor).assets()
   assert_true(arrow_old.contains("classic"))
   assert_true(mask_old.contains("classic"))
-}
-
-///|
-test "cursor_args 两种样式的参数形状" {
-  let soft = cursor_args(
-    Soft,
-    "in.jpg",
-    "out.jpg",
-    10,
-    20,
-    "a.png",
-    "m.png",
-    29,
-    41,
-    None,
-  )
-  // 半透明：直接把箭头贴上去
-  assert_true(soft.contains("a.png"))
-  assert_false(soft.contains("+clone"))
-  assert_true(soft.contains("+10+20"))
-  // 负片：要裁剪+反色+蒙版
-  let neg = cursor_args(
-    Neg,
-    "in.jpg",
-    "out.jpg",
-    10,
-    20,
-    "a.png",
-    "m.png",
-    29,
-    41,
-    None,
-  )
-  assert_true(neg.contains("+clone"))
-  assert_true(neg.contains("-negate"))
-  assert_true(neg.contains("CopyOpacity"))
-  assert_true(neg.contains("m.png"))
-  // 带宽度时最后要缩放
-  let scaled = cursor_args(
-    Soft,
-    "in.jpg",
-    "out.jpg",
-    0,
-    0,
-    "a.png",
-    "m.png",
-    29,
-    41,
-    Some(640),
-  )
-  assert_true(scaled.contains("-resize"))
-  assert_true(scaled.contains("640x"))
-  // 负片的 crop 尺寸必须来自参数，跟素材走。写死成常量的话，
-  // 换素材（29x41 / 29x40）就会差一行，边缘错位。
-  let neg44 = cursor_args(
-    Neg,
-    "in.jpg",
-    "out.jpg",
-    7,
-    9,
-    "a.png",
-    "m.png",
-    29,
-    40,
-    None,
-  )
-  assert_true(neg44.contains("29x40+7+9"))
-  let neg41 = cursor_args(
-    Neg,
-    "in.jpg",
-    "out.jpg",
-    7,
-    9,
-    "a.png",
-    "m.png",
-    29,
-    41,
-    None,
-  )
-  assert_true(neg41.contains("29x41+7+9"))
 }
 
 ///|

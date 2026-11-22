@@ -22,6 +22,7 @@ jobs:
             libpipewire-0.3-dev \
             libjpeg-dev \
             libwebp-dev \
+            libpng-dev \
             imagemagick \
             curl \
             python3

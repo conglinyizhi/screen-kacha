@@ -148,7 +148,6 @@ async fn main {
         eprintln("创建帧目录失败：\{err}")
       }
   }
-  let magick = @store.detect_magick()
   let fake_source = if fake == "" { None } else { Some(fake) }
   // 假帧模式下 shot 直接指向那张图，连拷贝都省了
   let shot_path = match fake_source {
@@ -162,7 +161,6 @@ async fn main {
   let use_pw = pw_node > 0
   let store = @store.Store::new(
     shot=shot_path,
-    magick~,
     fake=fake_source,
     wl_dir~,
     pw=use_pw,
@@ -173,11 +171,6 @@ async fn main {
     @socket.Addr::parse("\{bind}:\{port}"),
     reuse_addr=true,
   )
-  let magick_note = match magick {
-    Some(m) => m
-    None => "未找到，缩放与 WebP 将退回原图"
-  }
-
   let access_path = match pick(m, "access", "") {
     "" =>
       match @env.get_env_var("HOME") {
@@ -201,7 +194,6 @@ async fn main {
   eprintln(
     "screenstream-mb v0.1 监听 \{bind}:\{port}  帧目录 \{shm}  泵 \{pump}ms  并发上限 \{max_conns}",
   )
-  eprintln("  ImageMagick: \{magick_note}")
   @async.with_task_group() <| group => {
     if pw_node <= 0 && source != "spectacle" && fake_source is None {
       // 服务先跑起来，portal 在后台拿屏幕流；拿不到就一直按 spectacle 服务

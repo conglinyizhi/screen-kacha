@@ -14,5 +14,5 @@ supported_targets = "+native"
 
 options(
   "native-stub": [ "image_shim.c" ],
-  link: { "native": { "cc-link-flags": "-ljpeg -lwebp" } },
+  link: { "native": { "cc-link-flags": "-ljpeg -lwebp -lpng" } },
 )

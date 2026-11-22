@@ -103,27 +103,6 @@ fn make_res(
 }
 
 ///|
-fn make_res_extra(
-  code : @crescent.StatusCode,
-  ctype : String,
-  body : Bytes,
-  extra : Map[String, String],
-) -> @crescent.HttpResponse {
-  let headers : Map[String, String] = {
-    "Content-Type": ctype,
-    "Cache-Control": "no-store",
-  }
-  for k, v in extra {
-    headers[k] = v
-  }
-  @crescent.HttpResponse::HttpResponse(
-    status_code=code,
-    headers~,
-    raw_body=body,
-  )
-}
-
-///|
 fn not_found(path : String) -> @crescent.HttpResponse {
   make_res(
     @crescent.StatusCode::NotFound,
@@ -138,7 +117,7 @@ fn handle_health(store : Store, port : Int32) -> @crescent.HttpResponse {
     Some(_) => store.err() == ""
     None => false
   }
-  let json = "{\"ok\": \{ok}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"err\": \"\{store.err()}\", \"port\": \{port}, \"magick\": \{store.has_magick()}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{store.source()}\", \"access\": \"\{store.access_note()}\"}"
+  let json = "{\"ok\": \{ok}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"err\": \"\{store.err()}\", \"port\": \{port}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{store.source()}\", \"access\": \"\{store.access_note()}\"}"
   make_res(@crescent.StatusCode::OK, "application/json", @utf8.encode(json))
 }
 
@@ -152,44 +131,45 @@ async fn build_image_response(
   cursor : Cursor?,
 ) -> @crescent.HttpResponse {
   let ctype = if fmt == "webp" { "image/webp" } else { "image/jpeg" }
-  // 要在图上画光标：一律走 magick，哪怕原始尺寸直出也要多跑一趟。
+  // 要在图上画光标。合成在 C 里做，不再调 ImageMagick。
   //
-  // 缺 magick 时**明确告知**，不要静默返回一张没有光标的图：
-  // 调用方要的是「带光标」，悄悄给张没光标的比报错更难查。
-  // 但坐标拿不到（跟踪没开）算正常情况，那种就安静地退回去。
-  if cursor is Some(_style) && !store.has_magick() {
-    return make_res_extra(
-      @crescent.StatusCode::ServiceUnavailable,
-      "application/json",
-      @utf8.encode(
-        "{\"error\":\"画光标需要 ImageMagick，这台机器上没有\"}",
-      ),
-      { "X-Screenstream-Fallback": "no-magick" },
-    )
-  }
+  // 有 PipeWire 原始帧就直接在 BGRA 上画，省掉「编码成 JPEG 再解码回来」
+  // 这一来一回；只有退回 spectacle 或假帧源、手上只有 JPEG 时才解一次。
+  //
+  // 坐标拿不到（跟踪没开）算正常情况，安静退回普通截图。
   if cursor is Some(cur) {
     match read_cursor_pos(store.cursor_pos_path()) {
       Some((cx, cy)) => {
-        let (arrow, mask, cursor_w, cursor_h) = cur.assets()
+        let (arrow, mask) = cur.assets()
         let out = store.next_tmp(fmt)
-        let magick = match store.magick() {
-          Some(m) => m
-          None => ""
+        let (src, is_raw, sw, sh) = match store.pw_raw() {
+          Some((raw, w, h)) => (raw, true, w, h)
+          None => (store.shot(), false, 0, 0)
         }
-        let args = cursor_args(
-          cur.style,
-          store.shot(),
-          out,
+        // 半透明模式贴箭头，负片模式用蒙版做反色，两者互斥
+        let (ov, mk) = match cur.style {
+          Soft => (arrow, "")
+          Neg => ("", mask)
+        }
+        let dst_w = match width {
+          Some(w) => w
+          None => 0
+        }
+        let ok = @image.cursor_overlay(
+          src,
+          is_raw,
+          sw,
+          sh,
+          ov,
+          mk,
           cx,
           cy,
-          arrow,
-          mask,
-          cursor_w,
-          cursor_h,
-          width,
+          dst_w,
+          82,
+          fmt == "webp",
+          out,
         )
-        let ok = @process.run(magick, args) catch { _ => 1 }
-        if ok == 0 {
+        if ok {
           let got = try {
             let f = @fs.open(out, mode=ReadOnly)
             let b = f.read_all().binary()
@@ -208,7 +188,7 @@ async fn build_image_response(
     }
   }
   // 有 PipeWire 原始帧时直接从 BGRA 出图：省掉「编码成 JPEG 再解码回来缩放」
-  // 这一来一回，实测比 magick 快 3~4 倍。光标那步已经在上面的分支处理过，
+  // 这一来一回，实测比走外部程序快 3~4 倍。光标那步已经在上面的分支处理过，
   // 走到这里说明不需要画光标。
   let need_work = match width {
     Some(_) => true
@@ -245,29 +225,42 @@ async fn build_image_response(
       None => ()
     }
   }
-  match render_plan(width, fmt, store.has_magick()) {
-    Passthrough => make_res(@crescent.StatusCode::OK, ctype, data)
-    Downgrade =>
-      make_res_extra(@crescent.StatusCode::OK, "image/jpeg", data, {
-        "X-Screenstream-Fallback": "no-magick",
-      })
-    Render => {
-      let out = store.next_tmp(fmt)
-      let magick = match store.magick() {
-        Some(m) => m
-        None => ""
+  // 走到这里说明既没有原始帧，也没能直接复用：手上只有 JPEG。
+  //
+  // 退回 spectacle 或假帧源时会到这里。自己解码再缩放，不再调外部程序。
+  let need_work = match width {
+    Some(_) => true
+    None => fmt != "jpg"
+  }
+  if need_work {
+    let out = store.next_tmp(fmt)
+    let dst_w = match width {
+      Some(x) => x
+      None => 0
+    }
+    let ok = @image.jpeg_to_file(store.shot(), dst_w, 82, fmt == "webp", out)
+    if ok {
+      let got = try {
+        let f = @fs.open(out, mode=ReadOnly)
+        let b = f.read_all().binary()
+        f.close()
+        Some(b)
+      } catch {
+        _ => None
       }
-      match render_file(magick, store.shot(), out, width) {
-        Some(b) => make_res(@crescent.StatusCode::OK, ctype, b)
-        None =>
-          make_res(
-            @crescent.StatusCode::InternalServerError,
-            "application/json",
-            @utf8.encode("{\"error\":\"图像转换失败\"}"),
-          )
+      match got {
+        Some(b) => return make_res(@crescent.StatusCode::OK, ctype, b)
+        None => ()
       }
     }
+    return make_res(
+      @crescent.StatusCode::InternalServerError,
+      "application/json",
+      @utf8.encode("{\"error\":\"图像转换失败\"}"),
+    )
   }
+  // 原始尺寸直出，什么都不用做
+  make_res(@crescent.StatusCode::OK, ctype, data)
 }
 
 ///|

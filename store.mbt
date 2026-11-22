@@ -13,7 +13,6 @@ pub struct Frame {
 pub struct Store {
   shot : String
   lock : @async.Mutex
-  magick : String?
   /// 测试用假帧源：设了就不跑 spectacle，直接读这个文件
   fake : String?
   /// 运行时目录（/run/user/<uid>），用来确认 Wayland socket 是否已经就绪
@@ -53,8 +52,8 @@ pub struct Store {
   ///
   /// 这里保留最近 TMP_KEEP 个，超了就删最旧的。
   /// 为什么不是在「读出字节之后立刻删」：那看着更干净，但三个调用点
-  /// 分散在 app.mbt 的不同分支里（有一个还要让 magick 先跑完），
-  /// 每个分支都得记得删 —— 漏一处就是新的泄漏。
+  /// 分散在 app.mbt 的不同分支里（有一个还要等外部编码跑完），
+  /// 每个分支都得记得删，漏一处就是新的泄漏。
   /// 统一在这里滚动，只在 next_tmp 一个地方管，不会漏。
   ///
   /// 必须是环形而不是"删第一个"：读文件时中间有 await，
@@ -66,7 +65,6 @@ pub struct Store {
 ///|
 pub fn Store::new(
   shot~ : String,
-  magick~ : String? = None,
   fake~ : String? = None,
   wl_dir~ : String = default_runtime_dir(),
   pw~ : Bool = false,
@@ -74,7 +72,6 @@ pub fn Store::new(
   {
     shot,
     lock: @async.Mutex(),
-    magick,
     fake,
     wl_dir,
     pw,
@@ -134,7 +131,7 @@ async fn wayland_ready(dir : String) -> Bool {
   // 不能只认 wayland-0..3：编号在 compositor 每次重启后递增，
   // 跑过几轮 KWin 崩溃的机器上出现 wayland-5、wayland-7 是常态。
   // 那时这里返回 false，capture 会直接记「socket 还没就绪」返回，
-  // 连 spectacle 都不拉 —— 桌面好得很，服务却永久抓不到图。
+  // 连 spectacle 都不拉，桌面好得很，服务却永久抓不到图。
   let names = try {
     let d = @fs.opendir(dir)
     let all = d.read_all()
@@ -334,7 +331,7 @@ fn cstr(s : String) -> Bytes {
 }
 
 ///|
-/// 删一个临时文件。失败不管：可能已经被清了，或者权限不对 ——
+/// 删一个临时文件。失败不管：可能已经被清了，或者权限不对，
 /// 清理失败不该影响这次请求。
 fn tmp_remove(path : String) -> Unit {
   let _ = tmp_remove_raw(cstr(path))
@@ -354,17 +351,6 @@ fn current_pid() -> Int32 {
 extern "c" fn current_pid_raw() -> Int32 = "moonbit_current_pid"
 
 ///|
-pub fn Store::magick(self : Store) -> String? {
-  self.magick
-}
-
-///|
-pub fn Store::has_magick(self : Store) -> Bool {
-  match self.magick {
-    Some(_) => true
-    None => false
-  }
-}
 
 ///|
 /// 采集成功记一笔。单独抽出来，采集本身要真跑 spectacle，这层逻辑可以单测。
@@ -375,7 +361,7 @@ fn Store::record_ok(self : Store, bytes : Bytes, cap_ms : Int64) -> Unit {
   // 成功一次就把 PipeWire 的失败计数清零。
   //
   // 这里原来是漏的：计数只加不减，>=3 就永久切到 spectacle。
-  // 后果是偶发失败会跨天累积 —— 跑一天几万帧里只要有三次抖动，
+  // 后果是偶发失败会跨天累积，跑一天几万帧里只要有三次抖动，
   // 抓帧就从 24ms 掉到 700ms，而 /health 只显示 source=spectacle，
   // 看起来像"正常回退"，没人会去查。
   // 启动期更危险：PipeWire::connect 立刻返回不等第一帧，
@@ -417,7 +403,7 @@ fn default_runtime_dir() -> String {
 }
 
 ///|
-/// 用 PipeWire 的常驻流取帧：把最新原始帧落盘，再让 magick 转成 JPEG。
+/// 用 PipeWire 的常驻流取帧：把最新原始帧落盘，再用 moonimage 转成 JPEG。
 
 ///|
 /// PipeWire 取帧失败：**连续** 3 次才切回 spectacle。
@@ -446,7 +432,7 @@ async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
   //
   // 原来是 size() + save_frame() 两次独立调用，中间隔着一次完整落盘
   // （8MB 写）。桌面在这段时间改分辨率（切缩放倍率、拔插外接屏），
-  // 第二次拿到的就是「旧尺寸配新像素」—— 解码按错的尺寸走，
+  // 第二次拿到的就是「旧尺寸配新像素」，解码按错的尺寸走，
   // 产出花屏，或者直接读越界。改成一次调用后由 C 侧在同一把锁里
   // 读完尺寸再写像素，两者必然一致。
   let (wrote, w, h) = self.pw_stream.save_frame_consistent(raw)
@@ -461,13 +447,13 @@ async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
     self.pw_failed("PipeWire 帧写入不完整（\{wrote}/\{expect} 字节）")
     return
   }
-  // 用自带的 moonimage 转码，不再走 magick：
+  // 用自带的 moonimage 转码：
   // 实测 19ms vs 53ms，而且不再依赖外部程序。
   // 先记下「这一帧在哪、多大」，再去编码。
   // 编码和后续请求都只看这个三元组，不再碰 C 侧的实时状态。
   // 轮转：删上上帧，保留上一帧。
   //
-  // 删上一帧是不行的 —— 可能有请求刚拿到它的路径、正要读，
+  // 删上一帧是不行的，可能有请求刚拿到它的路径、正要读，
   // 文件就没了。留一帧的余量足够：请求拿到路径到读完只有几毫秒，
   // 而泵最快 500ms 才换一次帧。
   match self.pw_raw_prev {
@@ -567,7 +553,7 @@ pub fn Store::pw_raw(self : Store) -> (String, Int32, Int32)? {
   // 用抓帧时记下的尺寸，不要再现场问 C 侧。
   //
   // 现场问的话，拿到的可能是「下一帧」的尺寸，而文件里躺的是上一帧的
-  // 像素 —— 改分辨率的那一瞬间就会按错的尺寸去解，出花屏。
+  // 像素，改分辨率的那一瞬间就会按错的尺寸去解，出花屏。
   // 尺寸和像素必须在同一时刻确定下来，这里就是那个「同一时刻」的结果。
   match self.pw_raw_frame {
     Some((path, w, h)) => if w > 0 && h > 0 { Some((path, w, h)) } else { None }

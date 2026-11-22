@@ -13,8 +13,6 @@ pub async fn acquire_portal_node(String) -> Int32?
 
 pub fn build_app(Store, Int32) -> @crescent.App
 
-pub fn cursor_args(CursorStyle, String, String, Int32, Int32, String, String, Int32, Int32, Int32?) -> Array[String]
-
 pub fn default_magick_candidates() -> Array[String]
 
 pub async fn detect_magick() -> String?
@@ -70,7 +68,7 @@ pub struct Cursor {
   style : CursorStyle
   classic : Bool
 }
-pub fn Cursor::assets(Self) -> (String, String, Int32, Int32)
+pub fn Cursor::assets(Self) -> (String, String)
 
 pub enum CursorStyle {
   Soft
@@ -91,7 +89,6 @@ pub enum RenderPlan {
 pub struct Store {
   shot : String
   lock : @async.Mutex
-  magick : String?
   fake : String?
   wl_dir : String
   mut pw : Bool
@@ -121,11 +118,9 @@ pub fn Store::enable_pipewire(Self, Int32) -> Bool
 pub async fn Store::ensure(Self, Int64) -> Unit
 pub fn Store::err(Self) -> String
 pub fn Store::fails(Self) -> Int32
-pub fn Store::has_magick(Self) -> Bool
 pub fn Store::idle_ms(Self) -> Int64
-pub fn Store::magick(Self) -> String?
 pub fn Store::mark_request(Self) -> Unit
-pub fn Store::new(shot~ : String, magick? : String?, fake? : String?, wl_dir? : String, pw? : Bool) -> Self
+pub fn Store::new(shot~ : String, fake? : String?, wl_dir? : String, pw? : Bool) -> Self
 pub fn Store::next_tmp(Self, String) -> String
 pub fn Store::pipewire_on(Self) -> Bool
 pub fn Store::pw_raw(Self) -> (String, Int32, Int32)?

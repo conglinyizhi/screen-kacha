@@ -464,3 +464,80 @@ async test "缩放不引入通道错位" {
     }
   }
 }
+
+///|
+/// 光标合成：直接打 C 那一层，绕开 HTTP。
+///
+/// 素材由外部脚本放到 /tmp/moonimage-cursor/，这里只管调用。
+async test "cursor_overlay 半透明模式" {
+  let dir = "/tmp/moonimage-cursor"
+  let src = "\{dir}/base.bgra"
+  let out = "\{dir}/soft.jpg"
+  let w : Int32 = 120
+  let h : Int32 = 100
+  let px = make_bgra(w, h, fn(_x, _y) { (200, 180, 40) })
+  @fs.write_file(src, px, create_mode=CreateOrTruncate) catch {
+    _ => ()
+  }
+  let ok = cursor_overlay(
+    src,
+    true,
+    w,
+    h,
+    "\{dir}/cursor-arrow.png",
+    "",
+    20,
+    15,
+    0,
+    82,
+    false,
+    out,
+  )
+  assert_true(ok)
+  assert_true(slurp(out).length() > 100)
+}
+
+///|
+async test "cursor_overlay 负片模式" {
+  let dir = "/tmp/moonimage-cursor"
+  let src = "\{dir}/base.bgra"
+  let out = "\{dir}/neg.jpg"
+  let ok = cursor_overlay(
+    src,
+    true,
+    120,
+    100,
+    "",
+    "\{dir}/cursor-mask.png",
+    20,
+    15,
+    0,
+    82,
+    false,
+    out,
+  )
+  assert_true(ok)
+  assert_true(slurp(out).length() > 100)
+}
+
+///|
+async test "素材路径不存在时返回 false，不崩" {
+  let dir = "/tmp/moonimage-cursor"
+  let src = "\{dir}/base.bgra"
+  let out = "\{dir}/missing.jpg"
+  let ok = cursor_overlay(
+    src,
+    true,
+    120,
+    100,
+    "\{dir}/no-such-arrow.png",
+    "",
+    20,
+    15,
+    0,
+    82,
+    false,
+    out,
+  )
+  assert_false(ok)
+}

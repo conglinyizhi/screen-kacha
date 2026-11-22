@@ -54,9 +54,12 @@ cmd/imgtest/      手动比对编码器输出的小工具
 
 ## 会咬人的地方
 
-**两套光标素材尺寸不同。** 无尾巴 29×41，带尾巴 29×40。负片模式按
-`CURSOR_W` / `CURSOR_H` 裁底下的像素，所以换素材时常量和两个 png 必须一起改。
-混用会少裁一行、边缘错位，而且看起来只是「有点歪」，很难定位。
+**光标合成在 C 里，尺寸从 PNG 头里读。** 两套素材（无尾巴 / 带尾巴）尺寸不同，
+但代码里不写死宽高，换素材不用改常量。合成走 `moonimage` 的 `cursor_overlay`。
+
+**libpng 要绕开 gamma 转换。** 它的简化接口（`png_image_*`）读出来会做 gamma 校正，
+128 变成 186，整张图亮一档，而且 `PNG_IMAGE_FLAG_COLORSPACE_NOT_sRGB` 关不掉。
+必须用完整接口，只要不调 `png_set_gamma`，值就和文件里写的一致。
 
 **C 不能往 MoonBit 的 `Bytes` 里写。** `Bytes` 是不可变的，C 侧写进去会 SIGSEGV。
 需要 C 回填数据就走静态变量加 getter，见 `pw_shim.c` 的 `moonbit_pw_saved_w`。
@@ -66,8 +69,8 @@ cmd/imgtest/      手动比对编码器输出的小工具
 
 **每个 `moon.pkg` 只能有一个 `options(...)` 块。** 写两个包发现会直接失败。
 
-**链接参数不向下游传递。** `moonimage` 的 `-ljpeg -lwebp` 只对编译它自己生效，
-用到它的包要在自己的 `moon.pkg` 里补一条。CI 少装 `libjpeg-dev` 就会在链接阶段挂。
+**链接参数不向下游传递。** `moonimage` 的 `-ljpeg -lwebp -lpng` 只对编译它自己生效，
+用到它的包要在自己的 `moon.pkg` 里补一条。CI 少装 `libjpeg-dev` 或 `libpng-dev` 就会在链接阶段挂。
 
 **`human.html` 的加载方式。** `/` 返回一个外壳，加一行指向
 `/for_human_use_browser.js` 的脚本；那段 JS 由服务端现场生成，把整份 `human.html`

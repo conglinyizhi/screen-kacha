@@ -6,6 +6,12 @@ pub fn bgra_to_jpeg(String, Int32, Int32, Int32, Int32, String) -> Bool
 
 pub fn bgra_to_webp(String, Int32, Int32, Int32, Int32, String) -> Bool
 
+pub fn cursor_overlay(String, Bool, Int32, Int32, String, String, Int32, Int32, Int32, Int32, Bool, String) -> Bool
+
+pub fn cursor_overlay_code(String, Bool, Int32, Int32, String, String, Int32, Int32, Int32, Int32, Bool, String) -> Int32
+
+pub fn jpeg_to_file(String, Int32, Int32, Bool, String) -> Bool
+
 // Errors
 
 // Types and methods

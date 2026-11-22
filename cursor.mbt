@@ -12,26 +12,6 @@
 /// - `2`：把箭头覆盖的像素反色，深浅背景都清楚，但会盖住内容
 
 ///|
-/// 新版（无尾巴）素材的像素尺寸：29x41，宽高比 0.674，贴近真光标。
-///
-/// 负片模式要按这个尺寸裁底下的像素，所以它必须和 `cursor-arrow.png`
-/// 以及 `cursor-mask.png` 严格一致，换素材时一起改。
-const CURSOR_W : Int32 = 29
-
-///|
-const CURSOR_H : Int32 = 41
-
-///|
-/// 旧版（带尾巴）素材的像素尺寸：29x40。
-///
-/// 和新的差一行。两套不能混用 —— 负片裁切按这边的尺寸走，
-/// 用错就会少裁一行、边缘错位。
-const CURSOR_W_CLASSIC : Int32 = 29
-
-///|
-const CURSOR_H_CLASSIC : Int32 = 40
-
-///|
 pub enum CursorStyle {
   Soft
   Neg
@@ -40,13 +20,10 @@ pub enum CursorStyle {
 ///|
 /// 一次绘制请求要用的光标：样式 + 用哪套素材。
 ///
-/// 现在有两套素材，形状不同：
+/// 现在有两套素材，形状不同：新版无尾巴（`cursor-*.png`）、
+/// 旧版带尾巴（`cursor-*-classic.png`）。
 ///
-/// - 新版（无尾巴）29x41，`cursor-arrow.png`
-/// - 旧版（带尾巴）29x40，`cursor-arrow-classic.png`
-///
-/// 两者的尺寸不一样，而负片模式要按素材尺寸裁底下的像素，
-/// 所以「用哪套」和「裁多大」必须一起决定，不能分开算。
+/// 尺寸由 C 侧从 PNG 头里读，代码里不再写死宽高，换素材不用改常量。
 pub struct Cursor {
   style : CursorStyle
   classic : Bool
@@ -75,28 +52,16 @@ pub fn parse_cursor(v : String?) -> Cursor? {
 ///
 /// 返回 (箭头图, 蒙版图, 宽, 高)。负片分支拿蒙版去裁底下的像素，
 /// 尺寸必须和素材严格一致，差一行就会错位。
-pub fn Cursor::assets(self : Cursor) -> (String, String, Int32, Int32) {
+pub fn Cursor::assets(self : Cursor) -> (String, String) {
   if self.classic {
     match self.style {
-      Soft =>
-        (
-          "cursor-arrow-classic.png",
-          "cursor-mask-classic.png",
-          CURSOR_W_CLASSIC,
-          CURSOR_H_CLASSIC,
-        )
-      Neg =>
-        (
-          "cursor-mask-classic.png",
-          "cursor-mask-classic.png",
-          CURSOR_W_CLASSIC,
-          CURSOR_H_CLASSIC,
-        )
+      Soft => ("cursor-arrow-classic.png", "cursor-mask-classic.png")
+      Neg => ("cursor-mask-classic.png", "cursor-mask-classic.png")
     }
   } else {
     match self.style {
-      Soft => ("cursor-arrow.png", "cursor-mask.png", CURSOR_W, CURSOR_H)
-      Neg => ("cursor-mask.png", "cursor-mask.png", CURSOR_W, CURSOR_H)
+      Soft => ("cursor-arrow.png", "cursor-mask.png")
+      Neg => ("cursor-mask.png", "cursor-mask.png")
     }
   }
 }
@@ -197,64 +162,4 @@ pub fn parse_cursor_pos_text(text : String) -> (Int32, Int32)? {
     return None
   }
   Some((nums[0], nums[1]))
-}
-
-///|
-/// 光标叠加用的 magick 参数。`src` 和 `out` 由调用方给。
-///
-/// Soft：直接把箭头贴上去。
-/// Neg：先把光标那一小块反色，再用箭头的 alpha 当蒙版贴回来 ——
-/// 这样只有箭头形状内的像素被反色，形状外原样保留。
-pub fn cursor_args(
-  style : CursorStyle,
-  src : String,
-  out : String,
-  x : Int32,
-  y : Int32,
-  arrow : String,
-  mask : String,
-  cursor_w : Int32,
-  cursor_h : Int32,
-  width : Int32?,
-) -> Array[String] {
-  let args : Array[String] = [src]
-  match style {
-    Soft => {
-      args.push(arrow)
-      args.push("-geometry")
-      args.push("+\{x}+\{y}")
-      args.push("-compose")
-      args.push("over")
-      args.push("-composite")
-    }
-    Neg => {
-      // \( +clone -crop WxH+X+Y -negate \( mask \) -compose CopyOpacity -composite \)
-      args.push("(")
-      args.push("+clone")
-      args.push("-crop")
-      args.push("\{cursor_w}x\{cursor_h}+\{x}+\{y}")
-      args.push("+repage")
-      args.push("-negate")
-      args.push("(")
-      args.push(mask)
-      args.push(")")
-      args.push("-compose")
-      args.push("CopyOpacity")
-      args.push("-composite")
-      args.push(")")
-      args.push("-geometry")
-      args.push("+\{x}+\{y}")
-      args.push("-compose")
-      args.push("over")
-      args.push("-composite")
-    }
-  }
-  if width is Some(w) {
-    args.push("-resize")
-    args.push("\{w}x")
-  }
-  args.push("-quality")
-  args.push("82")
-  args.push(out)
-  args
 }
