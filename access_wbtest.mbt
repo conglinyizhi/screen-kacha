@@ -162,3 +162,33 @@ test "配置警告能指出废弃键和未知键" {
   let clean = config_warnings("allow_lan = true\nallow_public = false\nallow = 10.0.0.1\n")
   assert_eq(clean.length(), 0)
 }
+
+///|
+/// IPv4-mapped 地址要还原成 IPv4 再判定。
+///
+/// `--bind [::]` 时 IPv4 客户端连进来对端就是 `::ffff:192.168.1.5` 这种写法。
+/// 不还原的话它既不是回环也不是局域网，本机用 127.0.0.1 都会被 403。
+test "IPv4-mapped 地址按 IPv4 判定" {
+  assert_eq(unmap_ipv4("::ffff:192.168.1.5"), "192.168.1.5")
+  assert_eq(unmap_ipv4("0:0:0:0:0:ffff:10.0.0.1"), "10.0.0.1")
+  assert_eq(unmap_ipv4("192.168.1.5"), "192.168.1.5")
+  // 走 peer_ip 那条完整路径
+  assert_eq(peer_ip("[::ffff:192.168.1.5]:8930"), "192.168.1.5")
+  assert_true(is_loopback("::ffff:127.0.0.1"))
+  assert_true(is_lan("::ffff:192.168.1.5"))
+  assert_true(is_cgnat("::ffff:100.64.0.1"))
+}
+
+///|
+/// fe80::/10 是 fe80–febf，不是只有 fe80 开头。
+test "链路本地覆盖整个 fe80::/10" {
+  assert_true(is_lan("fe80::1"))
+  assert_true(is_lan("fe90::1"))
+  assert_true(is_lan("fea0::1"))
+  assert_true(is_lan("febf::1"))
+  // fec0::/10 是旧的 site-local，不算链路本地
+  assert_false(is_lan("fec0::1"))
+  // ULA 仍然认
+  assert_true(is_lan("fc00::1"))
+  assert_true(is_lan("fd12:3456::1"))
+}

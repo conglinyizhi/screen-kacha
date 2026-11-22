@@ -55,6 +55,8 @@ pub fn reject_timeout_ms() -> Int32
 
 pub async fn serve_with_access(@crescent.App, @http.Server, Access, Int32) -> Unit
 
+pub fn unmap_ipv4(String) -> String
+
 pub fn wants_html(String?) -> Bool
 
 // Errors

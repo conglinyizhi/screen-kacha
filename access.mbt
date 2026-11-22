@@ -36,11 +36,59 @@ pub fn Access::restricted(self : Access) -> Bool {
 }
 
 ///|
+/// 把 IPv4-mapped IPv6 还原成 IPv4。
+///
+/// `--bind [::]` 时 IPv4 客户端连进来，对端地址是 `::ffff:192.168.1.5` 这种写法。
+/// 不还原的话它既不是回环也不是局域网，会被当成外部地址直接 403 ——
+/// 本机用 127.0.0.1 访问都进不去。
+pub fn unmap_ipv4(ip : String) -> String {
+  let low = ascii_lower(ip)
+  if low.has_prefix("::ffff:") {
+    low[7:].to_owned()
+  } else if low.has_prefix("0:0:0:0:0:ffff:") {
+    low[15:].to_owned()
+  } else {
+    ip
+  }
+}
+
+///|
+/// IPv6 地址的第一段十六进制数。解析不出来返回 None。
+fn first_hextet(ip : String) -> Int32? {
+  let mut n = 0
+  let mut any = false
+  let mut i = 0
+  while i < ip.length() {
+    let c = ip[i].to_int()
+    let d = if c >= 48 && c <= 57 {
+      c - 48
+    } else if c >= 97 && c <= 102 {
+      c - 87
+    } else if c >= 65 && c <= 70 {
+      c - 55
+    } else {
+      -1
+    }
+    if d < 0 {
+      break
+    }
+    n = n * 16 + d
+    any = true
+    i = i + 1
+  }
+  if any {
+    Some(n)
+  } else {
+    None
+  }
+}
+
+///|
 /// 去掉端口，只留地址。`[::1]:8930` → `::1`，`1.2.3.4:80` → `1.2.3.4`
 pub fn peer_ip(peer : String) -> String {
   if peer.has_prefix("[") {
     match peer.find("]") {
-      Some(i) => return peer[1:i].to_owned()
+      Some(i) => return unmap_ipv4(peer[1:i].to_owned())
       None => return peer
     }
   }
@@ -56,7 +104,7 @@ pub fn peer_ip(peer : String) -> String {
   if cut > 0 {
     let head : String = peer[:cut].to_owned()
     if head.find(":") is None {
-      return head
+      return unmap_ipv4(head)
     }
   }
   peer
@@ -65,7 +113,8 @@ pub fn peer_ip(peer : String) -> String {
 ///|
 /// 回环：127.0.0.0/8 与 ::1
 pub fn is_loopback(ip : String) -> Bool {
-  ip == "::1" || ip == "0:0:0:0:0:0:0:1" || ip.has_prefix("127.")
+  let addr = unmap_ipv4(ip)
+  addr == "::1" || addr == "0:0:0:0:0:0:0:1" || addr.has_prefix("127.")
 }
 
 ///|
@@ -91,18 +140,22 @@ fn parse_octet(s : String) -> Int32 {
 ///|
 /// 局域网：10/8、172.16/12、192.168/16、169.254/16；IPv6 的 fc00::/7 与 fe80::/10。
 pub fn is_lan(ip : String) -> Bool {
-  if ip.contains(":") {
-    if ip.has_prefix("fc") || ip.has_prefix("FC") {
+  let addr = unmap_ipv4(ip)
+  if addr.contains(":") {
+    let low = ascii_lower(addr)
+    // fc00::/7：唯一本地地址
+    if low.has_prefix("fc") || low.has_prefix("fd") {
       return true
     }
-    if ip.has_prefix("fd") || ip.has_prefix("FD") {
-      return true
-    }
-    if ip.has_prefix("fe80") || ip.has_prefix("FE80") {
-      return true
+    // fe80::/10 是链路本地，区间是 fe80–febf。
+    // 原来只匹配 "fe80" 开头，fe90::、feb0:: 这些同属链路的地址被漏掉了。
+    match first_hextet(low) {
+      Some(h) => if h >= 0xFE80 && h <= 0xFEBF { return true }
+      None => ()
     }
     return false
   }
+  let ip = addr
   // split 返回的迭代器只能走一遍：先落成数组，再数长度、再遍历
   let parts : Array[String] = ip
     .split(".")
@@ -141,6 +194,7 @@ pub fn is_lan(ip : String) -> Bool {
 /// 公网上确实分配过这段，所以默认不当局域网：放宽会模糊「局域网」
 /// 这个词的含义，而多数人根本用不到。需要的人自己在托盘里打开。
 pub fn is_cgnat(ip : String) -> Bool {
+  let ip = unmap_ipv4(ip)
   if ip.contains(":") {
     return false
   }
