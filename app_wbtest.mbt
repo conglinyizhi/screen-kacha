@@ -332,3 +332,59 @@ test "临时输出落在私有目录里" {
   assert_true(p.has_prefix("/tmp/ssmb-test-tmp/"))
   assert_false(p.has_prefix("/tmp/screenstream-mb-"))
 }
+
+///|
+/// JSON 里的引号必须成对：扫一遍，看完还停在「字符串内部」就算坏了。
+///
+/// 这不是完整的 JSON 解析器，但正好能抓住拼字符串漏转义这类错误：
+/// 值里冒出一个没转义的引号，后面的引号就全错位，结尾一定停在字符串里。
+fn json_quotes_balanced(s : String) -> Bool {
+  let n = s.length()
+  let mut i = 0
+  let mut in_str = false
+  while i < n {
+    let c = s[i].to_int()
+    if in_str && c == 92 {
+      // 反斜杠转义：跳过下一个字符
+      i = i + 2
+      continue
+    }
+    if c == 34 {
+      in_str = !in_str
+    }
+    i = i + 1
+  }
+  !in_str
+}
+
+///|
+/// `/health` 的值里有引号、换行、控制字符时，正文仍然是合法 JSON。
+///
+/// 原来是手拼字符串，`allow` 名单里带一个引号就把整个 JSON 拼断了：
+/// 实测 `allow = 10.0.0.1"x` 时 python 的 `json.load` 直接报
+/// `Expecting ',' delimiter`。托盘又靠字符串匹配读这个 JSON，坏了它也瞎。
+test "health 的 JSON 对引号和换行做转义" {
+  // 转义本身
+  assert_eq(json_escape_text("a\"b"), "a\\\"b")
+  assert_eq(json_escape_text("a\\b"), "a\\\\b")
+  assert_eq(json_escape_text("a\nb"), "a\\nb")
+  assert_eq(json_escape_text("a\tb"), "a\\tb")
+  assert_eq(json_escape_text("a\rb"), "a\\rb")
+  // 控制字符走 \u00XX
+  assert_eq(json_escape_text("\u{01}"), "\\u0001")
+  // 多字节原样透传，别被拆坏
+  assert_eq(json_escape_text("中文"), "中文")
+  assert_eq(json_escape_text("🙂"), "🙂")
+
+  // 端到端：错误信息带引号和换行，access 名单带引号
+  let store = Store::new(shot="/tmp/none.jpg")
+  store.record_fail("boom \"quoted\"\nsecond line")
+  let access = parse_access("allow_lan = true\nallow = 10.0.0.1\"x")
+  let json = health_json(store, 8930, access)
+  assert_true(json_quotes_balanced(json))
+  // 原文里的引号必须变成转义形式
+  assert_true(json.contains("\\\"quoted\\\""))
+  assert_true(json.contains("10.0.0.1\\\"x"))
+  // 不能有裸换行进正文
+  assert_false(json.contains("\n"))
+}

@@ -134,17 +134,81 @@ fn not_found(path : String) -> @crescent.HttpResponse {
 }
 
 ///|
+///|
+/// 把一个字符串转成能安全放进 JSON 双引号里的形式。
+///
+/// 直接往模板里拼不行：错误信息里可能带引号，`allow` 名单里也可能有，
+/// 一进 `/health` 整个 JSON 就断了。实测 `allow = 10.0.0.1"x` 时 python 的
+/// `json.load` 直接报 `Expecting ',' delimiter`，而托盘正是靠字符串匹配读
+/// 这个 JSON 的，坏了它也跟着判断错。
+///
+/// 按 UTF-8 字节走：ASCII 里需要转义的换掉，多字节序列原样透传，
+/// 这样代理对（emoji 之类）不会被拆坏。
+fn json_escape_text(s : String) -> String {
+  let src = @utf8.encode(s)
+  let out : Array[Byte] = []
+  for i in 0..<src.length() {
+    let b = src[i].to_int()
+    if b == 0x22 {
+      out.push((92 : Byte))
+      out.push((34 : Byte))
+    } else if b == 0x5C {
+      out.push((92 : Byte))
+      out.push((92 : Byte))
+    } else if b == 0x0A {
+      out.push((92 : Byte))
+      out.push((110 : Byte))
+    } else if b == 0x0D {
+      out.push((92 : Byte))
+      out.push((114 : Byte))
+    } else if b == 0x09 {
+      out.push((92 : Byte))
+      out.push((116 : Byte))
+    } else if b < 0x20 {
+      // 其余控制字符走 \u00XX
+      out.push((92 : Byte))
+      out.push((117 : Byte))
+      out.push((48 : Byte))
+      out.push((48 : Byte))
+      out.push(hex_digit_of(b / 16))
+      out.push(hex_digit_of(b % 16))
+    } else {
+      out.push(src[i])
+    }
+  }
+  @utf8.decode_lossy(Bytes::from_array(out))
+}
+
+///|
+fn hex_digit_of(n : Int) -> Byte {
+  if n < 10 {
+    (48 + n).to_byte()
+  } else {
+    (87 + n).to_byte()
+  }
+}
+
+///|
+/// `/health` 的响应正文。抽成纯函数，好直接测转义。
+fn health_json(store : Store, port : Int32, access : Access) -> String {
+  let ok = match store.bytes() {
+    Some(_) => store.err() == ""
+    None => false
+  }
+  "{\"ok\": \{ok}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"err\": \"\{json_escape_text(store.err())}\", \"port\": \{port}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{json_escape_text(store.source())}\", \"access\": \"\{json_escape_text(access.describe())}\"}"
+}
+
+///|
 fn handle_health(
   store : Store,
   port : Int32,
   access : Access,
 ) -> @crescent.HttpResponse {
-  let ok = match store.bytes() {
-    Some(_) => store.err() == ""
-    None => false
-  }
-  let json = "{\"ok\": \{ok}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"err\": \"\{store.err()}\", \"port\": \{port}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{store.source()}\", \"access\": \"\{access.describe()}\"}"
-  make_res(@crescent.StatusCode::OK, "application/json", @utf8.encode(json))
+  make_res(
+    @crescent.StatusCode::OK,
+    "application/json",
+    @utf8.encode(health_json(store, port, access)),
+  )
 }
 
 ///|

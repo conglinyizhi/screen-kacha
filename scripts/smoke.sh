@@ -139,6 +139,9 @@ check "超长 age 不再打崩服务" 200 "$(code "$B/snapshot.jpg?age=0.$LONGZE
 check "超长 age 之后服务仍在" 200 "$(code $B/snapshot.jpg)"
 check "超界小数 age 被拒仍是 200" 200 "$(code "$B/snapshot.jpg?age=0.1234567890")"
 HEALTH=$(curl -s --max-time 5 $B/health)
+# 正文是手拼的，值里带引号就会把整个 JSON 拼断。用真正的解析器验一遍。
+echo "$HEALTH" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null \
+  && ok || bad "/health 不是合法 JSON"
 has "$HEALTH" '"ok": true' && ok || bad "health 的 ok 不是 true"
 has "$HEALTH" '"fails": 0' && ok || bad "health 里 fails 不为 0"
 
