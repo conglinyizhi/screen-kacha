@@ -2,6 +2,10 @@
 Description=screenstream 托盘（MoonBit）
 After=graphical-session.target plasma-kwin_wayland.service screenstream-mb.service
 PartOf=graphical-session.target
+# 崩溃循环要停下来。没有这个，同一个错误会把 journal 刷满，
+# 真正的第一条报错反而看不见了。
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -12,6 +16,10 @@ Environment=PATH=@BIN@:/usr/local/bin:/usr/bin
 ExecStart=@BIN@/screenstream-mb-tray --port @PORT@
 Restart=always
 RestartSec=3
+
+# 托盘会跑 shell（cat、systemctl），文件系统级限制一律不加，
+# 只堵住提权这条路。
+NoNewPrivileges=yes
 
 [Install]
 WantedBy=graphical-session.target

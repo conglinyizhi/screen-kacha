@@ -7,6 +7,10 @@ Documentation=file://@DATA@/error.md
 After=graphical-session.target plasma-kwin_wayland.service
 PartOf=graphical-session.target
 Wants=plasma-kwin_wayland.service
+# 崩溃循环要停下来。没有这个，同一个错误会把 journal 刷满，
+# 真正的第一条报错反而看不见了。
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -19,6 +23,24 @@ Restart=always
 RestartSec=3
 TimeoutStopSec=10
 NoNewPrivileges=yes
+
+# 下面这些收缩每一条都在真机上验过：spectacle 仍然能截图。
+# （`--source spectacle` 是 PipeWire 挂掉之后的退路，不能为了 hardening 弄断它。）
+# 没加 ProtectHome：spectacle 要往 ~/.config、~/.local/share、~/.cache 写东西，
+# 加上就得把这几个目录再开回来，等于没关。
+ProtectSystem=strict
+ReadWritePaths=%t
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+UMask=0077
+CapabilityBoundingSet=
 
 [Install]
 WantedBy=graphical-session.target

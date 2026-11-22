@@ -51,6 +51,11 @@ jobs:
       - name: 类型检查（警告即失败）
         run: moon check --target native --deny-warn
 
+      # unit 文件在 CI 里跑不起来（要 systemd + 桌面会话），但 hardening 的
+      # 关键条目被顺手删掉是能查的。
+      - name: systemd unit 静态检查
+        run: bash scripts/check-units.sh
+
       - name: 单元测试
         run: moon test --target native
 
