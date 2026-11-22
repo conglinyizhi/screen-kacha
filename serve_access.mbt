@@ -180,7 +180,11 @@ async fn reject(conn : @http.ServerConnection, peer : String) -> Unit {
   let _ = try {
     match
       @async.with_timeout_opt(reject_timeout_ms(), () => {
-        conn.send_response(403, "Forbidden", extra_headers=headers_to_http(hdrs))
+        conn.send_response(
+          403,
+          "Forbidden",
+          extra_headers=headers_to_http(hdrs),
+        )
         conn.write("这个服务只对本机开放\n")
         conn.end_response()
       }) {
@@ -224,7 +228,9 @@ fn headers_from_http(
 
 ///|
 /// 反过来：把我们的 header 交给 `send_response`。
-fn headers_to_http(h : Map[String, String]) -> Map[@http.CaseInsensitiveString, String] {
+fn headers_to_http(
+  h : Map[String, String],
+) -> Map[@http.CaseInsensitiveString, String] {
   let out : Map[@http.CaseInsensitiveString, String] = Map([])
   h.each((k, v) => out.set(@http.CaseInsensitiveString(k), v))
   out
@@ -319,7 +325,11 @@ async fn handle_one(router : Router, conn : @http.ServerConnection) -> Unit {
         bad_hdrs.set("Content-Type", "text/plain; charset=utf-8")
         bad_hdrs.set("Connection", "close")
         let _ : Unit? = @async.with_timeout_opt(REJECT_TIMEOUT_MS, () => {
-          conn.send_response(403, "Forbidden", extra_headers=headers_to_http(bad_hdrs))
+          conn.send_response(
+            403,
+            "Forbidden",
+            extra_headers=headers_to_http(bad_hdrs),
+          )
           conn.write("Host 只接受 IP 和 localhost（防 DNS rebinding）\n")
           conn.end_response()
         }) catch {
@@ -346,7 +356,11 @@ async fn handle_one(router : Router, conn : @http.ServerConnection) -> Unit {
       hdrs.set("Content-Type", "text/plain; charset=utf-8")
       hdrs.set("Connection", "close")
       let _ : Unit? = @async.with_timeout_opt(WRITE_TIMEOUT_MS, () => {
-        conn.send_response(504, "Gateway Timeout", extra_headers=headers_to_http(hdrs))
+        conn.send_response(
+          504,
+          "Gateway Timeout",
+          extra_headers=headers_to_http(hdrs),
+        )
         conn.write("处理超时了，稍后重试\n")
         conn.end_response()
       }) catch {
