@@ -173,7 +173,7 @@
   <div class="top">
     <figure>
       <img id="v" alt="屏幕画面，每两秒刷新">
-      <figcaption>当前主屏，每 2 秒刷新。含鼠标指针。</figcaption>
+      <figcaption>当前主屏，每 2 秒刷新。</figcaption>
     </figure>
 
     <div class="side">
@@ -196,6 +196,25 @@
       </div>
     </div>
   </div>
+
+  <section>
+    <h2 class="sec">怎么用</h2>
+    <p>地址都相对于本服务根，下面这些直接能用：</p>
+    <pre><code># 拿一张图，存成文件
+curl -s -o screen.jpg http://127.0.0.1:8930/snapshot.jpg
+
+# 省 token：缩到 1280 宽的 WebP
+curl -s -o screen.webp http://127.0.0.1:8930/snapshot-1280.webp
+
+# 只要最新的，最多容忍 50 毫秒的旧帧
+curl -s -o screen.jpg 'http://127.0.0.1:8930/snapshot.jpg?age=0.05'
+
+# 服务还好吗
+curl -s http://127.0.0.1:8930/health</code></pre>
+    <p class="note">服务在后台持续抓帧，请求直接返回缓存，通常一到两毫秒。
+      <code>?age=</code> 是能接受的最大帧龄（秒），想要更新鲜就写小一点，
+      代价是当场触发一次抓取。</p>
+  </section>
 
   <section id="lab">
     <h2 class="sec">参数实验</h2>
@@ -232,25 +251,6 @@
   </section>
 
   <section>
-    <h2 class="sec">怎么用</h2>
-    <p>地址都相对于本服务根，下面这些直接能用：</p>
-    <pre><code># 拿一张图，存成文件
-curl -s -o screen.jpg http://127.0.0.1:8930/snapshot.jpg
-
-# 省 token：缩到 1280 宽的 WebP
-curl -s -o screen.webp http://127.0.0.1:8930/snapshot-1280.webp
-
-# 只要最新的，最多容忍 50 毫秒的旧帧
-curl -s -o screen.jpg 'http://127.0.0.1:8930/snapshot.jpg?age=0.05'
-
-# 服务还好吗
-curl -s http://127.0.0.1:8930/health</code></pre>
-    <p class="note">服务在后台持续抓帧，请求直接返回缓存，通常一到两毫秒。
-      <code>?age=</code> 是能接受的最大帧龄（秒），想要更新鲜就写小一点，
-      代价是当场触发一次抓取。</p>
-  </section>
-
-  <section>
     <h2 class="sec">端点</h2>
     <table>
       <thead><tr><th>路径</th><th>返回</th></tr></thead>
@@ -273,7 +273,7 @@ curl -s http://127.0.0.1:8930/health</code></pre>
     <p>程序访问 <code>/</code> 时（请求头里没有 <code>text/html</code>）会直接拿到
       <a class="inline" href="/llms.txt">llms.txt</a> 的纯文本，不带 HTML 噪音。
       浏览器访问才看到这个页面。</p>
-    <p class="note">这个服务只抓主屏，只读，画面里能看到鼠标指针。访问控制默认放行局域网、拒绝公网，
+    <p class="note">这个服务只抓主屏，只读。访问控制默认放行局域网、拒绝公网，
       见 <a class="inline" href="/error.md">/error.md</a>。</p>
   </section>
 
