@@ -4,12 +4,18 @@
 /// 走的是 2026-07-28 的无状态协议：没有 initialize 握手，每个请求自己在
 /// `params._meta` 里带 protocolVersion。所以对外只有
 /// `handle_request(body) -> body` 这一件事，不需要长连接，也不需要 SSE。
+const SERVER_NAME : String = "screen-kacha"
+
+///|
+const SERVER_VERSION : String = "0.1.0"
+
+///|
 pub fn build_mcp(
   store : Store,
   port : Int32,
   access : Access,
 ) -> @mcp.MCPServer raise {
-  let server = @mcp.MCPServer::MCPServer("screen-kacha", "0.1.0").with_instructions(
+  let server = @mcp.MCPServer::MCPServer(SERVER_NAME, SERVER_VERSION).with_instructions(
     "本机屏幕的 HTTP 快照服务。snapshot 返回一张当前屏幕的 JPEG；health 返回采集状态。",
   )
   let server = server.tool(
@@ -25,7 +31,7 @@ pub fn build_mcp(
         "width": Json::object({
           "type": "integer",
           "minimum": 1,
-          "maximum": 4096,
+          "maximum": DST_W_MAX.to_int(),
           "description": "输出宽度（像素），不传就是原宽",
         }),
       }),
@@ -54,11 +60,11 @@ pub fn build_mcp(
       let dst_w = match arg_node(args, "width") {
         None => Some(None)
         Some(Number(v, ..)) =>
-          // 只收 1..4096 的整数；小数、NaN、Inf、越界都算写错
+          // 只收 1 到 DST_W_MAX 的整数；小数、NaN、Inf、越界都算写错
           if v.is_nan() ||
             v.is_inf() ||
             v < 1.0 ||
-            v > 4096.0 ||
+            v > DST_W_MAX.to_double() ||
             v != v.to_int().to_double() {
             None
           } else {

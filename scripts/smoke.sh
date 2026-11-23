@@ -341,6 +341,9 @@ has "$(curl -s --max-time 5 $B/for_human_use_browser.js)" 'mcpServers' \
 has "$(curl -s --max-time 5 $B/for_human_use_browser.js)" "127.0.0.1:$PORT/mcp" \
   && ok || bad "网页里的 MCP 地址没跟着端口"
 check "GET /mcp 给说明" 200 "$(code $B/mcp)"
+# 说明里的客户端配置必须跟着真实端口：端口会往上挪，写死就指到错的地方
+has "$(curl -s --max-time 5 $B/mcp)" "127.0.0.1:$PORT/mcp" \
+  && ok || bad "GET /mcp 的配置片段没跟着端口"
 has "$(curl -s --max-time 5 $B/llms.txt)" '/mcp' \
   && ok || bad "llms.txt 没提 /mcp"
 

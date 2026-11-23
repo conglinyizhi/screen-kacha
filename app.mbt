@@ -103,10 +103,25 @@ fn parse_snapshot(name : StringView) -> (Int32?, String)? {
 }
 
 ///|
+const WIDTH_MIN : Int32 = 160
+
+///|
+const WIDTH_MAX : Int32 = 3840
+
+///|
 fn clamp_width(w : Int32?) -> Int32? {
   match w {
     None => None
-    Some(v) => Some(if v < 160 { 160 } else if v > 3840 { 3840 } else { v })
+    Some(v) =>
+      Some(
+        if v < WIDTH_MIN {
+          WIDTH_MIN
+        } else if v > WIDTH_MAX {
+          WIDTH_MAX
+        } else {
+          v
+        },
+      )
   }
 }
 
@@ -596,7 +611,7 @@ pub fn build_router(store : Store, port : Int32, access : Access) -> Router {
       200,
       "这是 MCP 端点，用 POST 发 JSON-RPC 请求。\n\n" +
       "客户端配置示例（地址按实际端口改）：\n" +
-      "{\"mcpServers\":{\"screen-kacha\":{\"type\":\"http\",\"url\":\"http://127.0.0.1:8930/mcp\"}}}\n\n" +
+      "{\"mcpServers\":{\"screen-kacha\":{\"type\":\"http\",\"url\":\"http://127.0.0.1:\{port}/mcp\"}}}\n\n" +
       "协议：2026-07-28 无状态世代，每个请求要在 params._meta 里带 protocolVersion。\n" +
       "工具：snapshot（返回图片）、health（返回状态）。\n",
     )

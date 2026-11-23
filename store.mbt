@@ -689,7 +689,7 @@ async fn Store::capture_pipewire(self : Store, t0 : Int64) -> Unit {
     None => None
   }
   self.pw_state.raw_frame = Some((raw, w, h))
-  if !@image.bgra_to_jpeg(raw, w, h, 0, 82, self.shot) {
+  if !@image.bgra_to_jpeg(raw, w, h, 0, JPEG_QUALITY, self.shot) {
     self.pw_failed("moonimage 转码失败")
     return
   }
