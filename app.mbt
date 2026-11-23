@@ -478,6 +478,17 @@ pub fn build_router(store : Store, port : Int32, access : Access) -> Router {
       None => not_found("/")
     }
   })
+  // GET /mcp 是给人看的：真正的调用是 POST JSON-RPC
+  router.get("/mcp", fn(_ev) {
+    text_res(
+      200,
+      "这是 MCP 端点，用 POST 发 JSON-RPC 请求。\n\n" +
+      "客户端配置示例（地址按实际端口改）：\n" +
+      "{\"mcpServers\":{\"screen-kacha\":{\"type\":\"http\",\"url\":\"http://127.0.0.1:8930/mcp\"}}}\n\n" +
+      "协议：2026-07-28 无状态世代，每个请求要在 params._meta 里带 protocolVersion。\n" +
+      "工具：snapshot（返回图片）、health（返回状态）。\n",
+    )
+  })
   router.get("/**", fn(ev) { not_found(ev.path()) })
   router
 }

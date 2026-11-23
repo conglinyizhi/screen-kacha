@@ -8,6 +8,7 @@
 - [缩到 1280 宽](/snapshot-1280.jpg)：省 token 用
 - [WebP 版本](/snapshot-1280.webp)：同样尺寸，体积更小
 - [健康状态](/health)：JSON，含帧龄、采集耗时、失败计数、取帧来源、访问策略
+- [MCP 端点](/mcp)：POST JSON-RPC，工具是 snapshot（返回图片）和 health
 - [使用说明](/skill.md)：完整的端点、参数与限制
 - [出错了怎么查](/error.md)：服务或托盘不正常时的排查步骤
 

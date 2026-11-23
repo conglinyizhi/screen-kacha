@@ -221,6 +221,25 @@ curl -s 'http://127.0.0.1:{{PORT}}/health'</code></pre>
       3 和 4 换成带尾巴的旧形状。箭头位置来自托盘里那个开关，不勾就只返回普通截图。</p>
   </section>
 
+  <section id="mcp">
+    <h2 class="sec">接到 MCP 客户端</h2>
+    <p>服务自带一个 MCP 端点，客户端里填一个地址就能用两个工具：
+      <code>snapshot</code> 返回一张当前屏幕的 JPEG，<code>health</code> 返回采集状态。</p>
+    <pre><code>{
+  "mcpServers": {
+    "screen-kacha": {
+      "type": "http",
+      "url": "http://127.0.0.1:{{PORT}}/mcp"
+    }
+  }
+}</code></pre>
+    <p class="note">VS Code 的 <code>.vscode/mcp.json</code> 用 <code>servers</code> 而不是
+      <code>mcpServers</code>，键名按你手上客户端的规矩来，<code>url</code> 这一行不用改。</p>
+    <p class="note">协议是 2026-07-28 的无状态世代：没有 <code>initialize</code> 握手，
+      每个请求自己在 <code>params._meta</code> 里带 <code>protocolVersion</code>。
+      不支持这个世代的客户端会被 <code>-32602</code> 拒掉，这是客户端版本的问题，不是配置写错了。</p>
+  </section>
+
   <section id="lab">
     <h2 class="sec">参数实验</h2>
     <p class="note" style="margin-top:0">

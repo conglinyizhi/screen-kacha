@@ -296,6 +296,15 @@ has "$(mcp_post "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"param
   && ok || bad "MCP snapshot 没返回图片块"
 has "$(mcp_post "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}")" '-32602' \
   && ok || bad "MCP 不带协议版本时没有拒绝"
+# 网页上要给出可直接抄的客户端配置
+# 网页本体由 /for_human_use_browser.js 下发，/human.html 只是外壳
+has "$(curl -s --max-time 5 $B/for_human_use_browser.js)" 'mcpServers' \
+  && ok || bad "网页里没有 MCP 客户端配置片段"
+has "$(curl -s --max-time 5 $B/for_human_use_browser.js)" "127.0.0.1:$PORT/mcp" \
+  && ok || bad "网页里的 MCP 地址没跟着端口"
+check "GET /mcp 给说明" 200 "$(code $B/mcp)"
+has "$(curl -s --max-time 5 $B/llms.txt)" '/mcp' \
+  && ok || bad "llms.txt 没提 /mcp"
 
 echo
 echo "通过 $PASS，失败 $FAIL"
