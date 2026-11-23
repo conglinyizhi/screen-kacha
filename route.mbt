@@ -192,6 +192,57 @@ pub fn normalize_path(raw : String) -> String {
 }
 
 ///|
+/// 十六进制字符转数值。不是十六进制返回 None。
+fn hex_val(c : Int32) -> Int32? {
+  if c >= 48 && c <= 57 {
+    return Some(c - 48)
+  }
+  if c >= 97 && c <= 102 {
+    return Some(c - 87)
+  }
+  if c >= 65 && c <= 70 {
+    return Some(c - 55)
+  }
+  None
+}
+
+///|
+/// 查询串里的百分号编码还原：`%20` → 空格，`+` → 空格。
+///
+/// 只认合法转义。`%` 后面不是两位十六进制就原样保留 —— 宁让下游解析失败，
+/// 也不要猜一个别字符出来。这一步只做一次，不递归解码。
+fn percent_decode(s : String) -> String {
+  if !s.contains("%") && !s.contains("+") {
+    return s
+  }
+  let out = StringBuilder()
+  let n = s.length()
+  let mut i = 0
+  while i < n {
+    let c = s[i].to_int()
+    if c == 43 {
+      // '+'
+      out.write_char(' ')
+      i = i + 1
+      continue
+    }
+    if c == 37 && i + 2 < n {
+      match (hex_val(s[i + 1].to_int()), hex_val(s[i + 2].to_int())) {
+        (Some(hi), Some(lo)) => {
+          out.write_char(((hi << 4) | lo).unsafe_to_char())
+          i = i + 3
+          continue
+        }
+        _ => ()
+      }
+    }
+    out.write_char(c.unsafe_to_char())
+    i = i + 1
+  }
+  out.to_string()
+}
+
+///|
 /// 解析查询串。同名参数取第一个。
 pub fn parse_query(raw : String) -> Map[String, String] {
   let out : Map[String, String] = Map([])
@@ -211,7 +262,7 @@ pub fn parse_query(raw : String) -> Map[String, String] {
       Some(eq) => {
         let k : String = s[:eq].to_owned()
         if !out.contains(k) {
-          out.set(k, s[eq + 1:].to_owned())
+          out.set(k, percent_decode(s[eq + 1:].to_owned()))
         }
       }
       None => if !out.contains(s) { out.set(s, "") }

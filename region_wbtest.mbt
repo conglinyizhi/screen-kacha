@@ -64,7 +64,6 @@ test "parse_region：畸形清单" {
     "", // 空
      ",", // 只有一个逗号
      ",,,", // 四个空段
-     "0,0,1,1,", // 多一个逗号
      "0,0,1", // 少一段
      "0,0,1,1,1", // 多一段
      "0..1,0,1,1", // 两个小数点
@@ -86,4 +85,27 @@ test "parse_region：边界放行" {
   assert_true(parse_region("0,0,1,1") is Some(_))
   assert_true(parse_region("0,0,0.0001,0.0001") is Some(_))
   assert_true(parse_region("0.9999,0.9999,0.0001,0.0001") is Some(_))
+}
+
+///|
+/// 分隔符白名单：逗号、分号、空白都认；别的字符留在段里，解析失败。
+test "parse_region：分隔符白名单" {
+  // 常见的几种写法都该认
+  assert_true(parse_region("0.1,0.1,0.3,0.2") is Some(_))
+  assert_true(parse_region("0.1 0.1 0.3 0.2") is Some(_))
+  assert_true(parse_region("0.1;0.1;0.3;0.2") is Some(_))
+  assert_true(parse_region("0.1, 0.1\t0.3;0.2") is Some(_))
+  assert_true(parse_region("50% 50% 50% 50%") is Some(_))
+  // 单位可以逐段混用
+  assert_true(parse_region("0.5,50%,0.5,50%") is Some(_))
+  // 非白名单字符不进分隔，整段解析失败
+  assert_true(parse_region("0.5abc,0.5,0.5,0.5") is None)
+  assert_true(parse_region("0.1|0.1|0.3|0.2") is None)
+  assert_true(parse_region("x=0.1,y=0.1,w=0.3,h=0.2") is None)
+  // 末尾多一个分隔符算书写习惯，容忍；中间的空段不算
+  assert_true(parse_region("0.1,0.1,0.3,0.2,") is Some(_))
+  assert_true(parse_region("0.1,0.1,0.3,0.2 ") is Some(_))
+  // 连着的分隔符不产生空段
+  assert_true(parse_region("0.1,,0.1,0.1") is None)
+  assert_true(parse_region("0.1  0.1  0.3") is None)
 }

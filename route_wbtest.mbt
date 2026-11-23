@@ -31,3 +31,21 @@ async test "router：非 GET/HEAD 走 405" {
   let res = r.dispatch("POST", "/a", {}, b"")
   assert_eq(res.status, 405)
 }
+
+///|
+test "percent_decode：合法转义和保守回退" {
+  assert_eq(percent_decode("0.1%20"), "0.1 ")
+  assert_eq(percent_decode("%2C"), ",")
+  assert_eq(percent_decode("a+b"), "a b")
+  // 不合法就原样保留，不猜
+  assert_eq(percent_decode("%zz"), "%zz")
+  assert_eq(percent_decode("%2"), "%2")
+  assert_eq(percent_decode("100%"), "100%")
+}
+
+///|
+test "查询串会做一次百分号解码" {
+  let q = parse_query("/x?a=1%202&b=50%25")
+  assert_eq(q.get("a"), Some("1 2"))
+  assert_eq(q.get("b"), Some("50%"))
+}

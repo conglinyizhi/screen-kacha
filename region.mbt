@@ -29,7 +29,7 @@ pub fn parse_region(s : String) -> Region? {
   if sv.length() == 0 || sv.length() > 64 {
     return None
   }
-  let parts : Array[StringView] = sv.split(",").collect()
+  let parts = split_region_parts(sv)
   if parts.length() != 4 {
     return None
   }
@@ -53,6 +53,34 @@ pub fn parse_region(s : String) -> Region? {
     }
     _ => None
   }
+}
+
+///|
+/// 按白名单分隔符切开：逗号、分号、空白。
+///
+/// 只有这几种字符算分隔，其余一律留在段里 —— 段里带了别的东西就解析失败。
+/// 不采用「除数字和点之外都当分隔」的宽松规则：那会把 `0.5abc` 悄悄读成
+/// `0.5`，调用方以为参数生效了，实际拿到的是另一个区域。这类静默吞输入的
+/// 问题今天已经修过两个（width 越界、crop 被光标分支吃掉），不再引入第三个。
+fn split_region_parts(s : StringView) -> Array[StringView] {
+  let out : Array[StringView] = []
+  let n = s.length()
+  let mut start = 0
+  let mut i = 0
+  while i < n {
+    let c = s[i].to_int()
+    if c == 44 || c == 59 || c == 32 || c == 9 || c == 10 || c == 13 {
+      if i > start {
+        out.push(s[start:i])
+      }
+      start = i + 1
+    }
+    i = i + 1
+  }
+  if start < n {
+    out.push(s[start:n])
+  }
+  out
 }
 
 ///|

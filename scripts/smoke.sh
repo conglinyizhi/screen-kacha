@@ -291,15 +291,22 @@ check "crop 乱写要 400" 400 "$(code "$B/snapshot.jpg?crop=abc")"
 check "crop 越界要 400" 400 "$(code "$B/snapshot.jpg?crop=0.9,0.9,0.5,0.5")"
 check "crop 负数要 400" 400 "$(code "$B/snapshot.jpg?crop=-0.1,0,0.5,0.5")"
 # 更多畸形写法：一律要 400。「服务端拒绝」就是这条用例通过的标准。
-for bad in 'crop=' 'crop=0,0,1' 'crop=0,0,1,1,' 'crop=0,,1,1' 'crop=0,0,1,1,0' \
+for bad in 'crop=' 'crop=0,0,1' 'crop=0,,1,1' 'crop=0,0,1,1,0' \
            'crop=150%,0,10%,10%' 'crop=0.5,0.5,0.5,0.6' 'crop=1,1,0,0' \
-           'crop=abc,abc,abc,abc' 'crop=0.1;0.1;0.1;0.1'; do
+           'crop=abc,abc,abc,abc' ; do
   check "畸形 $bad 要 400" 400 "$(code "$B/snapshot.jpg?$bad")"
 done
 # 边界要放行：整帧、1 像素
 check "crop 整帧" 200 "$(code "$B/snapshot.jpg?crop=0,0,1,1")"
 check "crop 极小块" 200 "$(code "$B/snapshot.jpg?crop=0.5,0.5,0.0001,0.0001")"
 check "crop 与 webp" 200 "$(code "$B/snapshot-1280.webp?crop=0.1,0.1,0.5,0.5")"
+# 分隔符白名单：逗号、分号、空白都认；单位可以逐段混用
+check "crop 空格分隔" 200 "$(code "$B/snapshot.jpg?crop=0.1%200.1%200.3%200.2")"
+check "crop 分号分隔" 200 "$(code "$B/snapshot.jpg?crop=0.1;0.1;0.3;0.2")"
+check "crop 单位混用" 200 "$(code "$B/snapshot.jpg?crop=0.5,50%,0.5,50%")"
+# 非白名单字符不能被当分隔符吞掉
+check "crop 带杂字要 400" 400 "$(code "$B/snapshot.jpg?crop=0.5abc,0.5,0.5,0.5")"
+check "crop 竖线要 400" 400 "$(code "$B/snapshot.jpg?crop=0.1|0.1|0.3|0.2")"
 # 光标和裁剪同时要：光标贴在全帧上，再裁 —— 不能把 crop 静默丢掉
 check "crop 与 cursor 同时用" 200 "$(code "$B/snapshot.jpg?crop=0.5,0.5,0.5,0.5&cursor=1")"
 FULL_BYTES=$(curl -s --max-time 10 "$B/snapshot.jpg" | wc -c)

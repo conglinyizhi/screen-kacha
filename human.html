@@ -222,7 +222,8 @@ curl -s 'http://127.0.0.1:{{PORT}}/health'</code></pre>
       <code>?age=</code> 是能接受的最大帧龄（秒），想要更新鲜就写小一点，
       代价是当场触发一次抓取。</p>
     <p class="note"><code>?crop=</code> 的四段是 <code>x,y,w,h</code>，按整帧的比例算（0 到 1），
-      带 <code>%</code> 就按百分比。写错、越界、四段之外多写东西都会回 400，不会悄悄给整屏。
+      带 <code>%</code> 就按百分比，四段可以逐段混用。分隔符只认逗号、分号和空白。
+写错、越界、段数不对都会回 400，不会悄悄给整屏。
       分辨率可以从 <code>/health</code> 的 <code>screen_w</code> / <code>screen_h</code> 拿到，
       自己换算像素框。</p>
     <p class="note"><code>?cursor=</code> 默认不画。1 是半透明白箭头，2 把箭头下的像素反色，
