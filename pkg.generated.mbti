@@ -9,6 +9,8 @@ import {
 }
 
 // Values
+pub const PUSH_STALE_MS : Int64 = 5000
+
 pub fn accept_gave_up(Int32) -> Bool
 
 pub fn acquire_instance_lock(String) -> Bool
@@ -52,6 +54,8 @@ pub fn is_cgnat(String) -> Bool
 pub fn is_lan(String) -> Bool
 
 pub fn is_loopback(String) -> Bool
+
+pub fn judge_frame_flow(FrameSource, Int64, Int64) -> FrameFlow
 
 pub async fn load_access(String) -> Access
 
@@ -132,8 +136,20 @@ pub struct Frame {
   ts : Int64
 }
 
+pub enum FrameFlow {
+  Flowing
+  Stalled
+}
+
+pub enum FrameSource {
+  Pipewire
+  Spectacle
+  Fake
+}
+pub fn FrameSource::is_push(Self) -> Bool
+pub fn FrameSource::label(Self) -> String
+
 pub struct PipeWireState {
-  mut on : Bool
   mut fails : Int32
   stream : @moonpipewire.PipeWire
   mut raw_seq : Int32
@@ -201,7 +217,8 @@ pub struct Store {
   fake : String?
   wl_dir : String
   pw_state : PipeWireState
-  mut source : String
+  mut src : FrameSource
+  mut dead_rounds : Int32
   mut last_req : Int64
   mut frame : Frame?
   mut cap_ms : Int64
@@ -246,9 +263,27 @@ pub fn Store::note_cursor_fail(Self, String) -> Unit
 pub fn Store::note_cursor_ok(Self) -> Unit
 pub fn Store::note_missing_doc(Self, String) -> Bool
 pub fn Store::pipewire_on(Self) -> Bool
+pub fn Store::push_source(Self) -> Bool
 pub fn Store::pw_raw(Self) -> (String, Int32, Int32)?
+pub async fn Store::recover_push_stream(Self, String) -> Int32?
 pub fn Store::shot(Self) -> String
 pub fn Store::source(Self) -> String
+pub fn Store::stream_seq(Self) -> Int64
+pub async fn Store::watchdog(Self, Int64, async () -> Int32?) -> WatchdogOutcome
+
+pub struct StreamClock {
+  mut seq : Int64
+  mut since_ms : Int64
+}
+pub fn StreamClock::new(Int64, Int64) -> Self
+pub fn StreamClock::observe(Self, Int64, Int64) -> Int64
+pub fn StreamClock::reset(Self, Int64) -> Unit
+
+pub enum WatchdogOutcome {
+  Quiet
+  Recovered
+  FellBack
+}
 
 // Type aliases
 

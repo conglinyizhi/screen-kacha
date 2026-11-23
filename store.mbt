@@ -13,9 +13,10 @@ pub struct Frame {
 
 ///|
 /// PipeWire 取帧的状态。
+///
+/// 「现在到底用不用它」不在这里，而在 `Store::src`：一个值说清来源，
+/// 免得 `on` / `fake` / 别处的标志各说各话。这里只留流的句柄和它的失败计数。
 pub struct PipeWireState {
-  /// 是否正在用 PipeWire 取帧；连续失败会翻回 false
-  mut on : Bool
   /// 连续失败次数，到阈值就回落 spectacle
   mut fails : Int32
   /// 抓帧句柄
@@ -40,11 +41,17 @@ pub struct Store {
   wl_dir : String
   /// PipeWire 那一簇状态：流、连续失败计数、原始帧轮转。
   ///
-  /// 从 `Store` 上摘出来单独命名，是因为它们是同一件事的四个部分：
-  /// 想加一条「流断了怎么恢复」的监督逻辑时，只看这一个结构就够。
+  /// 从 `Store` 上摘出来单独命名，是因为它们是同一件事的几个部分：
+  /// 看门狗判定「流死了」之后要断流、要重连，只看这一个结构就够。
   pw_state : PipeWireState
-  /// 当前实际使用的取帧来源："pipewire" / "spectacle" / "fake"
-  mut source : String
+  /// 当前取帧来源：推模式还是拉模式、`/health` 上叫什么，都由它回答
+  mut src : FrameSource
+  /// 连续多少轮被看门狗判定「推模式流停了」。
+  ///
+  /// 恢复只给一次机会：重连之后下一轮还是没帧，就直接退回拉模式。
+  /// 不然「重连 → 5 秒没帧 → 再重连」会变成一个安静的自转，
+  /// 画面照样不动，日志倒是很热闹。
+  mut dead_rounds : Int32
   /// 最近一次请求的时间戳（毫秒），泵据此决定抓多勤
   mut last_req : Int64
   mut frame : Frame?
@@ -107,20 +114,20 @@ pub fn Store::new(
     fake,
     wl_dir,
     pw_state: {
-      on: pw,
       fails: 0,
       stream: @pipewire.PipeWire::new(app_name="screen-kacha"),
       raw_seq: 0,
       raw_frame: None,
       raw_prev: None,
     },
-    source: if pw {
-      "pipewire"
+    src: if pw {
+      Pipewire
     } else if fake is Some(_) {
-      "fake"
+      Fake
     } else {
-      "spectacle"
+      Spectacle
     },
+    dead_rounds: 0,
     last_req: 0L,
     frame: None,
     cap_ms: 0L,
@@ -226,31 +233,58 @@ async fn wayland_ready(dir : String) -> Bool {
 async fn Store::capture(self : Store) -> Unit {
   self.last_capture = @async.now()
   let t0 = @async.now()
-  if self.pw_state.on {
-    self.capture_pipewire(t0)
+  // 按来源分派，一条来源一个分支。
+  //
+  // 以前这里是「pw_state.on 一层、Wayland 就绪一层、fake 一层」的 if 套 if，
+  // 每一层都在问「这次是不是该走我」，加一种来源就得在中间插一段。
+  match self.src {
+    Pipewire => self.capture_pipewire(t0)
+    Fake => self.capture_fake(t0)
+    Spectacle => self.capture_spectacle(t0)
+  }
+}
+
+///|
+/// 假帧源：直接从固定文件读一帧。测试用，不碰桌面，也不碰 PipeWire。
+async fn Store::capture_fake(self : Store, t0 : Int64) -> Unit {
+  let path = match self.fake {
+    Some(p) => p
+    None => {
+      // 来源标成 fake 却没有文件：这是状态被摆错，不是画面出问题，
+      // 但照样要留痕，否则 /health 会说 ok 而帧永远不变。
+      self.record_fail("来源是 fake，却没有给假帧文件")
+      return
+    }
+  }
+  let data = try {
+    let f = @fs.open(path, mode=ReadOnly)
+    let bytes = f.read_all().binary()
+    f.close()
+    bytes
+  } catch {
+    err => {
+      self.record_fail("读假帧失败: \{err}")
+      return
+    }
+  }
+  self.record_ok(data, @async.now() - t0)
+}
+
+///|
+/// 拉模式的主路径：拉一次 spectacle。
+async fn Store::capture_spectacle(self : Store, t0 : Int64) -> Unit {
+  // 手里有假帧源却走到真实抓屏，只可能是来源被手工改错了。
+  // 宁可用假帧，也不要在这时拉起 spectacle：没有 DISPLAY 的环境里
+  // 它的 Qt 初始化会直接 abort，留一个核心转储。
+  if self.fake is Some(_) {
+    self.capture_fake(t0)
     return
   }
-  if self.fake is None && !wayland_ready(self.wl_dir) {
+  if !wayland_ready(self.wl_dir) {
     // 把找的目录写出来：uid 或者 XDG_RUNTIME_DIR 不对时，这行是唯一的线索
     self.record_fail(
       "Wayland socket 还没就绪（在 \{self.wl_dir} 里没找到 wayland-数字）",
     )
-    return
-  }
-  // 假帧源：测试时绕开 spectacle，直接从固定文件读一帧
-  if self.fake is Some(path) {
-    let data = try {
-      let f = @fs.open(path, mode=ReadOnly)
-      let bytes = f.read_all().binary()
-      f.close()
-      bytes
-    } catch {
-      err => {
-        self.record_fail("读假帧失败: \{err}")
-        return
-      }
-    }
-    self.record_ok(data, @async.now() - t0)
     return
   }
   // spectacle 是单实例的：别的抓帧客户端占着锁时它会一直等。
@@ -567,6 +601,9 @@ fn Store::record_ok(self : Store, bytes : Bytes, cap_ms : Int64) -> Unit {
   // 泵 500ms 一拍，协商超过 1.5 秒就会被判死，一开机就没救了。
   self.pw_state.fails = 0
   self.consec_fails = 0
+  // 帧回来了，看门狗的「已经恢复过一次」也归零：下一次真的再停，
+  // 它还该有一次重连机会。
+  self.dead_rounds = 0
   self.frame = Some({ bytes, ts: @async.now(), })
 }
 
@@ -658,10 +695,10 @@ pub fn default_runtime_dir() -> String {
 fn Store::pw_failed(self : Store, why : String) -> Unit {
   self.pw_state.fails = self.pw_state.fails + 1
   if self.pw_state.fails >= 3 {
-    self.pw_state.on = false
-    self.source = "spectacle"
+    let next = self.pull_source()
+    self.src = next
     eprintln(
-      "PipeWire 连续失败 \{self.pw_state.fails} 次，回落到 spectacle: \{why}",
+      "PipeWire 连续失败 \{self.pw_state.fails} 次，回落到 \{next.label()}: \{why}",
     )
   }
   self.record_fail(why)
@@ -752,7 +789,26 @@ pub async fn Store::ensure_request(self : Store, max_age_ms : Int64) -> Unit {
 ///|
 /// 当前实际使用的取帧来源，供 /health 展示。
 pub fn Store::source(self : Store) -> String {
-  self.source
+  self.src.label()
+}
+
+///|
+/// 当前来源是不是推模式。泵只问这一句，不对 PipeWire 写特例。
+pub fn Store::push_source(self : Store) -> Bool {
+  self.src.is_push()
+}
+
+///|
+/// 常驻流真正送来的帧序号。
+///
+/// 看门狗用它算帧龄：流死了之后序号就不再变，而 JPEG 那一侧
+/// 仍然能「成功」地从旧缓冲里再编一帧出来（见 `StreamClock`）。
+pub fn Store::stream_seq(self : Store) -> Int64 {
+  if self.src is Pipewire {
+    self.pw_state.stream.seq()
+  } else {
+    0L
+  }
 }
 
 ///|
@@ -786,19 +842,140 @@ pub fn portal_step(pipewire_on : Bool) -> PortalStep {
 pub fn Store::enable_pipewire(self : Store, node : Int32) -> Bool {
   self.pw_state.stream.disconnect()
   if self.pw_state.stream.connect(node) != 0 {
-    eprintln("PipeWire 启动失败，继续用 spectacle")
+    eprintln("PipeWire 启动失败，继续用 \{self.src.label()}")
     return false
   }
-  self.pw_state.on = true
+  self.src = Pipewire
   self.pw_state.fails = 0
-  self.source = "pipewire"
+  self.dead_rounds = 0
   eprintln("已切到 PipeWire 取帧，node=\{node}")
   true
 }
 
 ///|
 pub fn Store::pipewire_on(self : Store) -> Bool {
-  self.pw_state.on
+  self.src is Pipewire
+}
+
+///|
+/// 看门狗这一轮干了什么。日志和测试看它。
+pub enum WatchdogOutcome {
+  /// 流还在出帧，不用动
+  Quiet
+  /// 判定流死了，重连成功，仍在推模式
+  Recovered
+  /// 判定流死了，救不回来（或者已经救过一次还是没帧），退回拉模式
+  FellBack
+}
+
+///|
+/// 推模式来源的看门狗：帧停了就恢复，恢复不成退回拉模式。
+///
+/// 线上那次「只产出 1 帧、`/health` 一直 ok: true、fails: 0、err 空」，
+/// 根子就在推模式下泵只会 `sleep(1000); continue`：没人看流还在不在，
+/// 流悄悄死掉也不产生任何一次「采集失败」，看板一片绿。
+///
+/// `recover` 由调用方注入：清 portal 缓存、重新要 node、重连流都要碰文件、
+/// 进程和设备，判定和记账留在这里才好单测。返回 `Some(node)` 表示重连成功，
+/// `None` 表示没救回来。
+pub async fn Store::watchdog(
+  self : Store,
+  frame_age_ms : Int64,
+  recover : async () -> Int32?,
+) -> WatchdogOutcome {
+  match judge_frame_flow(self.src, frame_age_ms, PUSH_STALE_MS) {
+    Flowing => {
+      self.dead_rounds = 0
+      Quiet
+    }
+    Stalled => {
+      if self.dead_rounds > 0 {
+        // 上一轮已经重连过一次，帧还是没来：别再重连，直接退回拉模式。
+        // `connect` 是立刻返回的，重连成功不代表新流会出帧；
+        // 反复重连只会让「流死了」变成一条安静的自转，画面照样不动。
+        self.fall_back(frame_age_ms)
+        return FellBack
+      }
+      self.dead_rounds = 1
+      match recover() {
+        Some(node) => {
+          self.record_fail(
+            "PipeWire 流 \{frame_age_ms}ms 没有新帧（阈值 \{PUSH_STALE_MS}ms），已重连 node=\{node}",
+          )
+          Recovered
+        }
+        None => {
+          self.fall_back(frame_age_ms)
+          FellBack
+        }
+      }
+    }
+  }
+}
+
+///|
+/// 推模式救不回来：退回拉模式来源，并把原因记到 `/health` 的 err 里。
+///
+/// 这一步必须留痕。线上那次流死了之后 `/health` 一直说 ok、err 是空的，
+/// 谁也不知道它死过；退回也不写原因的话，看到的只是「来源变成 spectacle」，
+/// 看起来像一次正常回退。
+fn Store::fall_back(self : Store, frame_age_ms : Int64) -> Unit {
+  let next = self.pull_source()
+  self.src = next
+  self.pw_state.fails = 0
+  self.dead_rounds = 0
+  // 死掉的流要断掉：不断它就一直占着那条 screencast 会话，
+  // 之后 portal 再申请时拿到的可能还是同一条没人推送的 node。
+  self.pw_state.stream.disconnect()
+  self.record_fail(
+    "PipeWire 流 \{frame_age_ms}ms 没有新帧（阈值 \{PUSH_STALE_MS}ms），恢复没成功，已退回 \{next.label()} 取帧",
+  )
+}
+
+///|
+/// 退回时该用哪个拉模式来源。
+///
+/// 有假帧源就用假帧源：测试环境里绝不能因为「退回」把真实的 spectacle 拉起来。
+fn Store::pull_source(self : Store) -> FrameSource {
+  if self.fake is Some(_) {
+    Fake
+  } else {
+    Spectacle
+  }
+}
+
+///|
+/// 恢复动作最多等这么久。
+///
+/// `acquire_portal_node` 最坏会等上两分钟（等 autostart 助手重写 node）。
+/// 看门狗等它的时候泵是停着的，画面就跟着死那么久 —— 那等于没有退回。
+/// 超时按「恢复失败」处理，直接退回拉模式；portal 那边过一会儿还会自己
+/// 再申请一次，路不会堵死。
+const RECOVER_TIMEOUT_MS : Int32 = 10000
+
+///|
+/// 推模式的流判定死了之后的重连：清掉缓存的 portal node、重新要一个、连上流。
+///
+/// 缓存必须先清：`acquire_portal_node` 见到文件里有正数就直接返回，
+/// 可那个 node 正是刚刚死掉的那一条，不清就等于没恢复。
+pub async fn Store::recover_push_stream(self : Store, dir : String) -> Int32? {
+  forget_portal_node(dir)
+  // 0 不是合法的 pipewire node，拿它当「这次没拿到」的标记
+  let got = @async.with_timeout_opt(RECOVER_TIMEOUT_MS, async fn() {
+    match acquire_portal_node(dir) {
+      Some(node) => node
+      None => 0
+    }
+  })
+  match got {
+    Some(node) =>
+      if node > 0 && self.enable_pipewire(node) {
+        Some(node)
+      } else {
+        None
+      }
+    None => None
+  }
 }
 
 ///|
@@ -819,7 +996,7 @@ pub fn Store::cursor_pos_path(self : Store) -> String {
 /// 缩放请求可以直接从原始像素重新编码，省掉「先编码成 JPEG、
 /// 再解码回来缩放」这一来一回。
 pub fn Store::pw_raw(self : Store) -> (String, Int32, Int32)? {
-  if !self.pw_state.on {
+  if !(self.src is Pipewire) {
     return None
   }
   // 用抓帧时记下的尺寸，不要再现场问 C 侧。

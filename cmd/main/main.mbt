@@ -70,16 +70,45 @@ fn cli_cmd() -> @argparse.Command {
 }
 
 ///|
-/// 后台抓帧泵：抓完睡 interval_ms 再抓，请求侧直接读缓存，不必等采集。
+/// 后台泵。
+///
+/// 拉模式来源：按节奏去要帧（现有行为，含 idle 降速）。
+/// 推模式来源：帧由常驻流自己送来，泵不去要 —— 但要盯着流有没有停。
 async fn pump_loop(
   store : @store.Store,
+  shm : String,
+  pw_node : Int32,
   interval_ms : Int32,
   idle_interval_ms : Int32,
 ) -> Unit {
   let mut last_fails = store.fails()
+  // 推模式的帧龄按流真正送来的帧序号算，不按 JPEG 缓存（见 StreamClock）
+  let clock = @store.StreamClock::new(store.stream_seq(), @async.now())
   for ;; {
-    if store.pipewire_on() {
-      // PipeWire 模式下帧由常驻流产出，不需要后台泵
+    if store.push_source() {
+      // 推模式：帧自己会来，泵不用去要。
+      //
+      // 但必须盯着。原来是这里一句 `sleep(1000); continue` 就算完：
+      // 流悄悄死掉时不会有任何一次采集失败（shim 会把上一帧再写一遍，
+      // `capture` 照样「成功」），`/health` 就一直说 ok、fails 是 0、
+      // err 是空的，而画面永远停在那一帧上。
+      let age = clock.observe(store.stream_seq(), @async.now())
+      match
+        store.watchdog(age, async fn() -> Int32? {
+          if pw_node > 0 {
+            // 显式指了 node：重连它就行，别去碰 portal（用户没让它走 portal）
+            if store.enable_pipewire(pw_node) {
+              Some(pw_node)
+            } else {
+              None
+            }
+          } else {
+            store.recover_push_stream(shm)
+          }
+        }) {
+        Recovered => clock.reset(@async.now())
+        _ => ()
+      }
       @async.sleep(1000)
       continue
     }
@@ -340,11 +369,17 @@ async fn main {
       // 否则每跑一次冒烟都会弹一次「屏幕共享权限请求」。
       group.spawn_bg(no_wait=true) <| async fn() { portal_bg(store, shm) }
     }
-    if pump > 0 && !use_pw {
+    if pump > 0 {
+      // 推模式下泵不去要帧，但它是唯一盯着「流还活着没有」的地方，
+      // 所以 push 模式也得起来 —— 原来这里排除了 use_pw，结果是
+      // 指定 --pw-node 之后整个进程里没有任何人监督那条流。
       group.spawn_bg(no_wait=true) <| async fn() {
-        pump_loop(store, pump, pump_idle)
+        pump_loop(store, shm, pw_node, pump, pump_idle)
       }
-    } else {
+    }
+    if pump <= 0 || use_pw {
+      // 推模式下泵不取帧，/health 的 frame_age_ms 得有人刷，
+      // 所以这里留着保活循环；拉模式下泵已经在抓，不需要它。
       group.spawn_bg(no_wait=true) <| async fn() { idle_loop(store, idle) }
     }
     // 一律走自己的 accept 循环。
