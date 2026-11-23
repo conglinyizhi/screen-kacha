@@ -4,7 +4,17 @@ const MCP_META : String = "\"_meta\":{\"io.modelcontextprotocol/protocolVersion\
 
 ///|
 fn mcp_server_for_test() -> @mcp.MCPServer {
-  build_mcp(Store::new(shot="/tmp/none.jpg"), 8930, Access::default()) catch {
+  // 必须给 fake：不给的话 snapshot 工具会走真实抓帧，在没有 DISPLAY 的环境里
+  // 拉起 spectacle，Qt 初始化失败直接 abort —— 每跑一次测试留一个核心转储。
+  // 指一个不存在的文件，抓帧必然失败，正好当「没有帧」的用例。
+  build_mcp(
+    Store::new(
+      shot="/tmp/none.jpg",
+      fake=Some("/nonexistent-frame-for-test.png"),
+    ),
+    8930,
+    Access::default(),
+  ) catch {
     _ => @mcp.MCPServer::MCPServer("screen-kacha", "0.1.0")
   }
 }
@@ -27,7 +37,10 @@ async test "MCP：tools/list 列出 snapshot 和 health" {
 
 ///|
 async test "MCP：没抓帧时 snapshot 回 isError" {
-  let store = Store::new(shot="/tmp/none.jpg")
+  let store = Store::new(
+    shot="/tmp/none.jpg",
+    fake=Some("/nonexistent-frame-for-test.png"),
+  )
   let server = build_mcp(store, 8930, Access::default()) catch {
     _ => @mcp.MCPServer::MCPServer("screen-kacha", "0.1.0")
   }

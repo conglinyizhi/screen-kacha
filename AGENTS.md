@@ -42,6 +42,16 @@ install -m 0755 _build/native/release/build/cmd/main/main.exe ~/.local/bin/scree
 systemctl --user restart screen-kacha.service
 ```
 
+## 会咬人的地方
+
+- **白盒测试里任何会触发抓帧的路径都必须给 `fake=`。** 不给的话 `capture()` 会
+  去调真实的抓屏：有 PipeWire 就走 PipeWire，否则拉起 spectacle。测试进程通常
+  没有 `DISPLAY`，spectacle 的 Qt 初始化会直接 `abort()`，每跑一次测试就在系统
+  里留一个核心转储（用户那边会看到一串崩溃提示）。
+- 光标素材尺寸和 PNG 是耦合的，换素材要连常量一起改。
+- C 侧不能返回 `Bytes`（会 SIGSEGV），只走 `extern` 的标量/指针。
+- 每个 `moon.pkg` 只能有一个 `options` 块。
+
 ## 代码地图
 
 ```text
