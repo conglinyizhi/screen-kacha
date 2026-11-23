@@ -17,3 +17,18 @@ test "current_uid 与进程一致" {
   // 同一进程内多次调用必须稳定
   assert_eq(current_uid(), uid)
 }
+
+///|
+/// Wayland 找不到时报错要写清楚找的是哪个目录 —— uid 或 XDG_RUNTIME_DIR
+/// 不对的时候，这行是唯一能看出问题在哪的线索。
+async test "Wayland 未就绪的报错带上目录" {
+  let store = Store::new(
+    shot="/tmp/none.jpg",
+    wl_dir="/nonexistent-runtime-dir-xyz",
+    tmp_dir="/tmp/none-shm",
+  )
+  store.capture()
+  let err = store.err()
+  assert_true(err.contains("Wayland"))
+  assert_true(err.contains("/nonexistent-runtime-dir-xyz"))
+}

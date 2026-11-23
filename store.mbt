@@ -231,7 +231,10 @@ async fn Store::capture(self : Store) -> Unit {
     return
   }
   if self.fake is None && !wayland_ready(self.wl_dir) {
-    self.record_fail("Wayland socket 还没就绪，跳过这次抓帧")
+    // 把找的目录写出来：uid 或者 XDG_RUNTIME_DIR 不对时，这行是唯一的线索
+    self.record_fail(
+      "Wayland socket 还没就绪（在 \{self.wl_dir} 里没找到 wayland-数字）",
+    )
     return
   }
   // 假帧源：测试时绕开 spectacle，直接从固定文件读一帧
