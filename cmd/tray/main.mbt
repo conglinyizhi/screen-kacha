@@ -308,6 +308,35 @@ fn restart_service() -> Bool {
 }
 
 ///|
+/// 重新走一遍屏幕共享授权。
+///
+/// 用在哪：portal 的授权框里选错了屏幕，或者想换一块虚拟屏幕。portal 会把上次
+/// 的选择记成 restore token，不清掉它就永远不会再问 —— 所以顺序是
+/// 「清 token 和 node → 停掉助手壳 → 重新拉起壳 → 重启服务」。
+///
+/// 助手必须由 autostart 那个壳拉起，并且和托盘脱钩（setsid）：跟着托盘一起死
+/// 的话，屏幕共享会先断一次。
+fn reauthorize_portal() -> Bool {
+  let dir = match @util.state_dir() {
+    Some(d) => d
+    None => return false
+  }
+  // restore token 不清，portal 照着上次的选择静默恢复，不会弹框
+  sh("rm -f '\{dir}/portal.token' '\{dir}/portal.node' 2>/dev/null")
+  // 壳和助手一起停。只停助手的话，壳会立刻把它拉回来，等于没停
+  sh(
+    "pkill -f '[s]creen-kacha-portal-loop' 2>/dev/null; pkill -f '[s]creen-kacha-portal' 2>/dev/null",
+  )
+  // 重新拉起自启那个壳。setsid：别跟着托盘的进程组一起收到信号
+  let bin = match @env.get_env_var("HOME") {
+    Some(h) => "\{h}/.local/bin"
+    None => "/usr/local/bin"
+  }
+  sh("setsid '\{bin}/screen-kacha-portal-loop' >/dev/null 2>&1 &")
+  restart_service()
+}
+
+///|
 fn main raise {
   let cmd = @argparse.Command(
     "screen-kacha-tray",
@@ -472,6 +501,20 @@ fn main raise {
   )
   let _ = cb_cursor
   t.separator()
+  // 授权框选错了屏幕的唯一出路：portal 记着上次的选择，只有清掉记录才会重新问
+  t.on("reauth", "重新授权屏幕共享…", fn(_) {
+    if reauthorize_portal() {
+      inform(
+        "已经重新发起授权", "系统会弹出屏幕共享的授权框，选要共享的那块屏幕或虚拟屏幕就行。\n\n没弹的话检查 screen-kacha-portal-loop 进程在不在（journalctl --user -b | grep portal 也能看到它报什么）。",
+      )
+    } else {
+      alert(
+        "重新授权失败", "清不掉旧的授权记录，或者重启服务失败。可以手动执行：\nrm -f ~/.local/state/screen-kacha/portal.token\nsystemctl --user restart screen-kacha",
+        "portal",
+      )
+    }
+  })
+  |> ignore
   t.on("restart", "重启服务", fn(_) {
     if !restart_service() {
       alert(
