@@ -119,6 +119,9 @@ test "health 初始状态字段齐全" {
   assert_true(body.contains("\"count\": 0"))
   assert_true(body.contains("\"port\": 18940"))
   assert_true(body.contains("\"frame_age_ms\": -1"))
+  // 流状态和目标 node：没连过流时就是「未连接 0、node 0」
+  assert_true(body.contains("\"stream_state\": 0"))
+  assert_true(body.contains("\"target_node\": 0"))
   expect_header(res.headers, "Content-Type", "application/json")
 }
 

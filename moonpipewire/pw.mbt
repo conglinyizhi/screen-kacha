@@ -15,6 +15,12 @@ extern "c" fn c_height() -> Int32 = "moonbit_pw_shim_height"
 extern "c" fn c_seq() -> Int64 = "moonbit_pw_shim_seq"
 
 ///|
+extern "c" fn c_state() -> Int32 = "moonbit_pw_shim_state"
+
+///|
+extern "c" fn c_target_node() -> Int32 = "moonbit_pw_shim_target_node"
+
+///|
 #borrow(dst)
 extern "c" fn c_latest(dst : Bytes, cap : Int32) -> Int32 = "moonbit_pw_shim_latest"
 
@@ -96,6 +102,28 @@ pub fn PipeWire::size(self : PipeWire) -> (Int32, Int32) {
 pub fn PipeWire::seq(self : PipeWire) -> Int64 {
   let _ = self
   c_seq()
+}
+
+///|
+/// 流当前状态，取值是 `enum pw_stream_state` 的整数值：
+/// -1 错误、0 未连接、1 连接中、2 暂停、3 streaming。
+///
+/// `seq()` 涨只能证明「有某条流在送帧」。会话管理器不认 `PW_KEY_TARGET_OBJECT`
+/// 时 autoconnect 会把流挂到别的屏幕源上，seq 照样涨；要判断「我们申请的这条流
+/// 在不在送帧」，得看这个状态。
+pub fn PipeWire::state(self : PipeWire) -> Int32 {
+  let _ = self
+  c_state()
+}
+
+///|
+/// 当初连的是哪个 node id；一次都没连过返回 0。
+///
+/// 和 `state()` 一起看：状态是 streaming、node 却不是 portal 给的那个，
+/// 说明画面来自别的源。
+pub fn PipeWire::target_node(self : PipeWire) -> Int32 {
+  let _ = self
+  c_target_node()
 }
 
 ///|

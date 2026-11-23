@@ -5,7 +5,7 @@
  * - 生产端只更新「最新帧指针」，不做 memcpy；消费端取帧时才拷贝
  * - 同一时刻只持有一个 pw_buffer，下一帧到来时把旧的还回去，避免堆栈
  *
- * 对 MoonBit 暴露 4 个入口：start / latest / 宽高 / 序号。
+ * 对 MoonBit 暴露的入口：start / stop / latest / 宽高 / 序号 / 流状态与目标 node。
  */
 #include <moonbit.h>
 
@@ -38,6 +38,16 @@ struct pwshim {
     int stride;
     uint64_t seq;
     int64_t ts_ms;
+    /* 流自己报告的状态（enum pw_stream_state 的整数值）。
+     *
+     * 光看 seq 涨不涨说明不了「我们申请的那个 node 在送帧」：会话管理器
+     * 不认 PW_KEY_TARGET_OBJECT 时，autoconnect 会把流挂到别的屏幕源上，
+     * 帧照样来，只是不是我们要的那块屏。状态跟着流走，才说得清这条流
+     * 到底连上没有、有没有在送。 */
+    int state;
+    /* 连接时请求的 node id。只看状态不够的场景靠它：
+     * 状态是 streaming、node 却不是 portal 给的那个，就是接错了源。 */
+    int target_node;
     char err[256];
 };
 
@@ -100,6 +110,10 @@ static void on_state_changed(void *userdata, enum pw_stream_state old,
                              enum pw_stream_state state, const char *error) {
     struct pwshim *s = userdata;
     (void)old;
+    // 状态本身要留下来：查询侧在另一个线程，跟其它字段一样走锁
+    pthread_mutex_lock(&s->lock);
+    s->state = (int)state;
+    pthread_mutex_unlock(&s->lock);
     if (error != NULL) {
         snprintf(s->err, sizeof(s->err), "%s: %s", pw_stream_state_as_string(state), error);
     }
@@ -151,6 +165,10 @@ int32_t moonbit_pw_shim_start(int32_t node_id, const char *app_name) {
     }
     memset(&g, 0, sizeof(g));
     pthread_mutex_init(&g.lock, NULL);
+    /* memset 把 state 清成 0，正好是 PW_STREAM_STATE_UNCONNECTED：
+     * 还没连上的流确实就是这个状态。
+     * target_node 在起线程之前写，之后只有读，不需要额外同步。 */
+    g.target_node = (int)node_id;
 
     pw_init(NULL, NULL);
     g.loop = pw_main_loop_new(NULL);
@@ -253,6 +271,26 @@ int64_t moonbit_pw_shim_seq(void) {
     v = (int64_t)g.seq;
     pthread_mutex_unlock(&g.lock);
     return v;
+}
+
+/* 流当前状态，取值是 enum pw_stream_state 的整数值。
+ *
+ * 3 = PW_STREAM_STATE_STREAMING（见 <pipewire/stream.h>；-1 错误、0 未连接、
+ * 1 连接中、2 暂停）。它是 seq 之外的另一条独立信号：seq 只能证明「有某条流
+ * 在送帧」，而这个状态说的是我们这条流自己连上没有、有没有被挂起。 */
+MOONBIT_FFI_EXPORT
+int32_t moonbit_pw_shim_state(void) {
+    int32_t v;
+    pthread_mutex_lock(&g.lock);
+    v = (int32_t)g.state;
+    pthread_mutex_unlock(&g.lock);
+    return v;
+}
+
+/* 连接时请求的 node id；一次都没连过返回 0。 */
+MOONBIT_FFI_EXPORT
+int32_t moonbit_pw_shim_target_node(void) {
+    return (int32_t)g.target_node;
 }
 
 MOONBIT_FFI_EXPORT

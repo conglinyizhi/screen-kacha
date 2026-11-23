@@ -230,7 +230,7 @@ fn health_json(store : Store, port : Int32, access : Access) -> String {
     Some(_) => store.err() == "" && !stalled
     None => false
   }
-  "{\"ok\": \{ok}, \"stalled\": \{stalled}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"fails_consecutive\": \{store.consec_fails()}, \"err\": \"\{json_escape_text(store.err())}\", \"port\": \{port}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{json_escape_text(store.source())}\", \"access\": \"\{json_escape_text(access.describe())}\", \"cursor_fails\": \{store.cursor_fails()}, \"cursor_err\": \"\{json_escape_text(store.cursor_err())}\", \"screen_w\": \{screen_w}, \"screen_h\": \{screen_h}}"
+  "{\"ok\": \{ok}, \"stalled\": \{stalled}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"fails_consecutive\": \{store.consec_fails()}, \"err\": \"\{json_escape_text(store.err())}\", \"port\": \{port}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{json_escape_text(store.source())}\", \"access\": \"\{json_escape_text(access.describe())}\", \"cursor_fails\": \{store.cursor_fails()}, \"cursor_err\": \"\{json_escape_text(store.cursor_err())}\", \"screen_w\": \{screen_w}, \"screen_h\": \{screen_h}, \"stream_state\": \{store.stream_state()}, \"target_node\": \{store.target_node()}}"
 }
 
 ///|

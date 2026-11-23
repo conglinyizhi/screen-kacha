@@ -11,6 +11,10 @@ import {
 // Values
 pub const PUSH_STALE_MS : Int64 = 5000
 
+pub const STREAM_GRACE_MS : Int64 = 3000
+
+pub const STREAM_STATE_STREAMING : Int32 = 3
+
 pub fn accept_gave_up(Int32) -> Bool
 
 pub fn acquire_instance_lock(String) -> Bool
@@ -55,7 +59,9 @@ pub fn is_lan(String) -> Bool
 
 pub fn is_loopback(String) -> Bool
 
-pub fn judge_frame_flow(FrameSource, Int64, Int64) -> FrameFlow
+pub fn is_streaming(Int32) -> Bool
+
+pub fn judge_frame_flow(FrameSource, Int64, Int64, Int32, Int64) -> FrameFlow
 
 pub async fn load_access(String) -> Access
 
@@ -96,6 +102,8 @@ pub fn runtime_dir_from(String?, Int32) -> String
 pub async fn serve_with_access(Router, @server.MCPServer, @http.Server, Access, Int32) -> Unit
 
 pub fn single_segment(String) -> String?
+
+pub fn stall_reason(Int64, Int64, Int32, Int64) -> String
 
 pub fn status_reason(Int32) -> String
 
@@ -269,7 +277,9 @@ pub async fn Store::recover_push_stream(Self, String) -> Int32?
 pub fn Store::shot(Self) -> String
 pub fn Store::source(Self) -> String
 pub fn Store::stream_seq(Self) -> Int64
-pub async fn Store::watchdog(Self, Int64, async () -> Int32?) -> WatchdogOutcome
+pub fn Store::stream_state(Self) -> Int32
+pub fn Store::target_node(Self) -> Int32
+pub async fn Store::watchdog(Self, Int64, Int64, async () -> Int32?) -> WatchdogOutcome
 
 pub struct StreamClock {
   mut seq : Int64
@@ -278,6 +288,13 @@ pub struct StreamClock {
 pub fn StreamClock::new(Int64, Int64) -> Self
 pub fn StreamClock::observe(Self, Int64, Int64) -> Int64
 pub fn StreamClock::reset(Self, Int64) -> Unit
+
+pub struct StreamStateClock {
+  mut since_ms : Int64
+}
+pub fn StreamStateClock::new(Int64) -> Self
+pub fn StreamStateClock::observe(Self, Bool, Int64) -> Int64
+pub fn StreamStateClock::reset(Self, Int64) -> Unit
 
 pub enum WatchdogOutcome {
   Quiet

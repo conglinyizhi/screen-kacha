@@ -47,11 +47,13 @@ async test "看门狗：推模式流停帧、恢复不成就退回并记原因" 
     fake=Some("/nonexistent-frame-for-test.png"),
     pw=true,
   )
-  // 摆出来的局面：来源是推模式，而帧已经 30 秒没动
+  // 摆出来的局面：来源是推模式，而帧已经 30 秒没动。
+  // 第二个实参是「距上次看见 streaming 过了多久」，0 表示还没开始算宽限：
+  // 这一轮只想验证帧龄那条规则，别让状态规则掺进来。
   assert_true(store.push_source())
   assert_eq(store.source(), "pipewire")
   let mut tried = 0
-  let out = store.watchdog(30000L, fn() -> Int32? {
+  let out = store.watchdog(30000L, 0L, fn() -> Int32? {
     tried = tried + 1
     // 恢复失败：portal 没给出 node，或者重连没成功
     None
@@ -77,7 +79,7 @@ async test "看门狗：推模式流停帧、恢复成功留在推模式但留�
     fake=Some("/nonexistent-frame-for-test.png"),
     pw=true,
   )
-  let out = store.watchdog(30000L, fn() -> Int32? { Some(42) })
+  let out = store.watchdog(30000L, 0L, fn() -> Int32? { Some(42) })
   assert_true(out is Recovered)
   assert_eq(store.source(), "pipewire")
   assert_true(store.push_source())
@@ -96,13 +98,13 @@ async test "看门狗：恢复过一次还没帧就直接退回，不再反复�
     pw=true,
   )
   let mut tried = 0
-  let first = store.watchdog(30000L, fn() -> Int32? {
+  let first = store.watchdog(30000L, 0L, fn() -> Int32? {
     tried = tried + 1
     Some(42)
   })
   assert_true(first is Recovered)
   // 下一个周期帧还是没来
-  let second = store.watchdog(30000L, fn() -> Int32? {
+  let second = store.watchdog(30000L, 0L, fn() -> Int32? {
     tried = tried + 1
     Some(43)
   })
@@ -121,7 +123,7 @@ async test "看门狗：帧龄没超阈值时什么都不做" {
     pw=true,
   )
   let mut tried = 0
-  let out = store.watchdog(100L, fn() -> Int32? {
+  let out = store.watchdog(100L, 0L, fn() -> Int32? {
     tried = tried + 1
     Some(1)
   })
@@ -142,7 +144,7 @@ async test "看门狗：拉模式来源不会被判死" {
   assert_false(store.push_source())
   assert_eq(store.source(), "fake")
   let mut tried = 0
-  let out = store.watchdog(10000000L, fn() -> Int32? {
+  let out = store.watchdog(10000000L, 0L, fn() -> Int32? {
     tried = tried + 1
     Some(1)
   })
@@ -150,4 +152,55 @@ async test "看门狗：拉模式来源不会被判死" {
   assert_eq(tried, 0)
   assert_eq(store.source(), "fake")
   assert_eq(store.err(), "")
+}
+
+///|
+/// 帧龄还很小，但流自己说它不在 streaming 而且宽限期也过了：看门狗要动手。
+///
+/// 这条是新增状态规则的端到端版本：帧龄这一侧完全正常（100ms），判死只能
+/// 来自流状态。真实场景是 node 被销毁、会话被回收、流被挂起。
+///
+/// 这里不连真流：`PipeWire::new` 不做 I/O，shim 报的状态是 0（未连接），
+/// 正好就是「不是 streaming」。
+async test "看门狗：流状态不是 streaming 且过了宽限期，帧龄小也判死" {
+  let store = Store::new(
+    shot="/tmp/watchdog-test.jpg",
+    fake=Some("/nonexistent-frame-for-test.png"),
+    pw=true,
+  )
+  assert_false(is_streaming(store.stream_state()))
+  let mut tried = 0
+  let out = store.watchdog(100L, STREAM_GRACE_MS + 1L, fn() -> Int32? {
+    tried = tried + 1
+    Some(7)
+  })
+  assert_true(out is Recovered)
+  assert_eq(tried, 1)
+  assert_eq(store.source(), "pipewire")
+  // 原因要写清是流状态不对，不能写成「没有新帧」—— 帧龄这会儿是好的
+  assert_true(store.err().contains("不是 streaming"))
+  assert_false(store.err().contains("没有新帧"))
+}
+
+///|
+/// 同一局面但宽限期还没过：一次都别动。
+///
+/// 连上、协商那几秒状态本来就不在 streaming。这里动手的话，每次连流都会被
+/// 自己打断一次，恢复机会只剩一次，下一轮就直接退回慢路径。
+async test "看门狗：流状态不是 streaming 但还在宽限期内不动" {
+  let store = Store::new(
+    shot="/tmp/watchdog-test.jpg",
+    fake=Some("/nonexistent-frame-for-test.png"),
+    pw=true,
+  )
+  let mut tried = 0
+  let out = store.watchdog(100L, 1000L, fn() -> Int32? {
+    tried = tried + 1
+    Some(7)
+  })
+  assert_true(out is Quiet)
+  assert_eq(tried, 0)
+  assert_eq(store.source(), "pipewire")
+  assert_eq(store.err(), "")
+  assert_eq(store.fails(), 0)
 }

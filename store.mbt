@@ -812,6 +812,28 @@ pub fn Store::stream_seq(self : Store) -> Int64 {
 }
 
 ///|
+/// 流自己报告的状态（`enum pw_stream_state` 的整数值）。
+///
+/// 不是推模式时没有流可问，报 0（未连接）：把上一条死流的残留状态报给
+/// `/health`，只会让人以为还有条流在。
+pub fn Store::stream_state(self : Store) -> Int32 {
+  if self.src is Pipewire {
+    self.pw_state.stream.state()
+  } else {
+    0
+  }
+}
+
+///|
+/// 当初给 PipeWire 的 node id；没连过返回 0。
+///
+/// 和 `stream_state` 一起看才有意义：状态是 streaming、node 却不是 portal
+/// 给的那个，说明画面来自别的源 —— 那种情况下 `seq` 涨了也白涨。
+pub fn Store::target_node(self : Store) -> Int32 {
+  self.pw_state.stream.target_node()
+}
+
+///|
 /// 后台 portal 监督循环每一轮该做什么。
 pub enum PortalStep {
   /// 流还在，等下一轮再看
@@ -878,34 +900,50 @@ pub enum WatchdogOutcome {
 /// `recover` 由调用方注入：清 portal 缓存、重新要 node、重连流都要碰文件、
 /// 进程和设备，判定和记账留在这里才好单测。返回 `Some(node)` 表示重连成功，
 /// `None` 表示没救回来。
+///
+/// `since_streaming_ms` 是「距上一次确认流在 streaming 过了多久」，由泵那一侧
+/// 用 `StreamStateClock` 算好送进来：判定要的是持续时间，而 shim 只给瞬时状态。
 pub async fn Store::watchdog(
   self : Store,
   frame_age_ms : Int64,
+  since_streaming_ms : Int64,
   recover : async () -> Int32?,
 ) -> WatchdogOutcome {
-  match judge_frame_flow(self.src, frame_age_ms, PUSH_STALE_MS) {
+  let stream_state = self.stream_state()
+  match
+    judge_frame_flow(
+      self.src,
+      frame_age_ms,
+      PUSH_STALE_MS,
+      stream_state,
+      since_streaming_ms,
+    ) {
     Flowing => {
       self.dead_rounds = 0
       Quiet
     }
     Stalled => {
+      let why = stall_reason(
+        frame_age_ms,
+        PUSH_STALE_MS,
+        stream_state,
+        since_streaming_ms,
+      )
       if self.dead_rounds > 0 {
         // 上一轮已经重连过一次，帧还是没来：别再重连，直接退回拉模式。
         // `connect` 是立刻返回的，重连成功不代表新流会出帧；
         // 反复重连只会让「流死了」变成一条安静的自转，画面照样不动。
-        self.fall_back(frame_age_ms)
+        self.fall_back(why)
         return FellBack
       }
       self.dead_rounds = 1
       match recover() {
         Some(node) => {
-          self.record_fail(
-            "PipeWire 流 \{frame_age_ms}ms 没有新帧（阈值 \{PUSH_STALE_MS}ms），已重连 node=\{node}",
-          )
+          self.record_fail("PipeWire \{why}，已重连 node=\{node}")
           Recovered
         }
         None => {
-          self.fall_back(frame_age_ms)
+          self.fall_back(why)
           FellBack
         }
       }
@@ -919,7 +957,10 @@ pub async fn Store::watchdog(
 /// 这一步必须留痕。线上那次流死了之后 `/health` 一直说 ok、err 是空的，
 /// 谁也不知道它死过；退回也不写原因的话，看到的只是「来源变成 spectacle」，
 /// 看起来像一次正常回退。
-fn Store::fall_back(self : Store, frame_age_ms : Int64) -> Unit {
+///
+/// `why` 是判定给出的原因（`stall_reason`）：停帧和「流状态不对」是两回事，
+/// 都写成「没有新帧」会把排障的人引到帧龄上去。
+fn Store::fall_back(self : Store, why : String) -> Unit {
   let next = self.pull_source()
   self.src = next
   self.pw_state.fails = 0
@@ -928,7 +969,7 @@ fn Store::fall_back(self : Store, frame_age_ms : Int64) -> Unit {
   // 之后 portal 再申请时拿到的可能还是同一条没人推送的 node。
   self.pw_state.stream.disconnect()
   self.record_fail(
-    "PipeWire 流 \{frame_age_ms}ms 没有新帧（阈值 \{PUSH_STALE_MS}ms），恢复没成功，已退回 \{next.label()} 取帧",
+    "PipeWire \{why}，恢复没成功，已退回 \{next.label()} 取帧",
   )
 }
 

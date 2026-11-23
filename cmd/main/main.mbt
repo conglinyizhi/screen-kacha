@@ -84,6 +84,9 @@ async fn pump_loop(
   let mut last_fails = store.fails()
   // 推模式的帧龄按流真正送来的帧序号算，不按 JPEG 缓存（见 StreamClock）
   let clock = @store.StreamClock::new(store.stream_seq(), @async.now())
+  // 流状态也要换算出持续时间：宽限期靠它，只看「这一轮是不是 streaming」
+  // 会在协商那一瞬间就误判死。
+  let state_clock = @store.StreamStateClock::new(@async.now())
   for ;; {
     if store.push_source() {
       // 推模式：帧自己会来，泵不用去要。
@@ -92,9 +95,14 @@ async fn pump_loop(
       // 流悄悄死掉时不会有任何一次采集失败（shim 会把上一帧再写一遍，
       // `capture` 照样「成功」），`/health` 就一直说 ok、fails 是 0、
       // err 是空的，而画面永远停在那一帧上。
-      let age = clock.observe(store.stream_seq(), @async.now())
+      let now = @async.now()
+      let age = clock.observe(store.stream_seq(), now)
+      let since_streaming = state_clock.observe(
+        @store.is_streaming(store.stream_state()),
+        now,
+      )
       match
-        store.watchdog(age, async fn() -> Int32? {
+        store.watchdog(age, since_streaming, async fn() -> Int32? {
           if pw_node > 0 {
             // 显式指了 node：重连它就行，别去碰 portal（用户没让它走 portal）
             if store.enable_pipewire(pw_node) {
@@ -106,7 +114,13 @@ async fn pump_loop(
             store.recover_push_stream(shm)
           }
         }) {
-        Recovered => clock.reset(@async.now())
+        Recovered => {
+          // 重连之后两个窗口都重开：新流还要协商，旧的「停了多久」
+          // 不能带进新流，否则刚连上就又被判死一次。
+          let t = @async.now()
+          clock.reset(t)
+          state_clock.reset(t)
+        }
         _ => ()
       }
       @async.sleep(1000)
