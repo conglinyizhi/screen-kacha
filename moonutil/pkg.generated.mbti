@@ -6,6 +6,8 @@ import {
 }
 
 // Values
+pub fn b64_encode(Bytes) -> String
+
 pub fn cstr(String) -> Bytes
 
 pub fn parse_int(StringView, Int32) -> Int32

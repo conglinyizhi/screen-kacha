@@ -282,6 +282,21 @@ check "无数据目录：/human.html" 200 "$(code $EB/human.html)"
 [ -f "$EMB_SHM/cursor-arrow.png" ] && ok || bad "光标素材没有释放到帧目录"
 check "无数据目录：带光标取图" 200 "$(code "$EB/snapshot.jpg?cursor=1")"
 
+echo "== MCP 端点 =="
+META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
+mcp_post() {
+  curl -s --max-time 10 -X POST -H 'Content-Type: application/json' -d "$1" "$B/mcp"
+}
+check "POST /mcp tools/list" 200 \
+  "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'Content-Type: application/json' \
+     -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{$META}}" "$B/mcp")"
+has "$(mcp_post "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{$META}}")" '"snapshot"' \
+  && ok || bad "MCP tools/list 里没有 snapshot"
+has "$(mcp_post "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"snapshot\",\"arguments\":{},$META}}")" '"type":"image"' \
+  && ok || bad "MCP snapshot 没返回图片块"
+has "$(mcp_post "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}")" '-32602' \
+  && ok || bad "MCP 不带协议版本时没有拒绝"
+
 echo
 echo "通过 $PASS，失败 $FAIL"
 [ "$FAIL" -eq 0 ] || { echo "--- 服务日志 ---"; tail -20 "$PORT_LOG"; exit 1; }

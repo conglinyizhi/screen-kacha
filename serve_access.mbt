@@ -16,6 +16,10 @@ const WRITE_TIMEOUT_MS : Int32 = 15000
 const REJECT_TIMEOUT_MS : Int32 = 2000
 
 ///|
+/// MCP 请求体上限。一个 JSON-RPC 调用通常几百字节，1 MiB 已经很宽松。
+const MCP_MAX_BODY : Int32 = 1048576
+
+///|
 /// accept 连续失败到这个次数就认定监听坏了，需要死掉等重启。
 ///
 /// 阈值给足：瞬时错误（对端中途跑掉、信号打断）连着来几次很正常，
@@ -87,6 +91,7 @@ pub fn exit_process(code : Int32) -> Unit {
 ///   由内核的 listen backlog 兜住新连接（跟 `serve_on` 的做法一致）
 pub async fn serve_with_access(
   router : Router,
+  mcp : @mcp.MCPServer,
   server : @http.Server,
   access : Access,
   max_conns : Int32,
@@ -146,7 +151,7 @@ pub async fn serve_with_access(
           gate.acquire()
           group.spawn_bg(no_wait=true, allow_failure=true, () => {
             defer gate.release()
-            handle_one(router, conn)
+            handle_one(router, mcp, conn)
           })
         }
       }
@@ -297,7 +302,11 @@ pub fn host_allowed(host : String) -> Bool {
 
 ///|
 /// 读一个请求、分发给 app、把结果写回去。三段各有超时。
-async fn handle_one(router : Router, conn : @http.ServerConnection) -> Unit {
+async fn handle_one(
+  router : Router,
+  mcp : @mcp.MCPServer,
+  conn : @http.ServerConnection,
+) -> Unit {
   let request = try {
     match @async.with_timeout_opt(READ_TIMEOUT_MS, () => conn.read_request()) {
       Some(r) => Some(r)
@@ -341,6 +350,14 @@ async fn handle_one(router : Router, conn : @http.ServerConnection) -> Unit {
     None => ()
   }
   // 本服务的接口都是 GET，不读请求体
+  // MCP 端点：全服务唯一接受 POST 的路径。
+  //
+  // 放在路由之前，是因为 Router 只认 GET/HEAD，而 MCP 要读请求体 ——
+  // 这套读法（先看 Content-Length 再 read_all）只有这一条路用得上。
+  if verb == "POST" && normalize_path(path) == "/mcp" {
+    handle_mcp(mcp, conn, headers)
+    return
+  }
   let body : Bytes = Bytes::makei(0, fn(_) { 0 })
   // 超时只包 dispatch（handler 已经算完、payload 已经序列化），
   // 不包写响应：写一半被掐会留下截断的报文，比回 504 更糟。
@@ -405,5 +422,71 @@ async fn handle_one(router : Router, conn : @http.ServerConnection) -> Unit {
       }
       conn.close()
     }
+  }
+}
+
+///|
+/// 发一个 JSON 响应然后关连接。
+async fn send_json(
+  conn : @http.ServerConnection,
+  status : Int32,
+  body : String,
+) -> Unit {
+  let hdrs : Map[String, String] = Map([])
+  hdrs.set("Content-Type", "application/json; charset=utf-8")
+  hdrs.set("Connection", "close")
+  let _ : Unit? = @async.with_timeout_opt(WRITE_TIMEOUT_MS, () => {
+    conn.send_response(
+      status,
+      status_reason(status),
+      extra_headers=headers_to_http(hdrs),
+    )
+    conn.write(@utf8.encode(body))
+    conn.end_response()
+  }) catch {
+    _ => None
+  }
+  conn.close()
+}
+
+///|
+/// 处理一次 MCP 调用。
+///
+/// 无状态协议：一次 POST 一个 JSON-RPC，回一个 JSON。没有 SSE、不保持连接，
+/// 所以和其余接口共用同一套超时与连接生命周期。
+async fn handle_mcp(
+  mcp : @mcp.MCPServer,
+  conn : @http.ServerConnection,
+  headers : Map[String, String],
+) -> Unit {
+  let len = match header_lookup(headers, "content-length") {
+    Some(v) => @util.parse_int(v, -1)
+    None => -1
+  }
+  if len < 0 {
+    send_json(conn, 411, "{\"error\":\"需要 Content-Length\"}")
+    return
+  }
+  if len > MCP_MAX_BODY {
+    send_json(conn, 413, "{\"error\":\"请求体太大\"}")
+    return
+  }
+  let body = Some(conn.read_all().binary()) catch { _ => None }
+  let body = match body {
+    None => {
+      send_json(conn, 400, "{\"error\":\"请求体读不出来\"}")
+      return
+    }
+    Some(b) => b
+  }
+  let resp = Some(mcp_response(mcp, @utf8.decode_lossy(body))) catch {
+    e => {
+      eprintln("MCP 处理失败：\{e}")
+      None
+    }
+  }
+  match resp {
+    Some(r) => send_json(conn, 200, r)
+    None => send_json(conn, 500, "{\"error\":\"MCP 处理失败\"}")
   }
 }

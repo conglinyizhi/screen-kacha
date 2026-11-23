@@ -35,3 +35,40 @@ pub fn pick(m : @argparse.Matches, name : String, dflt : String) -> String {
     _ => dflt
   }
 }
+
+///|
+/// 标准 base64 编码。
+///
+/// MCP 的图片内容块要 base64 字符串，生成器那边也要用同一份实现。
+pub fn b64_encode(data : Bytes) -> String {
+  let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+  let out = StringBuilder()
+  let n = data.length()
+  let mut i = 0
+  while i + 2 < n {
+    let b0 = data[i].to_int()
+    let b1 = data[i + 1].to_int()
+    let b2 = data[i + 2].to_int()
+    out.write_char(alphabet[(b0 >> 2) & 63].unsafe_to_char())
+    out.write_char(alphabet[((b0 & 3) << 4) | (b1 >> 4)].unsafe_to_char())
+    out.write_char(alphabet[((b1 & 15) << 2) | (b2 >> 6)].unsafe_to_char())
+    out.write_char(alphabet[b2 & 63].unsafe_to_char())
+    i = i + 3
+  }
+  let rest = n - i
+  if rest == 1 {
+    let b0 = data[i].to_int()
+    out.write_char(alphabet[(b0 >> 2) & 63].unsafe_to_char())
+    out.write_char(alphabet[(b0 & 3) << 4].unsafe_to_char())
+    out.write_char('=')
+    out.write_char('=')
+  } else if rest == 2 {
+    let b0 = data[i].to_int()
+    let b1 = data[i + 1].to_int()
+    out.write_char(alphabet[(b0 >> 2) & 63].unsafe_to_char())
+    out.write_char(alphabet[((b0 & 3) << 4) | (b1 >> 4)].unsafe_to_char())
+    out.write_char(alphabet[(b1 & 15) << 2].unsafe_to_char())
+    out.write_char('=')
+  }
+  out.to_string()
+}

@@ -32,7 +32,7 @@ async fn main {
     let path = args[i]
     let bytes = Some(@fs.read_file(path).binary()) catch { _ => None }
     match bytes {
-      Some(raw) => lines.push("  \"\{b64(raw)}\",")
+      Some(raw) => lines.push("  \"\{@util.b64_encode(raw)}\",")
       None => {
         eprintln("读不到 \{path}")
         failed = true
@@ -77,42 +77,4 @@ fn base_name(path : String) -> String {
     i = i + 1
   }
   path[start:].to_owned()
-}
-
-///|
-/// 标准 base64 编码。
-///
-/// 自己写而不是用 moonbitlang/x：那会把 x 变成生成器的直接依赖，而生成器只是
-/// 构建期的工具，没必要为此多一条依赖边。运行时解码仍然由 moon-embed 负责。
-fn b64(data : Bytes) -> String {
-  let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-  let out = StringBuilder()
-  let n = data.length()
-  let mut i = 0
-  while i + 2 < n {
-    let b0 = data[i].to_int()
-    let b1 = data[i + 1].to_int()
-    let b2 = data[i + 2].to_int()
-    out.write_char(alphabet[(b0 >> 2) & 63].unsafe_to_char())
-    out.write_char(alphabet[((b0 & 3) << 4) | (b1 >> 4)].unsafe_to_char())
-    out.write_char(alphabet[((b1 & 15) << 2) | (b2 >> 6)].unsafe_to_char())
-    out.write_char(alphabet[b2 & 63].unsafe_to_char())
-    i = i + 3
-  }
-  let rest = n - i
-  if rest == 1 {
-    let b0 = data[i].to_int()
-    out.write_char(alphabet[(b0 >> 2) & 63].unsafe_to_char())
-    out.write_char(alphabet[(b0 & 3) << 4].unsafe_to_char())
-    out.write_char('=')
-    out.write_char('=')
-  } else if rest == 2 {
-    let b0 = data[i].to_int()
-    let b1 = data[i + 1].to_int()
-    out.write_char(alphabet[(b0 >> 2) & 63].unsafe_to_char())
-    out.write_char(alphabet[((b0 & 3) << 4) | (b1 >> 4)].unsafe_to_char())
-    out.write_char(alphabet[(b1 & 15) << 2].unsafe_to_char())
-    out.write_char('=')
-  }
-  out.to_string()
 }

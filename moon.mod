@@ -33,6 +33,7 @@ preferred_target = "native"
 description = "HTTP screen snapshot service for the local desktop (KDE Wayland)"
 
 import {
+  "colmugx/mcp@0.19.2",
   "conglinyizhi/moon-embed@0.3.0",
   "moonbitlang/async@0.22.10",
   "conglinyizhi/moondbus@0.1.6",

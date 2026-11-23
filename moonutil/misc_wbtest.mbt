@@ -28,3 +28,15 @@ test "pick 取值与回落" {
   assert_eq(pick(m, "port", "1"), "9999")
   assert_eq(pick(m, "nope", "dflt"), "dflt")
 }
+
+///|
+test "b64_encode 三种尾巴" {
+  // 3 字节整组
+  assert_eq(b64_encode(b"abc"), "YWJj")
+  // 剩 1 字节补 ==
+  assert_eq(b64_encode(b"a"), "YQ==")
+  // 剩 2 字节补 =
+  assert_eq(b64_encode(b"ab"), "YWI=")
+  // 空
+  assert_eq(b64_encode(b""), "")
+}

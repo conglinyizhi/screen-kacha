@@ -315,6 +315,14 @@ async fn main {
   eprintln(
     "screen-kacha v0.1 监听 \{bind}:\{port}  帧目录 \{shm}  素材 \{data_dir}  泵 \{pump}ms  并发上限 \{max_conns}",
   )
+  // MCP：和 HTTP 共用同一个进程和同一份采集状态
+  let mcp = @store.build_mcp(store, port, access) catch {
+    e => {
+      eprintln("MCP 初始化失败，/mcp 不可用：\{e}")
+      // 退化成没有任何工具的服务端，其余接口照常
+      @mcp.MCPServer::MCPServer("screen-kacha", "0.1.0")
+    }
+  }
   @async.with_task_group() <| group => {
     if pw_node <= 0 && source != "spectacle" && fake_source is None {
       // 服务先跑起来，portal 在后台拿屏幕流；拿不到就一直按 spectacle 服务
@@ -334,6 +342,6 @@ async fn main {
     // 原来分两条路：有访问限制时自己收连接，放行公网时用框架自带的 serve_on。
     // 框架带着一个它自己的依赖，那条快路径不值得为它留一个不受我们控制的入口 ——
     // 两条路合并之后，超时、并发上限、拒绝路径的行为只有一套。
-    @store.serve_with_access(router, server, access, max_conns)
+    @store.serve_with_access(router, mcp, server, access, max_conns)
   }
 }
