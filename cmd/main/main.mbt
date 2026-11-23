@@ -286,6 +286,10 @@ async fn main {
     @store.exit_process(0)
     return
   }
+  // 帧目录的锁只挡得住「同一个帧目录」。换了个 --shm 再起一份，锁是过了，
+  // 但抓的还是同一块屏 —— spectacle 单实例，两份并发会互相卡死。
+  // 放在锁后面：真正要跑起来的那份才需要看这条警告。
+  @store.warn_duplicate_instances() |> ignore
   let fake_source = if fake == "" { None } else { Some(fake) }
   // 假帧模式下 shot 直接指向那张图，连拷贝都省了
   let shot_path = match fake_source {

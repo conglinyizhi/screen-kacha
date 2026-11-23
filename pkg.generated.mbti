@@ -19,7 +19,7 @@ pub fn accept_gave_up(Int32) -> Bool
 
 pub fn acquire_instance_lock(String) -> Bool
 
-pub async fn acquire_portal_node(String) -> Int32?
+pub async fn acquire_portal_node(String, force? : Bool) -> Int32?
 
 pub fn build_mcp(Store, Int32, Access) -> @server.MCPServer raise
 
@@ -44,8 +44,6 @@ pub let emb_paths : Array[String]
 pub fn exit_process(Int32) -> Unit
 
 pub fn fill_port(String, Int32) -> String
-
-pub async fn forget_portal_node(String) -> Unit
 
 pub fn frame_is_stalled(Int64, Int64, Int32) -> Bool
 
@@ -112,6 +110,8 @@ pub fn text_res(Int32, String) -> Resp
 pub fn unmap_ipv4(String) -> String
 
 pub fn wants_html(String?) -> Bool
+
+pub async fn warn_duplicate_instances() -> Array[Int32]
 
 // Errors
 

@@ -995,15 +995,16 @@ fn Store::pull_source(self : Store) -> FrameSource {
 const RECOVER_TIMEOUT_MS : Int32 = 10000
 
 ///|
-/// 推模式的流判定死了之后的重连：清掉缓存的 portal node、重新要一个、连上流。
+/// 推模式的流判定死了之后的重连：重新要一个 portal node、连上流。
 ///
-/// 缓存必须先清：`acquire_portal_node` 见到文件里有正数就直接返回，
-/// 可那个 node 正是刚刚死掉的那一条，不清就等于没恢复。
+/// 不能先删 `portal.node` 再要：删的那一瞬间助手可能正好写进新 node，
+/// 就被我们删掉了（它以为已经写完，不会再写第二次），于是这次恢复白等一场。
+/// 改成给 `acquire_portal_node` 打 force：跳过缓存，只认这一轮之后新写出来的
+/// node，文件本身不动。
 pub async fn Store::recover_push_stream(self : Store, dir : String) -> Int32? {
-  forget_portal_node(dir)
   // 0 不是合法的 pipewire node，拿它当「这次没拿到」的标记
   let got = @async.with_timeout_opt(RECOVER_TIMEOUT_MS, async fn() {
-    match acquire_portal_node(dir) {
+    match acquire_portal_node(dir, force=true) {
       Some(node) => node
       None => 0
     }

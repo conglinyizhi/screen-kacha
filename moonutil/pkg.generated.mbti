@@ -18,6 +18,12 @@ pub fn pick(@argparse.Matches, String, String) -> String
 
 pub fn state_dir() -> String?
 
+pub fn state_dir_with(String?, String?) -> String?
+
+pub fn write_atomic(String, Bytes) -> Int32
+
+pub fn write_atomic_text(String, String) -> Int32
+
 // Errors
 
 // Types and methods

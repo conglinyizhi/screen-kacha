@@ -363,17 +363,13 @@ async fn main {
   if token_path != "" {
     match token_after(res3, "restore_token") {
       Some(t) => {
-        let f = @fs.create(token_path, allow_existing=true) catch {
-          _ => {
-            eprintln("portal: token 文件打不开")
-            return
-          }
+        // 原子写：读的一方（下次启动的自己、托盘）随时可能在读，不能看到半截
+        let rc = @util.write_atomic_text(token_path, t)
+        if rc != 0 {
+          eprintln("portal: token 写入失败（errno \{-rc}）")
+        } else {
+          eprintln("portal: restore_token 已保存")
         }
-        f.write(@utf8.encode(t)) catch {
-          _ => eprintln("portal: token 写入失败")
-        }
-        f.close()
-        eprintln("portal: restore_token 已保存")
       }
       None => eprintln("portal: 这次没有 restore_token")
     }
@@ -382,16 +378,13 @@ async fn main {
   match stream_node(res3) {
     None => eprintln("portal: 响应里没有 streams")
     Some(id) => {
-      let f = @fs.create(out_path, allow_existing=true) catch {
-        _ => {
-          eprintln("portal: node 文件打不开")
-          return
-        }
+      // 原子写：主服务随时在读这个文件。原来 open→write→close，崩在中间
+      // 就留下一个空文件，而读到空文件那边只会当作「还没拿到 node」。
+      let rc = @util.write_atomic_text(out_path, id.to_string())
+      if rc != 0 {
+        eprintln("portal: node 写入失败（errno \{-rc}）")
+        return
       }
-      f.write(@utf8.encode("\{id}")) catch {
-        _ => eprintln("portal: node 写入失败")
-      }
-      f.close()
       eprintln("portal: node=\{id}，会话保持中")
       // 一直睡着，直到进程被外部干掉（systemd 停服务、用户注销、机器关机）。
       //

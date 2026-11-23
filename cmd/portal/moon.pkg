@@ -4,6 +4,7 @@ import {
   "moonbitlang/async/fs",
   "moonbitlang/core/env",
   "moonbitlang/core/encoding/utf8",
+  "conglinyizhi/screen-kacha/moonutil" @util,
 }
 
 supported_targets = "+native"

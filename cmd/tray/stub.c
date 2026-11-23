@@ -53,51 +53,11 @@ void moonbit_screen_kacha_exit(int32_t code) {
   _exit(code);
 }
 
-/* 写一个小文本文件（配置文件用）。成功返回 0。 */
-int moonbit_screen_kacha_write_file(const char *path, const char *data) {
-  // 先把父目录逐级建好：调用方可能在目录还不存在时就写
-  char buf[1024];
-  size_t n = strlen(path);
-  if (n >= sizeof(buf)) return -1;
-  memcpy(buf, path, n + 1);
-  for (size_t i = 1; i < n; i++) {
-    if (buf[i] == '/') {
-      buf[i] = 0;
-      mkdir(buf, 0700);
-      buf[i] = '/';
-    }
-  }
-  /* 先写临时文件再 rename。
-   *
-   * 原来是 fopen(path,"w") 直接截断：写完之前主服务要是正在读，读到半截
-   * 会让 parse_access 退回默认值（默认 allow_lan = true），安全开关就翻到
-   * 放开那一侧。tmp + rename 是原子的，读到的要么是旧内容要么是新内容。
-   * 权限 0600：配置里装的是安全开关，不需要给同机其它用户看。 */
-  char tmp[1100];
-  if ((size_t)snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= sizeof(tmp)) {
-    return -1;
-  }
-  int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0600);
-  if (fd < 0) return -1;
-  size_t len = strlen(data);
-  size_t off = 0;
-  while (off < len) {
-    ssize_t w = write(fd, data + off, len - off);
-    if (w <= 0) {
-      close(fd);
-      unlink(tmp);
-      return -1;
-    }
-    off += (size_t)w;
-  }
-  fchmod(fd, 0600);
-  fsync(fd);
-  close(fd);
-  if (rename(tmp, path) != 0) {
-    unlink(tmp);
-    return -1;
-  }
-  return 0;
+// 本进程 pid。挂 KWin 脚本时用它拼脚本名：两个托盘实例各用各的名字，
+// 否则后加载的顶掉前一个，一方卸载会连带摘掉另一方的脚本。
+MOONBIT_FFI_EXPORT
+int32_t moonbit_screen_kacha_pid(void) {
+  return (int32_t)getpid();
 }
 
 /* 同步跑一条命令并返回退出码（-1 表示根本起不来）。 */

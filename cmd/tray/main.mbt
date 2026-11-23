@@ -18,13 +18,14 @@ extern "c" fn watch_stop() = "moonbit_screen_kacha_watch_stop"
 extern "c" fn should_stop() -> Int32 = "moonbit_screen_kacha_should_stop"
 
 ///|
-#borrow(path, data)
-extern "c" fn write_file_raw(path : Bytes, data : Bytes) -> Int32 = "moonbit_screen_kacha_write_file"
-
-///|
 /// 写配置文件。同步调用，托盘菜单里用。
+///
+/// 走 `@util` 的原子写：主服务随时可能在读这个文件，读到半截会让
+/// `parse_access` 退回默认值（默认放开局域网）。托盘是同步的单线程循环，
+/// 调不了 MoonBit 的 async `@fs`，所以那份实现在 moonutil 的 C stub 里 ——
+/// 和主服务、portal 用的是同一份，不再各写一套。
 fn write_file(path : String, data : String) -> Bool {
-  write_file_raw(@util.cstr(path), @util.cstr(data)) == 0
+  @util.write_atomic_text(path, data) == 0
 }
 
 ///|

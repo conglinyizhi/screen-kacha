@@ -31,9 +31,24 @@ fn parse_node_id(b : Bytes) -> Int32 {
 }
 
 ///|
-/// 删掉 node 文件，下次重新拿。
-pub async fn forget_portal_node(dir : String) -> Unit {
-  let _ = Some(@fs.remove("\{dir}/portal.node")) catch { _ => None }
+/// 文件的修改时间（纳秒，自 epoch）；读不到返回 -1。
+///
+/// -1 同时表示「当时文件还不存在」，两种情况的处理一样：现在有就算新的。
+#borrow(path)
+extern "c" fn mtime_ns_raw(path : Bytes) -> Int64 = "moonbit_mtime_ns"
+
+///|
+fn mtime_ns(path : String) -> Int64 {
+  mtime_ns_raw(@util.cstr(path))
+}
+
+///|
+/// 文件在 `since_ns` 之后被重写过吗。
+///
+/// 只看时间不看内容：portal 换了会话也可能给出同一个节点号（节点号是复用的），
+/// 那种情况内容一样、时间变了，正是要认的。
+fn rewritten_since(path : String, since_ns : Int64) -> Bool {
+  mtime_ns(path) > since_ns
 }
 
 ///|
@@ -42,7 +57,10 @@ pub async fn forget_portal_node(dir : String) -> Unit {
 /// 正常情况是 autostart 那个助手（跑在 app-...@autostart.service 里，portal 认得出
 /// app id，授权记得住）把 node 写进文件，这里只读文件，不碰它。
 /// 只有在没人写文件时才自己拉一个助手 —— 那种身份 portal 认不出来，会弹授权框。
-pub async fn acquire_portal_node(dir : String) -> Int32? {
+///
+/// `force`：缓存不可信，只认「这一轮之后新写出来的 node」。
+/// 看门狗重连时走这条路 —— 缓存里那个 id 正是刚死掉的那条流。
+pub async fn acquire_portal_node(dir : String, force~ : Bool = false) -> Int32? {
   let out = "\{dir}/portal.node"
   let home = match @env.get_env_var("HOME") {
     Some(h) => h
@@ -57,7 +75,7 @@ pub async fn acquire_portal_node(dir : String) -> Int32? {
   // 每次都直接返回那个死 id，② 和 ③ 永远不会执行 ——
   // 没有任何自愈路径，只能人工删文件或重启服务。
   let cached = parse_node_id(read_bytes_or_empty(out))
-  if cached > 0 {
+  if !force && cached > 0 {
     if portal_helper_alive() {
       return Some(cached)
     }
@@ -66,11 +84,18 @@ pub async fn acquire_portal_node(dir : String) -> Int32? {
     remove_file(out)
   }
 
+  // force 时记下现在这个文件长什么样，只认之后的变化。
+  //
+  // 为什么不干脆把文件删掉重来：删的瞬间助手可能正好写进新 node，
+  // 那就被我们删掉了，而它以为已经写完，不会再写第二次 —— 于是等到超时。
+  // 不删文件，改成「记住旧值/旧时间，等它变成别的」就没有这个窗口。
+  let stamp = if force { mtime_ns(out) } else { -1L }
+
   // ② 等 autostart 助手写它（它开机比服务稍晚，重连时也会重写）
   for k = 0; k < 60; k = k + 1 {
     @async.sleep(500)
     let id = parse_node_id(read_bytes_or_empty(out))
-    if id > 0 {
+    if id > 0 && (!force || id != cached || rewritten_since(out, stamp)) {
       return Some(id)
     }
   }
@@ -86,7 +111,7 @@ pub async fn acquire_portal_node(dir : String) -> Int32? {
     for k = 0; k < 180; k = k + 1 {
       @async.sleep(500)
       let id = parse_node_id(read_bytes_or_empty(out))
-      if id > 0 {
+      if id > 0 && (!force || id != cached || rewritten_since(out, stamp)) {
         return Some(id)
       }
     }

@@ -101,9 +101,15 @@ test "pump-idle 是声明过的参数" {
 /// 的状态文件改掉，托盘照着那个死端口轮询，就显示「服务没响应」—— 服务其实
 /// 好好地跑在 8930 上。这次就是这么被坑的。
 test "state_dir 认 XDG_STATE_HOME" {
-  assert_eq(@util.state_dir_with(Some("/tmp/xdg-state"), Some("/home/someone")), Some("/tmp/xdg-state/screen-kacha"))
+  assert_eq(
+    @util.state_dir_with(Some("/tmp/xdg-state"), Some("/home/someone")),
+    Some("/tmp/xdg-state/screen-kacha"),
+  )
   // 没设 XDG_STATE_HOME 时走 HOME 的老路径
-  assert_eq(@util.state_dir_with(None, Some("/home/someone")), Some("/home/someone/.local/state/screen-kacha"))
+  assert_eq(
+    @util.state_dir_with(None, Some("/home/someone")),
+    Some("/home/someone/.local/state/screen-kacha"),
+  )
   // 两个都没有就不写：宁可没有端口文件，也不要写到别处
   assert_eq(@util.state_dir_with(None, None), None)
 }

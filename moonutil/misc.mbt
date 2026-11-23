@@ -80,12 +80,7 @@ pub fn b64_encode(data : Bytes) -> String {
 /// 排查时看错的地方，不如干脆不写，界面上照常显示这次的错误。
 pub fn state_dir_with(xdg : String?, home : String?) -> String? {
   match xdg {
-    Some(v) =>
-      if v == "" {
-        None
-      } else {
-        Some("\{v}/screen-kacha")
-      }
+    Some(v) => if v == "" { None } else { Some("\{v}/screen-kacha") }
     None =>
       match home {
         Some(h) =>
@@ -105,6 +100,7 @@ pub fn state_dir() -> String? {
 }
 
 ///|
+
 ///|
 /// 出错记录文件的位置。只有这一份，不存在第二个。
 pub fn error_log_path() -> String? {

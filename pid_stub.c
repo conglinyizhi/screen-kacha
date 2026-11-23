@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/file.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -85,3 +86,18 @@ int32_t moonbit_instance_lock(const char *dir) {
  * 运行时目录以前写死 /run/user/1000：多用户机器或者 root 下会指到别人的目录，
  * 表现为「Wayland socket 明明在却读不到」。用 getuid() 问系统，别猜。 */
 int moonbit_current_uid(void) { return (int)getuid(); }
+
+/* 文件的修改时间（纳秒，自 epoch）；读不到返回 -1。
+ *
+ * 用途：portal.node 被重写过没有。用 C 是因为只要一个能比大小的整数，
+ * 走 MoonBit 的 @fs.mtime 还得拆元组、跨一层异步，判定的形状反而被搅乱。
+ *
+ * -1 同时表示「当时文件还不存在」，两种情况处理一样：现在有就算新的。 */
+MOONBIT_FFI_EXPORT
+int64_t moonbit_mtime_ns(const char *path) {
+  if (path == NULL || *path == '\0') return -1;
+  struct stat st;
+  if (stat(path, &st) != 0) return -1;
+  return (int64_t)st.st_mtim.tv_sec * 1000000000LL +
+         (int64_t)st.st_mtim.tv_nsec;
+}

@@ -53,6 +53,32 @@ fn cursor_pos_fresh() -> Bool {
 }
 
 ///|
+/// 本进程 pid。加载 KWin 脚本时要用它区分不同的托盘实例。
+extern "c" fn current_pid_raw() -> Int32 = "moonbit_screen_kacha_pid"
+
+///|
+fn current_pid() -> Int32 {
+  current_pid_raw()
+}
+
+///|
+/// 我们的脚本在 KWin 那边叫什么。
+///
+/// 必须带 pid。原来是写死的 `cursorprobe`：两个托盘实例（手滑起第二份、
+/// 新旧两个 unit 同时装着）会抢同一个名字 —— 后加载的顶掉前一个，
+/// 先退出的那个按名字一卸载，另一个的脚本也跟着没了，而且它自己不知道，
+/// 勾选还亮着、箭头已经不动了。
+fn cursor_script_name(pid : Int32) -> String {
+  "screen-kacha-cursor-\{pid}"
+}
+
+///|
+/// 本进程加载脚本用的名字。
+fn own_script_name() -> String {
+  cursor_script_name(current_pid())
+}
+
+///|
 /// 挂上：写脚本、加载、启动，最后确认坐标真的开始流动。
 fn cursor_tracking_on(helper_bin : String) -> Bool {
   let path = kwin_script_path()
@@ -73,19 +99,18 @@ fn cursor_tracking_on(helper_bin : String) -> Bool {
       return false
     }
   }
-  let load_cmd = "gdbus call --session --dest org.kde.KWin --object-path /Scripting --method org.kde.kwin.Scripting.loadScript '\{path}' cursorprobe 2>/dev/null"
+  let name = own_script_name()
+  let load_cmd = "gdbus call --session --dest org.kde.KWin --object-path /Scripting --method org.kde.kwin.Scripting.loadScript '\{path}' '\{name}' 2>/dev/null"
   let raw = capture(load_cmd, 64)
   let id = parse_script_id(raw)
   if id < 0 {
     cursor_tracking_off()
     return false
   }
-  // 记下来，摘的时候精确停它，盲停 Script1..8 会误伤用户自己的脚本
-  let _ = write_file(script_id_path(), "\{id}")
   // 光有编号不算数：脚本文件不存在时 KWin 照样返回一个编号，
   // 问一句「这个脚本真加载了吗」才靠得住。
   let loaded = capture(
-    "gdbus call --session --dest org.kde.KWin --object-path /Scripting --method org.kde.kwin.Scripting.isScriptLoaded cursorprobe 2>/dev/null",
+    "gdbus call --session --dest org.kde.KWin --object-path /Scripting --method org.kde.kwin.Scripting.isScriptLoaded '\{name}' 2>/dev/null",
     64,
   )
   if !loaded.contains("true") {
@@ -152,16 +177,19 @@ fn cursor_tracking_off() -> Unit {
   // ① 先把坐标清掉：这一步失败也不能影响后面收摊
   let _ = remove_file(pos)
 
-  // ② 停掉我们加载的那个脚本。
-  //    之前是盲停 Script1..8，两头都错：既可能停掉用户自己开的脚本，
-  //    也可能因为我们的编号 >8 而停不掉自己。
-  //    现在按记录下来的编号精确停，没记录就退回按名字扫。
-  let id = load_script_id()
-  if id >= 0 {
-    sh(
-      "gdbus call --session --dest org.kde.KWin --object-path /Scripting/Script\{id} --method org.kde.kwin.Script.stop >/dev/null 2>&1",
-    )
-  }
+  // ② 停掉我们加载的那个脚本：按名字卸。
+  //
+  //    名字里带 pid，所以这一句只会卸自己那份，卸不到另一个托盘实例头上。
+  //
+  //    原来按 loadScript 返回的编号去停 /Scripting/Script{id}：编号是 KWin
+  //    全局分配的，记录一旦过期（托盘重启、两个实例先后写了同一份记录文件），
+  //    就可能停到别人——包括用户自己——的脚本上。再往前的版本更粗，盲停
+  //    Script1..8，两头都错：既可能停掉用户自己开的脚本，也可能因为我们的
+  //    编号 >8 而停不掉自己。
+  let name = own_script_name()
+  sh(
+    "gdbus call --session --dest org.kde.KWin --object-path /Scripting --method org.kde.kwin.Scripting.unloadScript '\{name}' >/dev/null 2>&1",
+  )
 
   // ③ 杀 helper。
   //
@@ -180,43 +208,8 @@ fn cursor_tracking_off() -> Unit {
     }
   }
 
-  // ④ 删脚本文件和记录下来的编号。
-  //    编号不删的话，下次挂载失败时 off 会拿这个旧编号去停，
-  //    而 KWin 的编号是复用的，可能停掉用户自己的脚本。
+  // ④ 删脚本文件。脚本在 KWin 那边已经按名字卸掉了，文件留着没用。
   let _ = remove_file(script)
-  let _ = remove_file(script_id_path())
-}
-
-///|
-/// 记下这次 loadScript 拿到的编号，摘的时候精确停它。
-///
-/// 写进 runtime 目录里一个小文件：托盘自己可能重启（菜单点退出、
-/// systemd 重启），重启后内存里的编号就没了，但脚本还挂在 KWin 里。
-fn script_id_path() -> String {
-  let rt = match @env.get_env_var("XDG_RUNTIME_DIR") {
-    Some(v) => v
-    None => "/tmp"
-  }
-  "\{rt}/screen-kacha/cursor-script.id"
-}
-
-///|
-/// 读回上次记下的脚本编号；没有或读不出来返回 -1。
-fn load_script_id() -> Int32 {
-  let text = capture("cat '\{script_id_path()}' 2>/dev/null", 64)
-  let t : String = text.trim().to_owned()
-  if t == "" {
-    return -1
-  }
-  let mut n = 0
-  for i = 0; i < t.length(); i = i + 1 {
-    let c = t[i].to_int()
-    if c < 48 || c > 57 {
-      return -1
-    }
-    n = n * 10 + (c - 48)
-  }
-  n
 }
 
 ///|
