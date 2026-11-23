@@ -400,6 +400,14 @@ async fn main {
       // 所以这里留着保活循环；拉模式下泵已经在抓，不需要它。
       group.spawn_bg(no_wait=true) <| async fn() { idle_loop(store, idle) }
     }
+    // 托盘心跳监督。
+    //
+    // 托盘崩掉之后，KWin 里的脚本和 cursor helper 都不会自己消失：
+    // 脚本继续每 200ms 打没人接的 D-Bus，helper 继续占着那个名字。
+    // 托盘正常退出会自己收，这条循环是给「没来得及收」准备的 ——
+    // 读了它写的心跳，判定死了就替它收掉。没有托盘文件时它只是每 5 秒
+    // 睁一次眼，不叫也不动手。
+    group.spawn_bg(no_wait=true) <| async fn() { @store.supervise_tray() }
     // 一律走自己的 accept 循环。
     //
     // 原来分两条路：有访问限制时自己收连接，放行公网时用框架自带的 serve_on。

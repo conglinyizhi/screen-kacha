@@ -197,10 +197,14 @@ fn cursor_tracking_off() -> Unit {
   // `screen-kacha-cursor` 是 18 个，`-x` 永远匹配不到，等于从来没杀过，
   // helper 会一直活着占着 D-Bus 名字，下次勾选就直接复用这个僵尸。
   //
-  // 改用 `-f` 匹配整条命令行，但模式写成 `[s]creenstream-cursor`：
+  // 改用 `-f` 匹配整条命令行，但模式写成 `[/]screen-kacha-cursor`：
   // 正则能匹配到 helper 自己，却匹配不到正在执行这条命令的 shell
-  // （后者的 cmdline 里是字面上的方括号，不含连续的 screen-kacha-cursor）。
-  let pids = capture("pgrep -f '[s]creenstream-cursor' 2>/dev/null", 512)
+  // （后者的 cmdline 里是字面上的方括号，不含连续的 /screen-kacha-cursor）。
+  //
+  // 这里原来写的是 `[s]creenstream-cursor` —— 项目改名之前的旧名字，
+  // 现在一个进程都匹配不上，这句 kill 从来没生效过。名字跟着二进制走：
+  // install.sh 装的是 `~/.local/bin/screen-kacha-cursor`。
+  let pids = capture("pgrep -f '[/]screen-kacha-cursor' 2>/dev/null", 512)
   for line in pids.split("\n") {
     let t : String = line.trim().to_owned()
     if t != "" {

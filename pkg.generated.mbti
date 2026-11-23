@@ -4,6 +4,7 @@ package "conglinyizhi/screen-kacha"
 import {
   "colmugx/mcp/server",
   "conglinyizhi/screen-kacha/moonpipewire",
+  "conglinyizhi/screen-kacha/moonutil",
   "moonbitlang/async",
   "moonbitlang/async/http",
 }
@@ -14,6 +15,10 @@ pub const PUSH_STALE_MS : Int64 = 5000
 pub const STREAM_GRACE_MS : Int64 = 3000
 
 pub const STREAM_STATE_STREAMING : Int32 = 3
+
+pub const TRAY_MISS_DEAD : Int32 = 3
+
+pub const TRAY_PROBE_BASE_MS : Int32 = 5000
 
 pub fn accept_gave_up(Int32) -> Bool
 
@@ -29,11 +34,15 @@ pub fn capture_too_soon(Int64, Int64) -> Bool
 
 pub fn clean_stale_frames(String, String, String) -> Int32
 
+pub async fn cleanup_tray(@moonutil.TrayOwner) -> Unit
+
 pub fn config_line_key(String) -> String?
 
 pub fn config_warnings(String) -> Array[String]
 
 pub fn current_uid() -> Int32
+
+pub fn decide_probe(Int32, Bool, Int64, Int32) -> ProbeDecision
 
 pub fn default_runtime_dir() -> String
 
@@ -81,6 +90,10 @@ pub fn parse_dst_w(String) -> Int32?
 
 pub fn parse_flag_value(String) -> Bool
 
+pub fn parse_load1(String) -> Int32?
+
+pub fn parse_psi_some_avg10(String) -> Int32?
+
 pub fn parse_query(String) -> Map[String, String]
 
 pub fn parse_region(String) -> Region?
@@ -88,6 +101,8 @@ pub fn parse_region(String) -> Region?
 pub fn peer_ip(String) -> String
 
 pub fn portal_step(Bool) -> PortalStep
+
+pub fn pressure_is_high(Int32?, Int32?, Int32?, Int32) -> Bool
 
 pub async fn read_cursor_pos(String) -> (Int32, Int32)?
 
@@ -101,11 +116,19 @@ pub async fn serve_with_access(Router, @server.MCPServer, @http.Server, Access, 
 
 pub fn single_segment(String) -> String?
 
+pub fn stale_ms_of(Int64, Int64) -> Int64
+
 pub fn stall_reason(Int64, Int64, Int32, Int64) -> String
 
 pub fn status_reason(Int32) -> String
 
+pub async fn supervise_tray() -> Unit
+
 pub fn text_res(Int32, String) -> Resp
+
+pub fn tray_miss_path() -> String?
+
+pub fn tray_owner_path() -> String?
 
 pub fn unmap_ipv4(String) -> String
 
@@ -168,6 +191,12 @@ pub struct PipeWireState {
 pub enum PortalStep {
   Watch
   Reacquire
+}
+
+pub enum ProbeDecision {
+  Keep(Int32, Int32)
+  Dead
+  Skew
 }
 
 pub struct Region {

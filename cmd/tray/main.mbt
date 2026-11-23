@@ -528,6 +528,7 @@ fn main raise {
     // 或重启机器。systemd 重启（SIGTERM）走的是另一条路，见下面
     // watch_stop 那段。
     cursor_tracking_off()
+    remove_tray_owner()
     exit_now(0)
   })
   quit_ref.val = Some(quit_item)
@@ -535,19 +536,30 @@ fn main raise {
   // 不补的话：KWin 脚本还挂着、helper 还占着 D-Bus 名字，
   // 每重启一次托盘就多留一份，下次勾选会直接复用这个僵尸。
   watch_stop()
-  // 每 5 秒查一次，图标跟着健康状态变
+  // 先写一次心跳再进循环：服务那边看到 tray.owner 就知道有个托盘在跑，
+  // 不用干等第一个 tick。之后每 5 秒跟 tick 一起重写。
+  write_tray_owner()
+  // 每 5 秒做两件事：查一次健康状态换图标，写一次心跳让服务知道我们还活着
   match
     t.run_with_tick(
       fn() {
         if should_stop() != 0 {
           cursor_tracking_off()
+          remove_tray_owner()
           exit_now(0)
         }
         poll_icon(t, base)
+        // 心跳跟着同一个 tick 走：托盘活着但服务死了的时候，
+        // 这里写下的时间戳就是「最后一次活着」的证据
+        write_tray_owner()
       },
       5000,
     ) {
     Ok(_) => eprintln("托盘事件循环已结束")
     Err(code) => eprintln("托盘启动失败，错误码 \{code}")
   }
+  // 循环自己结束（信号把 poll 打断、启动就失败）时也把心跳记录带走：
+  // 留着它，服务过十几秒就会对一个早就退出的托盘做一次「清理」，
+  // 日志里多一条假警报。
+  remove_tray_owner()
 }

@@ -103,14 +103,20 @@ fn basename(path : String) -> String {
 }
 
 ///|
-/// 读一个 proc 文件，读不到返回 None。
-async fn read_proc_file(path : String) -> Bytes? {
-  try {
-    let f = @fs.open(path, mode=ReadOnly)
-    let b = f.read_all().binary()
-    f.close()
-    Some(b)
-  } catch {
+/// 读一个小文本文件，读不到返回 None。
+///
+/// `/proc` 下面那些（cmdline、environ、pressure）和状态目录里的文件都走它：
+/// 读失败不抛，交给调用方按「没有」处理。
+async fn read_file_or_none(path : String) -> Bytes? {
+  let f = Some(@fs.open(path, mode=ReadOnly)) catch { _ => return None }
+  let file = match f {
+    Some(x) => x
+    None => return None
+  }
+  // defer：读失败也要把它关掉。这个 helper 被 5 秒一轮的监督循环用着，
+  // 漏一个 fd 就是每 5 秒漏一个，跑一天能把进程的 fd 耗光。
+  defer file.close()
+  Some(file.read_all().binary()) catch {
     _ => None
   }
 }
@@ -120,7 +126,7 @@ async fn read_proc_file(path : String) -> Bytes? {
 ///
 /// `base` 是 `/proc/<pid>` 或 `/proc/self`。
 async fn proc_exe(base : String) -> String? {
-  match read_proc_file("\{base}/cmdline") {
+  match read_file_or_none("\{base}/cmdline") {
     Some(b) =>
       match split_nul(b) {
         [] => None
@@ -137,7 +143,7 @@ async fn proc_exe(base : String) -> String? {
 /// 那种进程抓不到我们的屏，直接跳过 —— 但要靠 None 和「读到空值」区分开，
 /// 否则会把它当成「显示未知」而误报。
 async fn proc_display_env(base : String) -> (String, String)? {
-  match read_proc_file("\{base}/environ") {
+  match read_file_or_none("\{base}/environ") {
     None => None
     Some(b) => {
       let mut wl = ""

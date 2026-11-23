@@ -109,3 +109,15 @@ pub fn error_log_path() -> String? {
     None => None
   }
 }
+
+///|
+/// 当前时间：自 epoch 的毫秒数。
+///
+/// 托盘和服务要拿同一个时钟比「心跳过去多久了」。托盘是同步循环，用不了
+/// async 包里的 `@async.now()`；两边都调这一个函数，就不可能出现
+/// 「一边写 CLOCK_MONOTONIC、一边读墙上时钟」那种负值。
+///
+/// 底层是 `@env.now()`，和 `@async.now()` 同一个来源（epoch 毫秒）。
+pub fn now_ms() -> Int64 {
+  @env.now().reinterpret_as_int64()
+}

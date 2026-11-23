@@ -6,11 +6,15 @@ import {
 }
 
 // Values
+pub const TRAY_OWNER_MAX_BYTES : Int32 = 4096
+
 pub fn b64_encode(Bytes) -> String
 
 pub fn cstr(String) -> Bytes
 
 pub fn error_log_path() -> String?
+
+pub fn now_ms() -> Int64
 
 pub fn parse_int(StringView, Int32) -> Int32
 
@@ -27,6 +31,16 @@ pub fn write_atomic_text(String, String) -> Int32
 // Errors
 
 // Types and methods
+pub struct TrayOwner {
+  pid : Int32
+  script : String
+  helper : Int32
+  ts_ms : Int64
+  miss : Int32
+}
+pub fn TrayOwner::new(Int32, String, Int32, Int64, Int32) -> Self
+pub fn TrayOwner::parse(String) -> Self?
+pub fn TrayOwner::render(Self) -> String
 
 // Type aliases
 

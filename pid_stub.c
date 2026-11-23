@@ -5,6 +5,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/file.h>
+#include <errno.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
@@ -100,4 +102,39 @@ int64_t moonbit_mtime_ns(const char *path) {
   if (stat(path, &st) != 0) return -1;
   return (int64_t)st.st_mtim.tv_sec * 1000000000LL +
          (int64_t)st.st_mtim.tv_nsec;
+}
+
+/* 这个 pid 还在不在（kill -0）。返回 1 在、0 不在。
+ *
+ * pid <= 0 一律当不在：0 和负数在 kill(2) 里表示「进程组」，
+ * 拿它们去探活等于问「这一组里还有活人吗」，答案会被当成某一个人的。
+ *
+ * EPERM 算在：进程活着，只是不归我们管。心跳记录里的 pid 一定是自己人，
+ * 但「在」是更安全的答案 —— 别把活着的进程当成死的去清场。 */
+MOONBIT_FFI_EXPORT
+int32_t moonbit_pid_alive(int32_t pid) {
+  if (pid <= 0) return 0;
+  if (kill((pid_t)pid, 0) == 0) return 1;
+  return errno == EPERM ? 1 : 0;
+}
+
+/* 给坐标进程发 SIGTERM。成功 0，失败 -errno。
+ *
+ * 同样守着 pid > 0：往 0 或负数发信号会打到整个进程组，
+ * 那种 bug 在服务里发作起来就是「把自己和半张桌面一起关了」。 */
+MOONBIT_FFI_EXPORT
+int32_t moonbit_kill_term(int32_t pid) {
+  if (pid <= 0) return -EINVAL;
+  if (kill((pid_t)pid, SIGTERM) == 0) return 0;
+  return -errno;
+}
+
+/* 在线 CPU 数，至少给 1。
+ *
+ * loadavg 那条兜底要拿它换算「每核多少个排队进程」，
+ * 除零会把这个判断变成一个永远为真的高压力。 */
+MOONBIT_FFI_EXPORT
+int32_t moonbit_cpu_count(void) {
+  long n = sysconf(_SC_NPROCESSORS_ONLN);
+  return n > 0 ? (int32_t)n : 1;
 }
