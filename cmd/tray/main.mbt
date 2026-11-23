@@ -73,28 +73,15 @@ fn resolve_port(configured : Int32) -> Int32 {
 }
 
 ///|
-/// 按 /health 的返回挑图标名和一句话说明。
+/// 查一次健康状态，同时更新图标和悬停文案。
 ///
-/// 灯的颜色就是这个函数唯一的输出：绿=正常，黄=刚启动，灰=没响应，红=采集失败。
-fn health_state(body : String) -> (String, String) {
-  if body == "" {
-    return ("screen-kacha-dead", "服务没响应")
-  }
-  if body.contains("\"ok\": true") {
-    return ("screen-kacha-ok", "正常")
-  }
-  if body.contains("\"count\": 0") {
-    return ("screen-kacha-warn", "已启动，还没抓到帧")
-  }
-  ("screen-kacha-down", "采集失败")
-}
-
-///|
-/// 查一次健康状态，更新图标和标题。
+/// 两样都更新：原来只换图标，`health_state` 算出的那句说明被 `let (_icon, _say)`
+/// 直接丢掉，于是黄灯和红灯为什么亮，用户在托盘上看不出任何原因。
 fn poll_icon(t : @sni.Tray, base : String) -> Unit {
-  let h = capture("curl -s --max-time 2 '\{base}/health'", 2048)
-  let (icon, _say) = health_state(h)
-  t.set_icon_name(icon)
+  let body = capture("curl -s --max-time 2 '\{base}/health'", 2048)
+  let st = judge_health(parse_health(body))
+  t.set_icon_name(st.icon)
+  t.set_title(st.title)
 }
 
 ///|

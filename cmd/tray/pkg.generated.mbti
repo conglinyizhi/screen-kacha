@@ -15,6 +15,9 @@ pub fn system_unit_conflict() -> Bool
 // Errors
 
 // Types and methods
+type Health
+
+type TrayState
 
 // Type aliases
 
