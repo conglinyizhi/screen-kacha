@@ -86,29 +86,15 @@ fn poll_icon(t : @sni.Tray, base : String) -> Unit {
 }
 
 ///|
-/// 访问控制配置文件路径。
+/// 访问控制配置文件路径。和服务共用同一份实现，避免两边算到不同路径。
 fn access_path() -> String {
-  match @env.get_env_var("HOME") {
-    Some(h) => "\{h}/.config/screen-kacha/access.conf"
-    None => "/etc/screen-kacha/access.conf"
-  }
+  @util.access_conf_path()
 }
 
 ///|
 /// 解析布尔值。大小写不敏感，跟服务端的 `parse_flag_value` 同一套规则。
 fn flag_value(v : String) -> Bool {
-  let s = v.trim().to_owned()
-  let buf = StringBuilder()
-  for i = 0; i < s.length(); i = i + 1 {
-    let c = s[i].to_int()
-    if c >= 65 && c <= 90 {
-      buf.write_char((c + 32).unsafe_to_char())
-    } else {
-      buf.write_char(c.unsafe_to_char())
-    }
-  }
-  let t = buf.to_string()
-  t == "true" || t == "1" || t == "yes" || t == "on"
+  @util.parse_flag(v)
 }
 
 ///|

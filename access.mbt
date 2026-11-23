@@ -241,8 +241,8 @@ pub fn Access::allows(self : Access, peer : String) -> Bool {
 /// 原来只认全小写的 `true`/`1`/`yes`，`allow_public = True` 会被静默当成
 /// false：用户以为放开了，实际没开，而且没人报错。
 pub fn parse_flag_value(v : String) -> Bool {
-  let s = ascii_lower(v.trim().to_owned())
-  s == "true" || s == "1" || s == "yes" || s == "on"
+  // 实现统一在 @util.parse_flag：托盘那边原来还有一份同名不同逻辑的副本
+  @util.parse_flag(v)
 }
 
 ///|

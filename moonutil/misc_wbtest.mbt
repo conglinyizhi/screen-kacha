@@ -40,3 +40,24 @@ test "b64_encode 三种尾巴" {
   // 空
   assert_eq(b64_encode(b""), "")
 }
+
+///|
+test "配置文件路径：认 XDG_CONFIG_HOME" {
+  assert_eq(access_conf_path_with(Some("/tmp/xdg-cfg"), Some("/home/u")), "/tmp/xdg-cfg/screen-kacha/access.conf")
+  assert_eq(access_conf_path_with(None, Some("/home/u")), "/home/u/.config/screen-kacha/access.conf")
+  // 两个都没有时退到系统级路径，这个是有意的
+  assert_eq(access_conf_path_with(None, None), "/etc/screen-kacha/access.conf")
+}
+
+///|
+test "布尔解析：大小写和空白都认" {
+  assert_true(parse_flag("true"))
+  assert_true(parse_flag("  TRUE "))
+  assert_true(parse_flag("1"))
+  assert_true(parse_flag("Yes"))
+  assert_true(parse_flag("on"))
+  assert_false(parse_flag("false"))
+  assert_false(parse_flag("0"))
+  assert_false(parse_flag(""))
+  assert_false(parse_flag("enable"))
+}

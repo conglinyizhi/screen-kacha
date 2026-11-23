@@ -337,12 +337,10 @@ async fn main {
     None => return
   }
   write_port_file(port)
+  // 优先级：命令行 > access.conf > 内置默认。配置文件只放策略（谁能访问），
+  // 不放身份（端口、帧目录）—— 同机跑两个实例得能各用各的
   let access_path = match @util.pick(m, "access", "") {
-    "" =>
-      match @env.get_env_var("HOME") {
-        Some(h) => "\{h}/.config/screen-kacha/access.conf"
-        None => "/etc/screen-kacha/access.conf"
-      }
+    "" => @util.access_conf_path()
     p => p
   }
   let access = @store.load_access(access_path)

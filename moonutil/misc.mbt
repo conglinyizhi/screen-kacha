@@ -121,3 +121,54 @@ pub fn error_log_path() -> String? {
 pub fn now_ms() -> Int64 {
   @env.now().reinterpret_as_int64()
 }
+
+///|
+/// 访问控制配置文件的路径。
+///
+/// 认 `XDG_CONFIG_HOME`：服务读、托盘写，两边必须算到同一个路径，所以这段
+/// 逻辑只能有一份。
+pub fn access_conf_path_with(xdg : String?, home : String?) -> String {
+  match xdg {
+    Some(v) =>
+      if v != "" {
+        "\{v}/screen-kacha/access.conf"
+      } else {
+        access_conf_path_with(None, home)
+      }
+    None =>
+      match home {
+        Some(h) => if h == "" { "" } else { "\{h}/.config/screen-kacha/access.conf" }
+        None => "/etc/screen-kacha/access.conf"
+      }
+  }
+}
+
+///|
+pub fn access_conf_path() -> String {
+  access_conf_path_with(
+    @env.get_env_var("XDG_CONFIG_HOME"),
+    @env.get_env_var("HOME"),
+  )
+}
+
+///|
+/// 配置里的布尔值。大小写不敏感，认 true/1/yes/on。
+///
+/// 服务和托盘原来各有一份实现（`parse_flag_value` 和 `flag_value`），
+/// 规则一样、名字不同，改一处忘另一处就是两边行为分叉。
+pub fn parse_flag(v : String) -> Bool {
+  let s = v.trim()
+  if s.length() == 0 {
+    return false
+  }
+  // 小写化：只处理 ASCII，配置里的键值不会有别的字母
+  let buf = StringBuilder()
+  let mut i = 0
+  while i < s.length() {
+    let c = s[i].to_int()
+    buf.write_char(if c >= 65 && c <= 90 { (c + 32).unsafe_to_char() } else { s[i].unsafe_to_char() })
+    i = i + 1
+  }
+  let t = buf.to_string()
+  t == "true" || t == "1" || t == "yes" || t == "on"
+}

@@ -1,10 +1,10 @@
 import {
+  "moonbitlang/core/env",
   "conglinyizhi/screen-kacha/moonutil" @util,
   "moonbitlang/core/argparse",
   "conglinyizhi/moonsni/src/tray" @sni,
   "conglinyizhi/moonsni/src/menu",
   "moonbitlang/core/encoding/utf8",
-  "moonbitlang/core/env",
   "moonbitlang/core/json",
 }
 

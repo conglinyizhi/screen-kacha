@@ -1,7 +1,6 @@
 import {
   "colmugx/mcp",
   "conglinyizhi/screen-kacha/moonutil" @util,
-  "moonbitlang/core/env",
   "conglinyizhi/screen-kacha" @store,
   "moonbitlang/async",
   "moonbitlang/async/fs",
