@@ -95,9 +95,11 @@ fn flag_on(m : @argparse.Matches, name : String) -> Bool {
 /// 端口被占时会往上挪，托盘要是死认 unit 里写的那一个号，就会一直显示
 /// 「服务没响应」——而服务其实好好地跑在隔壁端口上。
 async fn write_port_file(port : Int32) -> Unit {
-  match @env.get_env_var("HOME") {
-    Some(h) => {
-      let dir = "\{h}/.local/state/screen-kacha"
+  // 走 @util.state_dir()：它认 XDG_STATE_HOME。以前这里直接拼 HOME，
+  // 于是一个临时实例（测试、探针）会把生产的状态文件改掉 —— 托盘照着
+  // 那个死端口轮询，就会显示「服务没响应」，而服务其实好好的。
+  match @util.state_dir() {
+    Some(dir) => {
       let _ = @fs.mkdir(dir, permission=0o700, recursive=true) catch { _ => () }
       let _ = @fs.write_file(
         "\{dir}/port",
