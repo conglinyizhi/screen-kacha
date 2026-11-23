@@ -2,6 +2,7 @@ import {
   "colmugx/mcp",
   "conglinyizhi/moon-embed" @embed,
   "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/string",
   "conglinyizhi/screen-kacha/moonutil" @util,
   "conglinyizhi/screen-kacha/moonpipewire" @pipewire,
   "conglinyizhi/screen-kacha/moonimage" @image,

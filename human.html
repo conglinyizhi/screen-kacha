@@ -212,11 +212,19 @@ curl -s -o screen.jpg 'http://127.0.0.1:{{PORT}}/snapshot.jpg?age=0.05'
 # 想把鼠标位置也画进去，先去托盘菜单勾上「在截图里标出鼠标位置」
 curl -s -o screen.jpg 'http://127.0.0.1:{{PORT}}/snapshot.jpg?cursor=1'
 
+# 只要左上角那一块，比例或百分比都行
+curl -s -o corner.jpg 'http://127.0.0.1:{{PORT}}/snapshot.jpg?crop=0.1,0.1,0.3,0.2'
+curl -s -o corner.jpg 'http://127.0.0.1:{{PORT}}/snapshot.jpg?crop=10%,10%,30%,20%'
+
 # 服务还好吗
 curl -s 'http://127.0.0.1:{{PORT}}/health'</code></pre>
     <p class="note">服务在后台持续抓帧，请求直接返回缓存，通常一到两毫秒。
       <code>?age=</code> 是能接受的最大帧龄（秒），想要更新鲜就写小一点，
       代价是当场触发一次抓取。</p>
+    <p class="note"><code>?crop=</code> 的四段是 <code>x,y,w,h</code>，按整帧的比例算（0 到 1），
+      带 <code>%</code> 就按百分比。写错、越界、四段之外多写东西都会回 400，不会悄悄给整屏。
+      分辨率可以从 <code>/health</code> 的 <code>screen_w</code> / <code>screen_h</code> 拿到，
+      自己换算像素框。</p>
     <p class="note"><code>?cursor=</code> 默认不画。1 是半透明白箭头，2 把箭头下的像素反色，
       3 和 4 换成带尾巴的旧形状。箭头位置来自托盘里那个开关，不勾就只返回普通截图。</p>
   </section>

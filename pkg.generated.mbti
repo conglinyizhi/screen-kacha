@@ -65,9 +65,13 @@ pub fn parse_cursor(String?) -> Cursor?
 
 pub fn parse_cursor_pos_text(String) -> (Int32, Int32)?
 
+pub fn parse_dst_w(String) -> Int32?
+
 pub fn parse_flag_value(String) -> Bool
 
 pub fn parse_query(String) -> Map[String, String]
+
+pub fn parse_region(String) -> Region?
 
 pub fn peer_ip(String) -> String
 
@@ -134,6 +138,13 @@ pub struct PipeWireState {
 pub enum PortalStep {
   Watch
   Reacquire
+}
+
+pub struct Region {
+  x : Double
+  y : Double
+  w : Double
+  h : Double
 }
 
 pub struct Req {

@@ -666,3 +666,49 @@ async test "反复喂坏图不会崩，之后好的还能用" {
   )
   assert_true(bgra_to_jpeg(src, 32, 32, 0, 82, "\{dir}/after-broken.jpg"))
 }
+
+///|
+/// 归一化矩形裁剪：裁右下四分之一，输出就该是原图的一半宽高。
+async test "image_region：比例裁出对应尺寸" {
+  let dir = "/tmp/moonimage-region-size"
+  let _ = @fs.mkdir(dir, permission=0o700, recursive=true) catch { _ => () }
+  let src = "\{dir}/src.bgra"
+  let px = make_bgra(100, 80, fn(_x, _y) { (200, 180, 40) })
+  @fs.write_file(src, px, create_mode=CreateOrTruncate) catch { _ => () }
+  let out = "\{dir}/out.jpg"
+  assert_true(image_region(src, true, 100, 80, 0.0, 0.0, 1.0, 1.0, 0, 82, false, out))
+  let full = image_dims(out).unwrap()
+  assert_eq(full.0, 100)
+  assert_eq(full.1, 80)
+  assert_true(image_region(src, true, 100, 80, 0.5, 0.5, 0.5, 0.5, 0, 82, false, out))
+  let half = image_dims(out).unwrap()
+  assert_eq(half.0, 50)
+  assert_eq(half.1, 40)
+}
+
+///|
+/// 畸形矩形一律返回 1（参数非法），绝不能裁出图外的内存。
+async test "image_region：畸形矩形被拒" {
+  let dir = "/tmp/moonimage-region-bad"
+  let _ = @fs.mkdir(dir, permission=0o700, recursive=true) catch { _ => () }
+  let src = "\{dir}/src.bgra"
+  let px = make_bgra(100, 80, fn(_x, _y) { (200, 180, 40) })
+  @fs.write_file(src, px, create_mode=CreateOrTruncate) catch { _ => () }
+  let out = "\{dir}/bad.jpg"
+  let nan = 0.0 / 0.0
+  let inf = 1.0 / 0.0
+  // 负数、零宽、越界、和超 1、非有限、dst_w 越界
+  assert_eq(image_region_code(src, true, 100, 80, -0.1, 0.0, 0.5, 0.5, 0, 82, false, out), 1)
+  assert_eq(image_region_code(src, true, 100, 80, 0.0, 0.0, 0.0, 0.5, 0, 82, false, out), 1)
+  assert_eq(image_region_code(src, true, 100, 80, 0.9, 0.0, 0.5, 0.5, 0, 82, false, out), 1)
+  assert_eq(image_region_code(src, true, 100, 80, 0.0, 0.9, 0.5, 0.5, 0, 82, false, out), 1)
+  assert_eq(image_region_code(src, true, 100, 80, nan, 0.0, 0.5, 0.5, 0, 82, false, out), 1)
+  assert_eq(image_region_code(src, true, 100, 80, inf, 0.0, 0.5, 0.5, 0, 82, false, out), 1)
+  assert_eq(image_region_code(src, true, 100, 80, 0.0, 0.0, 0.5, 0.5, 5000, 82, false, out), 1)
+}
+
+///|
+/// image_dims 读不出文件时返回 None，而不是崩。
+test "image_dims：读不出来返回 None" {
+  assert_true(image_dims("/tmp/no-such-image-here.jpg") is None)
+}

@@ -238,7 +238,7 @@ async test "record_ok 与 record_fail 正确累计" {
 ///|
 async test "不需要换算时直通原字节" {
   let store = Store::new(shot="/tmp/none.jpg")
-  let res = build_image_response(store, b"RAW", None, "jpg", None)
+  let res = build_image_response(store, b"RAW", None, "jpg", None, None)
   assert_eq(res.status, 200)
   expect_header(res.headers, "Content-Type", "image/jpeg")
   assert_eq(res.body, b"RAW")

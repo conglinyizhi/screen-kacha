@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -734,5 +735,123 @@ int32_t moonbit_image_jpeg_to_file(const char *src_path, int32_t dst_w,
   int rc = encode_bgra(frame, w, h, (int)dst_w, (int)quality, (int)webp,
                        out_path);
   free(frame);
+  return rc;
+}
+
+/* ---- 归一化矩形裁剪 ------------------------------------------------------ */
+
+static int jpeg_header_dims(const char *path, int *out_w, int *out_h) {
+  struct jpeg_decompress_struct cinfo;
+  jpeg_jmp jerr;
+  /* setjmp 之后被改动的自动变量要是 volatile，否则长跳回来时值可能是旧的 */
+  volatile int created = 0;
+  jerr.pub.error_exit = jpeg_fail;
+  jerr.pub.output_message = jpeg_quiet;
+  cinfo.err = jpeg_std_error(&jerr.pub);
+  jerr.pub.error_exit = jpeg_fail;
+  jerr.pub.output_message = jpeg_quiet;
+  FILE *volatile fp = NULL;
+  if (setjmp(jerr.jb)) {
+    /* 只有真正 create 过才 destroy：对未初始化的结构体做析构会直接段错误 */
+    if (created) jpeg_destroy_decompress(&cinfo);
+    if (fp != NULL) fclose(fp);
+    return 1;
+  }
+  fp = fopen(path, "rb");
+  if (fp == NULL) return 1;
+  jpeg_create_decompress(&cinfo);
+  created = 1;
+  jpeg_stdio_src(&cinfo, fp);
+  jpeg_read_header(&cinfo, TRUE);
+  *out_w = (int)cinfo.image_width;
+  *out_h = (int)cinfo.image_height;
+  jpeg_destroy_decompress(&cinfo);
+  fclose(fp);
+  return 0;
+}
+
+/* 图片尺寸：(w << 32) | h；失败返回 -1。
+ *
+ * 只读 JPEG 头，不做完整解码 —— /health 会被频繁调用，为了报两个数字去解
+ * 一张 1920x1080 的图不划算。PNG（只在假帧源下出现）退化成完整解码。 */
+long long moonbit_image_dims(const char *path) {
+  int w = 0;
+  int h = 0;
+  if (jpeg_header_dims(path, &w, &h) != 0) {
+    uint8_t *px = decode_frame_bgra(path, &w, &h);
+    if (px == NULL) return -1;
+    free(px);
+  }
+  if (w <= 0 || h <= 0) return -1;
+  return ((long long)w << 32) | (unsigned int)h;
+}
+
+/* 归一化矩形（0..1）→ 裁出来 → 缩放 → 编码。
+ *
+ * 参数全部来自 HTTP 查询串和 MCP 参数，也就是用户输入，所以这里不相信调用方：
+ * 先查有限性和范围，再按真实尺寸取整并夹紧，任何一步不成立就报错返回。
+ * 「离谱矩形」绝不能变成一个巨大的 malloc，也不能让指针跑出图外。
+ *
+ * 返回：0 成功；1 参数非法；2 解码失败；3 内存不足；4 写文件失败；
+ *       5 编码失败；6 写盘不完整（沿用 encode_bgra 的约定）。 */
+int moonbit_image_region(const char *src_path, int src_is_bgra, int src_w,
+                         int src_h, double x, double y, double w, double h,
+                         int dst_w, int quality, int webp,
+                         const char *out_path) {
+  if (!isfinite(x) || !isfinite(y) || !isfinite(w) || !isfinite(h)) return 1;
+  if (x < 0.0 || y < 0.0 || w <= 0.0 || h <= 0.0) return 1;
+  if (x > 1.0 || y > 1.0 || w > 1.0 || h > 1.0) return 1;
+  if (x + w > 1.0 + 1e-9 || y + h > 1.0 + 1e-9) return 1;
+  if (dst_w < 0 || dst_w > 4096) return 1;
+
+  int sw = 0;
+  int sh = 0;
+  uint8_t *frame = NULL;
+  if (src_is_bgra) {
+    /* PipeWire 直接给 BGRA：省掉「编码成 JPEG 再解回来」这一趟 */
+    sw = (int)src_w;
+    sh = (int)src_h;
+    if (sw <= 0 || sh <= 0 || sw > 32768 || sh > 32768) return 1;
+    frame = read_file(src_path, (size_t)sw * (size_t)sh * 4);
+  } else {
+    frame = decode_frame_bgra(src_path, &sw, &sh);
+  }
+  if (frame == NULL) return 2;
+  if (sw <= 0 || sh <= 0) {
+    free(frame);
+    return 2;
+  }
+
+  int px = (int)(x * (double)sw);
+  int py = (int)(y * (double)sh);
+  if (px < 0) px = 0;
+  if (px > sw - 1) px = sw - 1;
+  if (py < 0) py = 0;
+  if (py > sh - 1) py = sh - 1;
+  int pw = (int)(w * (double)sw + 0.5);
+  int ph = (int)(h * (double)sh + 0.5);
+  if (pw < 1) pw = 1;
+  if (ph < 1) ph = 1;
+  if (px + pw > sw) pw = sw - px;
+  if (py + ph > sh) ph = sh - py;
+  if (pw < 1 || ph < 1) {
+    free(frame);
+    return 1;
+  }
+
+  /* (size_t) 转换在前，乘积不会按 int 溢出 */
+  uint8_t *crop = (uint8_t *)malloc((size_t)pw * (size_t)ph * 4);
+  if (crop == NULL) {
+    free(frame);
+    return 3;
+  }
+  for (int row = 0; row < ph; row++) {
+    memcpy(crop + (size_t)row * (size_t)pw * 4,
+           frame + ((size_t)(py + row) * (size_t)sw + (size_t)px) * 4,
+           (size_t)pw * 4);
+  }
+  free(frame);
+  int rc = encode_bgra(crop, pw, ph, dst_w, quality, webp, out_path);
+  free(crop);
   return rc;
 }

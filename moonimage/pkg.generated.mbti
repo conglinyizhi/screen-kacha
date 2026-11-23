@@ -10,6 +10,12 @@ pub fn cursor_overlay(String, Bool, Int32, Int32, String, String, Int32, Int32, 
 
 pub fn cursor_overlay_code(String, Bool, Int32, Int32, String, String, Int32, Int32, Int32, Int32, Bool, String) -> Int32
 
+pub fn image_dims(String) -> (Int32, Int32)?
+
+pub fn image_region(String, Bool, Int32, Int32, Double, Double, Double, Double, Int32, Int32, Bool, String) -> Bool
+
+pub fn image_region_code(String, Bool, Int32, Int32, Double, Double, Double, Double, Int32, Int32, Bool, String) -> Int32
+
 pub fn jpeg_to_file(String, Int32, Int32, Bool, String) -> Bool
 
 // Errors

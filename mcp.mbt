@@ -14,27 +14,107 @@ pub fn build_mcp(
   )
   let server = server.tool(
     "snapshot",
-    "取一张当前屏幕的截图，返回 JPEG 图片",
-    Json::object({ "type": "object" }),
-    async fn(_ctx, _args) {
+    "取一张当前屏幕的截图，返回 JPEG 图片。region 可只取一块，省 token",
+    Json::object({
+      "type": "object",
+      "properties": Json::object({
+        "region": Json::object({
+          "type": "string",
+          "description": "只取一块：x,y,w,h，四段都是 0..1 的比例或带 % 的百分比，例如 0.1,0.1,0.3,0.2 或 10%,10%,30%,20%",
+        }),
+        "width": Json::object({
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096,
+          "description": "输出宽度（像素），不传就是原宽",
+        }),
+      }),
+    }),
+    async fn(_ctx, args) {
+      // 参数是模型给的，不可信：region 解析失败、width 越界都直接回 isError，
+      // 不静默退回整屏 —— 那会让调用方以为裁剪生效了，白烧一遍 token。
+      let region = match arg_str(args, "region") {
+        None => Some(None)
+        Some(v) =>
+          match parse_region(v) {
+            Some(r) => Some(Some(r))
+            None => None
+          }
+      }
+      let region = match region {
+        None =>
+          return Ok(
+            @mcp.ToolResult::error(
+              "region 看不懂。要四段，每段是 0..1 的比例或百分比，例如 0.1,0.1,0.3,0.2",
+            ),
+          )
+        Some(r) => r
+      }
+      let dst_w = match arg_int(args, "width") {
+        None => Some(None)
+        Some(v) =>
+          match parse_dst_w(v.to_string()) {
+            Some(w) => Some(Some(w))
+            None => None
+          }
+      }
+      let dst_w = match dst_w {
+        None => return Ok(@mcp.ToolResult::error("width 要在 1 到 4096 之间"))
+        Some(w) => w
+      }
       // 和 HTTP 那条路一样：先按最小间隔取帧，再拿最新的一帧
       store.ensure_request(1500L)
-      match store.bytes() {
+      let frame = match store.bytes() {
         None =>
-          Ok(
+          return Ok(
             @mcp.ToolResult::error(
               "还没有抓到帧，过一秒再试；原因看 health 工具或 /health",
             ),
           )
-        Some(bytes) =>
+        Some(b) => b
+      }
+      // 不裁剪也不缩放：直接回原始字节，一次编解码都不做
+      if region is None && dst_w is None {
+        return Ok(
+          @mcp.ToolResult::success([
+            @mcp.ContentBlock::image(@util.b64_encode(frame), mime_type="image/jpeg"),
+          ]),
+        )
+      }
+      // 要加工就落一份临时文件：C 侧的图像入口吃路径
+      let src = store.next_tmp(".jpg")
+      let wrote = try {
+        @fs.write_file(src, frame, create_mode=CreateOrTruncate)
+        true
+      } catch {
+        _ => false
+      }
+      if !wrote {
+        return Ok(@mcp.ToolResult::error("临时文件写不出来"))
+      }
+      let out = store.next_tmp(".jpg")
+      let w = match dst_w {
+        Some(w) => w
+        None => 0
+      }
+      let ok = match region {
+        Some(r) =>
+          @image.image_region(src, false, 0, 0, r.x, r.y, r.w, r.h, w, 82, false, out)
+        None => @image.jpeg_to_file(src, w, 82, false, out)
+      }
+      let bytes = try {
+        Some(@fs.read_file(out).binary())
+      } catch {
+        _ => None
+      }
+      match (ok, bytes) {
+        (true, Some(b)) =>
           Ok(
             @mcp.ToolResult::success([
-              @mcp.ContentBlock::image(
-                @util.b64_encode(bytes),
-                mime_type="image/jpeg",
-              ),
+              @mcp.ContentBlock::image(@util.b64_encode(b), mime_type="image/jpeg"),
             ]),
           )
+        _ => Ok(@mcp.ToolResult::error("图像处理失败"))
       }
     },
   )
@@ -54,4 +134,35 @@ pub fn build_mcp(
 /// 协议版本由客户端在 `params._meta` 里声明，这里不校验（SDK 会校验）。
 pub async fn mcp_response(server : @mcp.MCPServer, body : String) -> String {
   server.handle_request(body)
+}
+
+///|
+/// 从工具参数里取字符串。参数是模型给的，形状不保证。
+fn arg_str(args : Json, key : String) -> String? {
+  match args {
+    Object(obj) =>
+      match obj.get(key) {
+        Some(String(v)) => Some(v.to_string())
+        _ => None
+      }
+    _ => None
+  }
+}
+
+///|
+/// 从工具参数里取整数。
+fn arg_int(args : Json, key : String) -> Int32? {
+  match args {
+    Object(obj) =>
+      match obj.get(key) {
+        Some(Number(v, ..)) =>
+          if v.is_nan() || v.is_inf() || v < 1.0 || v > 4096.0 {
+            None
+          } else {
+            Some(v.to_int())
+          }
+        _ => None
+      }
+    _ => None
+  }
 }

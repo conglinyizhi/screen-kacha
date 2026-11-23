@@ -146,6 +146,101 @@ pub fn jpeg_to_file(
 }
 
 ///|
+/// C 侧裁剪入口，见 `image_shim.c` 的 `moonbit_image_region`。
+#borrow(src, out)
+extern "c" fn image_region_raw(
+  src : Bytes,
+  src_is_raw : Int32,
+  src_w : Int32,
+  src_h : Int32,
+  x : Double,
+  y : Double,
+  w : Double,
+  h : Double,
+  dst_w : Int32,
+  quality : Int32,
+  webp : Int32,
+  out : Bytes,
+) -> Int32 = "moonbit_image_region"
+
+///|
+/// 按归一化矩形（0..1）裁一块，再缩放编码。
+///
+/// 矩形由调用方先校验过一遍（`parse_region`），C 侧仍然会再查一次：
+/// 这个参数一路来自 HTTP 查询串和 MCP 参数，不能只靠上游把关。
+#borrow(src, out)
+pub fn image_region(
+  src : String,
+  src_is_raw : Bool,
+  src_w : Int32,
+  src_h : Int32,
+  x : Double,
+  y : Double,
+  w : Double,
+  h : Double,
+  dst_w : Int32,
+  quality : Int32,
+  webp : Bool,
+  out : String,
+) -> Bool {
+  let webp_flag : Int32 = if webp { 1 } else { 0 }
+  let raw_flag : Int32 = if src_is_raw { 1 } else { 0 }
+  image_region_raw(
+    @util.cstr(src), raw_flag, src_w, src_h, x, y, w, h, dst_w, quality,
+    webp_flag, @util.cstr(out),
+  ) ==
+  0
+}
+
+///|
+/// 同 `image_region`，返回 C 侧的错误码。只给测试和排查用。
+#borrow(src, out)
+pub fn image_region_code(
+  src : String,
+  src_is_raw : Bool,
+  src_w : Int32,
+  src_h : Int32,
+  x : Double,
+  y : Double,
+  w : Double,
+  h : Double,
+  dst_w : Int32,
+  quality : Int32,
+  webp : Bool,
+  out : String,
+) -> Int32 {
+  let webp_flag : Int32 = if webp { 1 } else { 0 }
+  let raw_flag : Int32 = if src_is_raw { 1 } else { 0 }
+  image_region_raw(
+    @util.cstr(src), raw_flag, src_w, src_h, x, y, w, h, dst_w, quality,
+    webp_flag, @util.cstr(out),
+  )
+}
+
+///|
+/// 图片尺寸。读不出来返回 None。
+///
+/// C 侧只读 JPEG 头，不整张解码 —— `/health` 会被频繁调用。
+pub fn image_dims(path : String) -> (Int32, Int32)? {
+  let packed = image_dims_raw(@util.cstr(path))
+  if packed < 0L {
+    return None
+  }
+  let w = (packed >> 32).to_int()
+  let h = (packed & 0xFFFFFFFFL).to_int()
+  if w <= 0 || h <= 0 {
+    None
+  } else {
+    Some((w, h))
+  }
+}
+
+///|
+/// C 侧尺寸查询，返回 (w << 32) | h，失败 -1。
+#borrow(path)
+extern "c" fn image_dims_raw(path : Bytes) -> Int64 = "moonbit_image_dims"
+
+///|
 /// 同 `cursor_overlay`，但把 C 侧的返回码原样交出来。只给测试和排查用：
 /// 1 尺寸非法，2 帧读不出来/解不开，7 素材 PNG 读不出来，其余见 encode_bgra。
 pub fn cursor_overlay_code(

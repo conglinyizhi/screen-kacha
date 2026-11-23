@@ -282,6 +282,21 @@ check "无数据目录：/human.html" 200 "$(code $EB/human.html)"
 [ -f "$EMB_SHM/cursor-arrow.png" ] && ok || bad "光标素材没有释放到帧目录"
 check "无数据目录：带光标取图" 200 "$(code "$EB/snapshot.jpg?cursor=1")"
 
+echo "== 裁剪 =="
+check "crop 小数" 200 "$(code "$B/snapshot.jpg?crop=0.5,0.5,0.5,0.5")"
+check "crop 百分比" 200 "$(code "$B/snapshot.jpg?crop=50%,50%,50%,50%")"
+check "crop 与缩放同时用" 200 "$(code "$B/snapshot.jpg?crop=0.1,0.1,0.5,0.5&w=400")"
+# 写错了必须报错，不能悄悄给整屏
+check "crop 乱写要 400" 400 "$(code "$B/snapshot.jpg?crop=abc")"
+check "crop 越界要 400" 400 "$(code "$B/snapshot.jpg?crop=0.9,0.9,0.5,0.5")"
+check "crop 负数要 400" 400 "$(code "$B/snapshot.jpg?crop=-0.1,0,0.5,0.5")"
+FULL_BYTES=$(curl -s --max-time 10 "$B/snapshot.jpg" | wc -c)
+CROP_BYTES=$(curl -s --max-time 10 "$B/snapshot.jpg?crop=0.5,0.5,0.5,0.5" | wc -c)
+[ "$CROP_BYTES" -lt "$FULL_BYTES" ] && ok || bad "裁出来的图没有比整屏小"
+# 有分辨率，调用方才能把像素框换算成比例
+has "$(curl -s --max-time 5 $B/health)" '"screen_w"' \
+  && ok || bad "health 里没有 screen_w"
+
 echo "== MCP 端点 =="
 META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
 mcp_post() {
@@ -294,6 +309,10 @@ has "$(mcp_post "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"param
   && ok || bad "MCP tools/list 里没有 snapshot"
 has "$(mcp_post "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"snapshot\",\"arguments\":{},$META}}")" '"type":"image"' \
   && ok || bad "MCP snapshot 没返回图片块"
+has "$(mcp_post "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"snapshot\",\"arguments\":{\"region\":\"0.5,0.5,0.5,0.5\",\"width\":400},$META}}")" '"type":"image"' \
+  && ok || bad "MCP 带 region 的 snapshot 没返回图片"
+has "$(mcp_post "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"snapshot\",\"arguments\":{\"region\":\"瞎写\"},$META}}")" '"isError":true' \
+  && ok || bad "MCP 乱写 region 没有报错"
 has "$(mcp_post "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}")" '-32602' \
   && ok || bad "MCP 不带协议版本时没有拒绝"
 # 网页上要给出可直接抄的客户端配置

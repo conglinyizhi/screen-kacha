@@ -200,12 +200,27 @@ fn health_json(store : Store, port : Int32, access : Access) -> String {
   //
   // 只看前两个是不够的：泵线程要是整个卡死，就不会有任何一次采集失败，
   // err 一直是空的，ok 会一直说 true，而画面停在几分钟前。
+  // 分辨率：有原始帧就直接问采集侧，否则读一次 JPEG 头。
+  // 有了宽高，调用方才能把像素框换算成 crop 的比例。
+  let dims = match store.pw_raw() {
+    Some((_, w, h)) =>
+      if w > 0 && h > 0 {
+        Some((w, h))
+      } else {
+        None
+      }
+    None => @image.image_dims(store.shot())
+  }
+  let (screen_w, screen_h) = match dims {
+    Some((w, h)) => (w.to_string(), h.to_string())
+    None => ("0".to_string(), "0".to_string())
+  }
   let stalled = store.is_stalled()
   let ok = match store.bytes() {
     Some(_) => store.err() == "" && !stalled
     None => false
   }
-  "{\"ok\": \{ok}, \"stalled\": \{stalled}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"fails_consecutive\": \{store.consec_fails()}, \"err\": \"\{json_escape_text(store.err())}\", \"port\": \{port}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{json_escape_text(store.source())}\", \"access\": \"\{json_escape_text(access.describe())}\", \"cursor_fails\": \{store.cursor_fails()}, \"cursor_err\": \"\{json_escape_text(store.cursor_err())}\"}"
+  "{\"ok\": \{ok}, \"stalled\": \{stalled}, \"frame_age_ms\": \{store.age_ms()}, \"cap_ms\": \{store.cap_ms()}, \"count\": \{store.count()}, \"fails\": \{store.fails()}, \"fails_consecutive\": \{store.consec_fails()}, \"err\": \"\{json_escape_text(store.err())}\", \"port\": \{port}, \"idle_ms\": \{store.idle_ms()}, \"source\": \"\{json_escape_text(store.source())}\", \"access\": \"\{json_escape_text(access.describe())}\", \"cursor_fails\": \{store.cursor_fails()}, \"cursor_err\": \"\{json_escape_text(store.cursor_err())}\", \"screen_w\": \{screen_w}, \"screen_h\": \{screen_h}}"
 }
 
 ///|
@@ -267,6 +282,7 @@ async fn build_image_response(
   width : Int32?,
   fmt : String,
   cursor : Cursor?,
+  crop : Region?,
 ) -> Resp {
   let ctype = if fmt == "webp" { "image/webp" } else { "image/jpeg" }
   let webp = fmt == "webp"
@@ -331,6 +347,43 @@ async fn build_image_response(
       None => ()
     }
   }
+  // 裁一块。语义是「返回图上的这块比例区域」：先把整帧落成一个文件
+  // （要光标的话光标已经贴上去了），再按比例裁并缩到 dst_w。
+  //
+  // 先落盘再裁，是为了让 region 始终相对整帧 —— 直接在缩放后的图上裁的话，
+  // 同一个 region 会随 ?w= 变出不同结果。
+  if crop is Some(r) {
+    let base = store.next_tmp(fmt)
+    let base_ok = if is_raw {
+      if webp {
+        @image.bgra_to_webp(src, src_w, src_h, 0, JPEG_QUALITY, base)
+      } else {
+        @image.bgra_to_jpeg(src, src_w, src_h, 0, JPEG_QUALITY, base)
+      }
+    } else {
+      @image.jpeg_to_file(src, 0, JPEG_QUALITY, webp, base)
+    }
+    if !base_ok {
+      return make_res(
+        500,
+        "application/json",
+        @utf8.encode("{\"error\":\"图像转换失败\"}"),
+      )
+    }
+    let out = store.next_tmp(fmt)
+    let ok = @image.image_region(
+      base, false, 0, 0, r.x, r.y, r.w, r.h, dst_w, JPEG_QUALITY, webp, out,
+    )
+    return match read_result(out, ok) {
+      Some(b) => make_res(200, ctype, b)
+      None =>
+        make_res(
+          500,
+          "application/json",
+          @utf8.encode("{\"error\":\"裁剪失败\"}"),
+        )
+    }
+  }
   // 原始尺寸直出，什么都不用做
   if !need_work {
     return make_res(200, ctype, data)
@@ -364,6 +417,7 @@ async fn handle_snapshot(
   query_w : String?,
   query_age : String?,
   query_cursor : String?,
+  query_crop : String?,
 ) -> Resp {
   store.mark_request()
   match parse_snapshot(name) {
@@ -388,6 +442,27 @@ async fn handle_snapshot(
           }
         None => 1500L
       }
+      let crop = match query_crop {
+        None => Some(None)
+        Some(v) =>
+          match parse_region(v) {
+            Some(r) => Some(Some(r))
+            None => None
+          }
+      }
+      let crop = match crop {
+        None =>
+          // 写错了就说清楚，别悄悄给一张整屏 —— 调用方会以为裁剪生效了
+          return make_res(
+            400,
+            "text/plain; charset=utf-8",
+            @utf8.encode(
+              "crop 参数看不懂：\{query_crop.unwrap()}。\n" +
+              "要四段，每段是 0 到 1 的比例或百分比，例如 crop=0.1,0.1,0.3,0.2 或 crop=10%,10%,30%,20%。\n",
+            ),
+          )
+        Some(r) => r
+      }
       store.ensure_request(max_age)
       match store.bytes() {
         None =>
@@ -403,6 +478,7 @@ async fn handle_snapshot(
             clamp_width(w),
             fmt,
             parse_cursor(query_cursor),
+            crop,
           )
       }
     }
@@ -474,6 +550,7 @@ pub fn build_router(store : Store, port : Int32, access : Access) -> Router {
           ev.get_query("w"),
           ev.get_query("age"),
           ev.get_query("cursor"),
+          ev.get_query("crop"),
         )
       None => not_found("/")
     }
