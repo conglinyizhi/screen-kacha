@@ -42,16 +42,6 @@ install -m 0755 _build/native/release/build/cmd/main/main.exe ~/.local/bin/scree
 systemctl --user restart screen-kacha.service
 ```
 
-## 会咬人的地方
-
-- **白盒测试里任何会触发抓帧的路径都必须给 `fake=`。** 不给的话 `capture()` 会
-  去调真实的抓屏：有 PipeWire 就走 PipeWire，否则拉起 spectacle。测试进程通常
-  没有 `DISPLAY`，spectacle 的 Qt 初始化会直接 `abort()`，每跑一次测试就在系统
-  里留一个核心转储（用户那边会看到一串崩溃提示）。
-- 光标素材尺寸和 PNG 是耦合的，换素材要连常量一起改。
-- C 侧不能返回 `Bytes`（会 SIGSEGV），只走 `extern` 的标量/指针。
-- 每个 `moon.pkg` 只能有一个 `options` 块。
-
 ## 代码地图
 
 ```text
@@ -71,6 +61,16 @@ cmd/imgtest/      手动比对编码器输出的小工具
 而 moondbus 是同步阻塞的。塞进主服务会把整个事件循环卡死。
 
 ## 会咬人的地方
+
+**白盒测试里任何会触发抓帧的路径都必须给 `fake=`。** 不给的话 `capture()` 会去调
+真实的抓屏：有 PipeWire 就走 PipeWire，否则拉起 spectacle。测试进程通常没有
+`DISPLAY`，spectacle 的 Qt 初始化会直接 `abort()`，每跑一次测试就在系统里留一个
+核心转储（用户那边会看到一串崩溃提示）。
+
+**起临时实例必须把 `XDG_STATE_HOME` 一起指走。** 端口文件、portal 记录、错误日志
+都落在 `$XDG_STATE_HOME/screen-kacha`（缺省 `~/.local/state/screen-kacha`）。临时
+实例共用这个目录就会覆盖生产状态：托盘照着那个死端口轮询，显示「服务没响应」，而
+服务其实好好的。单测覆盖不到「两个进程抢同一个文件」这种事，只能靠这条规矩。
 
 **光标合成在 C 里，尺寸从 PNG 头里读。** 两套素材（无尾巴 / 带尾巴）尺寸不同，
 但代码里不写死宽高，换素材不用改常量。合成走 `moonimage` 的 `cursor_overlay`。
