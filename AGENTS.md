@@ -3,28 +3,36 @@
 本机屏幕的 HTTP 快照服务，MoonBit 实现。取一张 JPEG 就能看见屏幕现状，给本地 agent 用。
 只在 Linux 桌面跑：抓屏走 PipeWire 加 xdg-desktop-portal，KDE Wayland 上额外有托盘和光标标记。
 
-## 先看这三条
+## 先看这几条
 
-1. 改完 `.mbt` 必须跑 `moon info && moon fmt`，两个都可能在仓库里留下改动，
-   漏了 CI 的 `git diff --exit-code` 会失败
-2. 冒烟脚本读的是 `_build/native/debug` 下的二进制。只编 release 会直接 FAIL，
+1. 冒烟脚本读的是 `_build/native/debug` 下的二进制。只编 release 会直接 FAIL，
    两个 target 都得编
-3. 改 `.mbt` 要重编；改 `human.html`、`*.md`、`*.txt` **不用**，服务是运行时读文件的
+2. 改 `.mbt` 要重编；改 `human.html`、`*.md`、`*.txt` **不用**，服务是运行时读文件的
+3. 手动跑二进制必须带 `--port`，代码里没有默认端口（免得和常驻服务撞端口）
 
-## 构建与验证
+## 开发流程
+
+改完代码按这个顺序走一遍，全绿再提交：
 
 ```bash
+# 1. 格式化与接口。先清构建缓存：moon fmt 按 mtime 判断要不要处理，
+#    检出或 rsync 之后可能静默跳过，清掉才能保证真的格式化过
+rm -rf _build && moon fmt && moon info
+
+# 2. 编译与单测
 moon check --target native --deny-warn     # 警告即失败，别放着
-moon test --target native                  # 九十多条
-moon build --target native cmd/main        # debug，冒烟要用
-moon build --release --target native cmd/main cmd/tray cmd/portal
-bash scripts/smoke.sh                      # 端到端，假帧源，不需要显示器
+moon test --target native
+
+# 3. 冒烟：端到端，假帧源，不需要显示器
+moon build --target native cmd/main cmd/tray cmd/portal cmd/cursor
+moon build --release --target native cmd/main cmd/tray cmd/portal cmd/cursor
+bash scripts/smoke.sh
 ```
 
 `moon build --target native` **不带目标**会把库包也当可执行文件链接，报 undefined main。
 永远显式写目标。
 
-`scripts/smoke.sh` 起一个临时实例走完整 HTTP 全链路，四十项断言，退出码非零表示失败。
+`scripts/smoke.sh` 起一个临时实例走完整 HTTP 全链路，退出码非零表示失败。
 它也支持 `ACCESS_CONF=<path> bash scripts/smoke.sh` 走受限监听路径，两条路都要过。
 
 部署：
