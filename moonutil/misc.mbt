@@ -72,3 +72,33 @@ pub fn b64_encode(data : Bytes) -> String {
   }
   out.to_string()
 }
+
+///|
+/// 用户状态目录：`$XDG_STATE_HOME/screen-kacha`，否则 `$HOME/.local/state/screen-kacha`。
+///
+/// 拿不到就返回 None。**不要**在这里再编一个 `/tmp` 兜底：多一份文件就多一个
+/// 排查时看错的地方，不如干脆不写，界面上照常显示这次的错误。
+pub fn state_dir() -> String? {
+  match @env.get_env_var("XDG_STATE_HOME") {
+    Some(v) => if v == "" { None } else { Some("\{v}/screen-kacha") }
+    None =>
+      match @env.get_env_var("HOME") {
+        Some(h) =>
+          if h == "" {
+            None
+          } else {
+            Some("\{h}/.local/state/screen-kacha")
+          }
+        None => None
+      }
+  }
+}
+
+///|
+/// 出错记录文件的位置。只有这一份，不存在第二个。
+pub fn error_log_path() -> String? {
+  match state_dir() {
+    Some(d) => Some("\{d}/last-error.txt")
+    None => None
+  }
+}

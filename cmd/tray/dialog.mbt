@@ -27,25 +27,25 @@ fn has(cmd : String) -> Bool {
 }
 
 ///|
-/// 出错记录落在哪。
-fn error_log_path() -> String {
-  match @env.get_env_var("HOME") {
-    Some(h) => "\{h}/.local/state/screen-kacha/last-error.txt"
-    None => "/tmp/screen-kacha-last-error.txt"
-  }
-}
-
-///|
 /// 把一次失败写进记录文件（最新的在最上面，只留最近 40 行）。
+///
+/// 路径只有一份，来自 `@util.state_dir()`。以前 HOME 缺失时会退回
+/// `/tmp/screen-kacha-last-error.txt`，于是同一份日志可能有两个位置 ——
+/// 排查的人翻错文件就会得出「没报错」的结论。现在拿不到状态目录就不写，
+/// 界面上照常显示这次的错误。
 ///
 /// 为什么不靠 journal：用户不一定会翻 `journalctl --user`，但
 /// `cat` 一个固定路径谁都会。`/error.md` 里也是让人先看这个文件。
 fn record_error(action : String, detail : String) -> Unit {
+  let path = match @util.error_log_path() {
+    Some(p) => p
+    None => return
+  }
   let stamp = capture("date '+%Y-%m-%d %H:%M:%S'", 64)
   let when = stamp.trim().to_owned()
   let head = "[\{when}] \{action}\n  \{detail}\n"
-  let old = capture("head -40 '\{error_log_path()}' 2>/dev/null", 8192)
-  let _ = write_file(error_log_path(), head + old)
+  let old = capture("head -40 '\{path}' 2>/dev/null", 8192)
+  let _ = write_file(path, head + old)
 }
 
 ///|

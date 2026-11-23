@@ -10,9 +10,13 @@ pub fn b64_encode(Bytes) -> String
 
 pub fn cstr(String) -> Bytes
 
+pub fn error_log_path() -> String?
+
 pub fn parse_int(StringView, Int32) -> Int32
 
 pub fn pick(@argparse.Matches, String, String) -> String
+
+pub fn state_dir() -> String?
 
 // Errors
 

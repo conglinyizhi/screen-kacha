@@ -79,3 +79,9 @@ int32_t moonbit_instance_lock(const char *dir) {
   /* 拿到就揣着，进程结束时内核回收 */
   return 1;
 }
+
+/* 当前用户的 uid。
+ *
+ * 运行时目录以前写死 /run/user/1000：多用户机器或者 root 下会指到别人的目录，
+ * 表现为「Wayland socket 明明在却读不到」。用 getuid() 问系统，别猜。 */
+int moonbit_current_uid(void) { return (int)getuid(); }

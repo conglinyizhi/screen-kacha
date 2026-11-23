@@ -18,10 +18,14 @@ test "pick：取到值、回落默认、未知键" {
 }
 
 ///|
-test "cli_cmd：五个选项都有默认值" {
+test "cli_cmd：除端口外都有默认值" {
   let cmd = cli_cmd()
   let m = cmd.parse(argv=[])
-  assert_eq(@util.pick(m, "port", ""), "18940")
+  // 端口必须由调用方给：代码里的默认值和安装版的端口是两回事，
+  // 静默挑一个会让人以为连的是同一个服务
+  assert_eq(@util.pick(m, "port", ""), "")
+  let m2 = cmd.parse(argv=["--port", "18940"])
+  assert_eq(@util.pick(m2, "port", ""), "18940")
   assert_eq(@util.pick(m, "bind", ""), "0.0.0.0")
   assert_eq(@util.pick(m, "idle", ""), "20")
   assert_eq(@util.pick(m, "shm", ""), "/tmp/screen-kacha")

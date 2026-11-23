@@ -282,6 +282,18 @@ check "无数据目录：/human.html" 200 "$(code $EB/human.html)"
 [ -f "$EMB_SHM/cursor-arrow.png" ] && ok || bad "光标素材没有释放到帧目录"
 check "无数据目录：带光标取图" 200 "$(code "$EB/snapshot.jpg?cursor=1")"
 
+echo "== 端口是必填的 =="
+# 端口没有默认值：不给就得拒绝启动，不能静默挑一个（那会和安装版撞端口，
+# 排查的人还以为连的是同一个服务）
+NO_PORT_RC=0
+./_build/native/debug/build/cmd/main/main.exe >/dev/null 2>&1 || NO_PORT_RC=$?
+[ "$NO_PORT_RC" -ne 0 ] && ok || bad "不给 --port 居然起了"
+for bad_port in 0 70000 abc; do
+  RC=0
+  ./_build/native/debug/build/cmd/main/main.exe --port "$bad_port" >/dev/null 2>&1 || RC=$?
+  [ "$RC" -ne 0 ] && ok || bad "非法端口 $bad_port 居然被接受"
+done
+
 echo "== 裁剪 =="
 check "crop 小数" 200 "$(code "$B/snapshot.jpg?crop=0.5,0.5,0.5,0.5")"
 check "crop 百分比" 200 "$(code "$B/snapshot.jpg?crop=50%,50%,50%,50%")"

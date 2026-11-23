@@ -11,9 +11,11 @@ fn cli_cmd() -> @argparse.Command {
       ),
     ],
     options=[
-      @argparse.OptionArg("port", short='p', about="监听端口", default_values=[
-        "18940",
-      ]),
+      @argparse.OptionArg(
+        "port",
+        short='p',
+        about="监听端口（必填，1-65535）",
+      ),
       @argparse.OptionArg("bind", about="监听地址", default_values=[
         "0.0.0.0",
       ]),
@@ -184,7 +186,18 @@ async fn portal_bg(store : @store.Store, shm : String) -> Unit {
 ///|
 async fn main {
   let m = cli_cmd().parse()
-  let port = @util.parse_int(@util.pick(m, "port", "18940"), 18940)
+  // 端口不做默认值：塞在代码里的默认端口和安装版的端口是两回事，
+  // 手动跑时静默用了另一个端口，排查的人会以为自己连的是同一个服务。
+  let port = @util.parse_int(@util.pick(m, "port", ""), 0)
+  if port <= 0 || port > 65535 {
+    eprintln("要给 --port（1-65535）。")
+    eprintln(
+      "安装版的 unit 里已经带了端口，手动跑时自己指定，例如：",
+    )
+    eprintln("  screen-kacha --port 18940 --bind 127.0.0.1")
+    @store.exit_process(2)
+    return
+  }
   let bind = @util.pick(m, "bind", "0.0.0.0")
   let idle = @util.parse_int(@util.pick(m, "idle", "20"), 20)
   let pump = @util.parse_int(@util.pick(m, "pump", "500"), 500)
@@ -251,10 +264,7 @@ async fn main {
   if cleaned_tmp > 0 {
     eprintln("清掉上次运行留下的临时输出 \{cleaned_tmp} 个")
   }
-  let wl_dir = match @env.get_env_var("XDG_RUNTIME_DIR") {
-    Some(d) => d
-    None => "/run/user/1000"
-  }
+  let wl_dir = @store.default_runtime_dir()
   let use_pw = pw_node > 0
   let store = @store.Store::new(
     shot=shot_path,

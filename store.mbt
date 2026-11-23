@@ -615,13 +615,33 @@ pub fn Store::idle_ms(self : Store) -> Int64 {
 }
 
 ///|
-/// runtime 目录。优先 XDG_RUNTIME_DIR，否则按当前 uid 推。
-/// 之前写死 /run/user/1000，多用户或 root 下会指到别人的目录。
-fn default_runtime_dir() -> String {
-  match @env.get_env_var("XDG_RUNTIME_DIR") {
-    Some(v) => v
-    None => "/run/user/1000"
+/// 当前用户的 uid。
+///
+/// 问系统要，不写死 1000：多用户机器、root、或者容器里 uid 都可能不是 1000，
+/// 猜错就会指到别人的运行时目录。
+extern "c" fn current_uid_raw() -> Int32 = "moonbit_current_uid"
+
+///|
+pub fn current_uid() -> Int32 {
+  current_uid_raw()
+}
+
+///|
+/// runtime 目录怎么定：给了 XDG_RUNTIME_DIR 就用它，否则 `/run/user/<uid>`。
+///
+/// 单独抽出来是为了能测：这台机器上 uid 正好是 1000，跟写死的旧值一样，
+/// 不换个 uid 试就看不出改没改。
+pub fn runtime_dir_from(env : String?, uid : Int32) -> String {
+  match env {
+    Some(v) => if v == "" { "/run/user/\{uid}" } else { v }
+    None => "/run/user/\{uid}"
   }
+}
+
+///|
+/// 当前进程该用的 runtime 目录。
+pub fn default_runtime_dir() -> String {
+  runtime_dir_from(@env.get_env_var("XDG_RUNTIME_DIR"), current_uid())
 }
 
 ///|
