@@ -674,13 +674,19 @@ async test "image_region：比例裁出对应尺寸" {
   let _ = @fs.mkdir(dir, permission=0o700, recursive=true) catch { _ => () }
   let src = "\{dir}/src.bgra"
   let px = make_bgra(100, 80, fn(_x, _y) { (200, 180, 40) })
-  @fs.write_file(src, px, create_mode=CreateOrTruncate) catch { _ => () }
+  @fs.write_file(src, px, create_mode=CreateOrTruncate) catch {
+    _ => ()
+  }
   let out = "\{dir}/out.jpg"
-  assert_true(image_region(src, true, 100, 80, 0.0, 0.0, 1.0, 1.0, 0, 82, false, out))
+  assert_true(
+    image_region(src, true, 100, 80, 0.0, 0.0, 1.0, 1.0, 0, 82, false, out),
+  )
   let full = image_dims(out).unwrap()
   assert_eq(full.0, 100)
   assert_eq(full.1, 80)
-  assert_true(image_region(src, true, 100, 80, 0.5, 0.5, 0.5, 0.5, 0, 82, false, out))
+  assert_true(
+    image_region(src, true, 100, 80, 0.5, 0.5, 0.5, 0.5, 0, 82, false, out),
+  )
   let half = image_dims(out).unwrap()
   assert_eq(half.0, 50)
   assert_eq(half.1, 40)
@@ -693,18 +699,45 @@ async test "image_region：畸形矩形被拒" {
   let _ = @fs.mkdir(dir, permission=0o700, recursive=true) catch { _ => () }
   let src = "\{dir}/src.bgra"
   let px = make_bgra(100, 80, fn(_x, _y) { (200, 180, 40) })
-  @fs.write_file(src, px, create_mode=CreateOrTruncate) catch { _ => () }
+  @fs.write_file(src, px, create_mode=CreateOrTruncate) catch {
+    _ => ()
+  }
   let out = "\{dir}/bad.jpg"
   let nan = 0.0 / 0.0
   let inf = 1.0 / 0.0
   // 负数、零宽、越界、和超 1、非有限、dst_w 越界
-  assert_eq(image_region_code(src, true, 100, 80, -0.1, 0.0, 0.5, 0.5, 0, 82, false, out), 1)
-  assert_eq(image_region_code(src, true, 100, 80, 0.0, 0.0, 0.0, 0.5, 0, 82, false, out), 1)
-  assert_eq(image_region_code(src, true, 100, 80, 0.9, 0.0, 0.5, 0.5, 0, 82, false, out), 1)
-  assert_eq(image_region_code(src, true, 100, 80, 0.0, 0.9, 0.5, 0.5, 0, 82, false, out), 1)
-  assert_eq(image_region_code(src, true, 100, 80, nan, 0.0, 0.5, 0.5, 0, 82, false, out), 1)
-  assert_eq(image_region_code(src, true, 100, 80, inf, 0.0, 0.5, 0.5, 0, 82, false, out), 1)
-  assert_eq(image_region_code(src, true, 100, 80, 0.0, 0.0, 0.5, 0.5, 5000, 82, false, out), 1)
+  assert_eq(
+    image_region_code(
+      src, true, 100, 80, -0.1, 0.0, 0.5, 0.5, 0, 82, false, out,
+    ),
+    1,
+  )
+  assert_eq(
+    image_region_code(src, true, 100, 80, 0.0, 0.0, 0.0, 0.5, 0, 82, false, out),
+    1,
+  )
+  assert_eq(
+    image_region_code(src, true, 100, 80, 0.9, 0.0, 0.5, 0.5, 0, 82, false, out),
+    1,
+  )
+  assert_eq(
+    image_region_code(src, true, 100, 80, 0.0, 0.9, 0.5, 0.5, 0, 82, false, out),
+    1,
+  )
+  assert_eq(
+    image_region_code(src, true, 100, 80, nan, 0.0, 0.5, 0.5, 0, 82, false, out),
+    1,
+  )
+  assert_eq(
+    image_region_code(src, true, 100, 80, inf, 0.0, 0.5, 0.5, 0, 82, false, out),
+    1,
+  )
+  assert_eq(
+    image_region_code(
+      src, true, 100, 80, 0.0, 0.0, 0.5, 0.5, 5000, 82, false, out,
+    ),
+    1,
+  )
 }
 
 ///|

@@ -36,7 +36,12 @@ test "parse_region：越界和畸形一律拒绝" {
   assert_true(parse_region("nan,0,1,1") is None)
   assert_true(parse_region("inf,0,1,1") is None)
   // 超长串不该被逐字符解析
-  assert_true(parse_region("0.1,0.1,0.1,00000000000000000000000000000000000000000000000000000000000000000000000000000000") is None)
+  assert_true(
+    parse_region(
+      "0.1,0.1,0.1,00000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    )
+    is None,
+  )
 }
 
 ///|
@@ -50,4 +55,35 @@ test "parse_dst_w：只收 1..4096 的十进制" {
   assert_true(parse_dst_w("-12") is None)
   assert_true(parse_dst_w("") is None)
   assert_true(parse_dst_w("999999") is None)
+}
+
+///|
+/// 畸形输入的清单。每一条都应该被拒 —— 这里「服务端报错」就是通过。
+test "parse_region：畸形清单" {
+  let bad : Array[String] = [
+    "", // 空
+     ",", // 只有一个逗号
+     ",,,", // 四个空段
+     "0,0,1,1,", // 多一个逗号
+     "0,0,1", // 少一段
+     "0,0,1,1,1", // 多一段
+     "0..1,0,1,1", // 两个小数点
+     "0x10,0,1,1", // 十六进制
+     "1,0,1,1", // x 已经是 1，宽再 1 就越界
+     "0,1,1,1", // y 越界
+     "150%,0,10%,10%", // 百分比超 100
+     "0.0,0.0,0.0,0.0", // 零宽零高
+     "   ,0,1,1", // 空段带空格
+  ]
+  for v in bad {
+    assert_true(parse_region(v) is None)
+  }
+}
+
+///|
+/// 边界值要放行：整帧、最小一块。
+test "parse_region：边界放行" {
+  assert_true(parse_region("0,0,1,1") is Some(_))
+  assert_true(parse_region("0,0,0.0001,0.0001") is Some(_))
+  assert_true(parse_region("0.9999,0.9999,0.0001,0.0001") is Some(_))
 }

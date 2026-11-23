@@ -33,13 +33,14 @@ pub fn build_mcp(
     async fn(_ctx, args) {
       // 参数是模型给的，不可信：region 解析失败、width 越界都直接回 isError，
       // 不静默退回整屏 —— 那会让调用方以为裁剪生效了，白烧一遍 token。
-      let region = match arg_str(args, "region") {
+      let region = match arg_node(args, "region") {
         None => Some(None)
-        Some(v) =>
-          match parse_region(v) {
+        Some(String(v)) =>
+          match parse_region(v.to_string()) {
             Some(r) => Some(Some(r))
             None => None
           }
+        Some(_) => None
       }
       let region = match region {
         None =>
@@ -50,16 +51,24 @@ pub fn build_mcp(
           )
         Some(r) => r
       }
-      let dst_w = match arg_int(args, "width") {
+      let dst_w = match arg_node(args, "width") {
         None => Some(None)
-        Some(v) =>
-          match parse_dst_w(v.to_string()) {
-            Some(w) => Some(Some(w))
-            None => None
+        Some(Number(v, ..)) =>
+          // 只收 1..4096 的整数；小数、NaN、Inf、越界都算写错
+          if v.is_nan() ||
+            v.is_inf() ||
+            v < 1.0 ||
+            v > 4096.0 ||
+            v != v.to_int().to_double() {
+            None
+          } else {
+            Some(Some(v.to_int()))
           }
+        Some(_) => None
       }
       let dst_w = match dst_w {
-        None => return Ok(@mcp.ToolResult::error("width 要在 1 到 4096 之间"))
+        None =>
+          return Ok(@mcp.ToolResult::error("width 要在 1 到 4096 之间"))
         Some(w) => w
       }
       // 和 HTTP 那条路一样：先按最小间隔取帧，再拿最新的一帧
@@ -77,7 +86,10 @@ pub fn build_mcp(
       if region is None && dst_w is None {
         return Ok(
           @mcp.ToolResult::success([
-            @mcp.ContentBlock::image(@util.b64_encode(frame), mime_type="image/jpeg"),
+            @mcp.ContentBlock::image(
+              @util.b64_encode(frame),
+              mime_type="image/jpeg",
+            ),
           ]),
         )
       }
@@ -99,19 +111,31 @@ pub fn build_mcp(
       }
       let ok = match region {
         Some(r) =>
-          @image.image_region(src, false, 0, 0, r.x, r.y, r.w, r.h, w, 82, false, out)
+          @image.image_region(
+            src,
+            false,
+            0,
+            0,
+            r.x,
+            r.y,
+            r.w,
+            r.h,
+            w,
+            82,
+            false,
+            out,
+          )
         None => @image.jpeg_to_file(src, w, 82, false, out)
       }
-      let bytes = try {
-        Some(@fs.read_file(out).binary())
-      } catch {
-        _ => None
-      }
+      let bytes = Some(@fs.read_file(out).binary()) catch { _ => None }
       match (ok, bytes) {
         (true, Some(b)) =>
           Ok(
             @mcp.ToolResult::success([
-              @mcp.ContentBlock::image(@util.b64_encode(b), mime_type="image/jpeg"),
+              @mcp.ContentBlock::image(
+                @util.b64_encode(b),
+                mime_type="image/jpeg",
+              ),
             ]),
           )
         _ => Ok(@mcp.ToolResult::error("图像处理失败"))
@@ -137,32 +161,12 @@ pub async fn mcp_response(server : @mcp.MCPServer, body : String) -> String {
 }
 
 ///|
-/// 从工具参数里取字符串。参数是模型给的，形状不保证。
-fn arg_str(args : Json, key : String) -> String? {
+/// 取出参数对应的 JSON 节点。**没给**返回 None，给了就原样返回 ——
+/// 调用方必须能分清「没给」和「给了个不合法的东西」，否则越界参数会被
+/// 当成没给，静默退回整屏。
+fn arg_node(args : Json, key : String) -> Json? {
   match args {
-    Object(obj) =>
-      match obj.get(key) {
-        Some(String(v)) => Some(v.to_string())
-        _ => None
-      }
-    _ => None
-  }
-}
-
-///|
-/// 从工具参数里取整数。
-fn arg_int(args : Json, key : String) -> Int32? {
-  match args {
-    Object(obj) =>
-      match obj.get(key) {
-        Some(Number(v, ..)) =>
-          if v.is_nan() || v.is_inf() || v < 1.0 || v > 4096.0 {
-            None
-          } else {
-            Some(v.to_int())
-          }
-        _ => None
-      }
+    Object(obj) => obj.get(key)
     _ => None
   }
 }

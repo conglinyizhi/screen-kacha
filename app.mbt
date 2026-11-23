@@ -203,12 +203,7 @@ fn health_json(store : Store, port : Int32, access : Access) -> String {
   // 分辨率：有原始帧就直接问采集侧，否则读一次 JPEG 头。
   // 有了宽高，调用方才能把像素框换算成 crop 的比例。
   let dims = match store.pw_raw() {
-    Some((_, w, h)) =>
-      if w > 0 && h > 0 {
-        Some((w, h))
-      } else {
-        None
-      }
+    Some((_, w, h)) => if w > 0 && h > 0 { Some((w, h)) } else { None }
     None => @image.image_dims(store.shot())
   }
   let (screen_w, screen_h) = match dims {
@@ -347,32 +342,72 @@ async fn build_image_response(
       None => ()
     }
   }
-  // 裁一块。语义是「返回图上的这块比例区域」：先把整帧落成一个文件
-  // （要光标的话光标已经贴上去了），再按比例裁并缩到 dst_w。
-  //
-  // 先落盘再裁，是为了让 region 始终相对整帧 —— 直接在缩放后的图上裁的话，
-  // 同一个 region 会随 ?w= 变出不同结果。
+  // 裁一块。语义是「返回图上的这块比例区域」：先在**全尺寸**上准备好底图，
+  // 最后再按比例裁并缩到 dst_w —— 缩放放在最后，同一个 region 才不会被 ?w= 影响。
   if crop is Some(r) {
-    let base = store.next_tmp(fmt)
+    // 底图一律落成 JPEG：裁剪那边只解 JPEG 和 PNG，写 WebP 进去会解不开。
+    // 目标格式是 webp 也没关系，编码发生在裁剪之后。
+    let base = store.next_tmp(".jpg")
     let base_ok = if is_raw {
-      if webp {
-        @image.bgra_to_webp(src, src_w, src_h, 0, JPEG_QUALITY, base)
-      } else {
-        @image.bgra_to_jpeg(src, src_w, src_h, 0, JPEG_QUALITY, base)
-      }
+      @image.bgra_to_jpeg(src, src_w, src_h, 0, JPEG_QUALITY, base)
     } else {
-      @image.jpeg_to_file(src, 0, JPEG_QUALITY, webp, base)
+      @image.jpeg_to_file(src, 0, JPEG_QUALITY, false, base)
     }
-    if !base_ok {
-      return make_res(
-        500,
-        "application/json",
-        @utf8.encode("{\"error\":\"图像转换失败\"}"),
-      )
+    let mut crop_src = base
+    // 要光标就把光标贴在整帧底图上：坐标是按整帧算的，先裁后贴会错位
+    if base_ok {
+      match cursor {
+        Some(cur) =>
+          match read_cursor_pos(store.cursor_pos_path()) {
+            Some((cx, cy)) => {
+              let (arrow, mask) = cur.assets()
+              let (ov, mk) = match cur.style {
+                Soft => (arrow, "")
+                Neg => ("", mask)
+              }
+              let ov_path = store.asset_path(ov)
+              let mk_path = if mk == "" { "" } else { store.asset_path(mk) }
+              let with_cursor = store.next_tmp(".jpg")
+              let code = @image.cursor_overlay_code(
+                base,
+                false,
+                0,
+                0,
+                ov_path,
+                mk_path,
+                cx,
+                cy,
+                0,
+                JPEG_QUALITY,
+                false,
+                with_cursor,
+              )
+              if code == 0 {
+                crop_src = with_cursor
+                store.note_cursor_ok()
+              } else {
+                store.note_cursor_fail(cursor_code_text(code))
+              }
+            }
+            None => ()
+          }
+        None => ()
+      }
     }
     let out = store.next_tmp(fmt)
     let ok = @image.image_region(
-      base, false, 0, 0, r.x, r.y, r.w, r.h, dst_w, JPEG_QUALITY, webp, out,
+      crop_src,
+      false,
+      0,
+      0,
+      r.x,
+      r.y,
+      r.w,
+      r.h,
+      dst_w,
+      JPEG_QUALITY,
+      webp,
+      out,
     )
     return match read_result(out, ok) {
       Some(b) => make_res(200, ctype, b)

@@ -49,7 +49,7 @@ pub fn parse_region(s : String) -> Region? {
       if x + w > 1.0 + REGION_EPS || y + h > 1.0 + REGION_EPS {
         return None
       }
-      Some({ x, y, w, h })
+      Some({ x, y, w, h, })
     }
     _ => None
   }
@@ -68,11 +68,7 @@ fn parse_region_part(raw : StringView) -> Double? {
   if body.length() == 0 {
     return None
   }
-  let d = try {
-    Some(@string.parse_double(body))
-  } catch {
-    _ => None
-  }
+  let d = Some(@string.parse_double(body)) catch { _ => None }
   match d {
     None => None
     Some(d) =>

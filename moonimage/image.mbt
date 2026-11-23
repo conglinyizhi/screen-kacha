@@ -186,8 +186,18 @@ pub fn image_region(
   let webp_flag : Int32 = if webp { 1 } else { 0 }
   let raw_flag : Int32 = if src_is_raw { 1 } else { 0 }
   image_region_raw(
-    @util.cstr(src), raw_flag, src_w, src_h, x, y, w, h, dst_w, quality,
-    webp_flag, @util.cstr(out),
+    @util.cstr(src),
+    raw_flag,
+    src_w,
+    src_h,
+    x,
+    y,
+    w,
+    h,
+    dst_w,
+    quality,
+    webp_flag,
+    @util.cstr(out),
   ) ==
   0
 }
@@ -212,8 +222,18 @@ pub fn image_region_code(
   let webp_flag : Int32 = if webp { 1 } else { 0 }
   let raw_flag : Int32 = if src_is_raw { 1 } else { 0 }
   image_region_raw(
-    @util.cstr(src), raw_flag, src_w, src_h, x, y, w, h, dst_w, quality,
-    webp_flag, @util.cstr(out),
+    @util.cstr(src),
+    raw_flag,
+    src_w,
+    src_h,
+    x,
+    y,
+    w,
+    h,
+    dst_w,
+    quality,
+    webp_flag,
+    @util.cstr(out),
   )
 }
 
