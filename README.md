@@ -144,16 +144,17 @@ WAYLAND_DISPLAY=wayland-1 ./_build/native/release/build/cmd/main/main.exe --port
 moon fmt --check
 moon check --target native --deny-warn
 moon test --target native          # 单元测试
-bash scripts/smoke.sh              # 端到端冒烟（默认监听路径）
-ACCESS_CONF=/tmp/only-local.conf bash scripts/smoke.sh   # 受限监听路径
+bash scripts/smoke.sh              # 端到端冒烟（默认访问策略）
+ACCESS_CONF=/tmp/only-local.conf bash scripts/smoke.sh   # 受限访问策略
+bash scripts/smoke-instances.sh    # 具名实例并行与状态隔离
 ```
 
 冒烟脚本用 `--fake` 指定一张图片当帧源，绕开 spectacle 和 portal，自己挑一个空闲端口
 起临时实例，把路由、类型、缩放、WebP、帧龄缓存、并发合并、慢连接、并发压力都走一遍。
-不需要显示器，也不碰正在运行的服务。
+不需要显示器，也不碰正在运行的服务。带 `ACCESS_CONF` 的第二次运行用于验证受限访问策略。
 
-`serve_with_access`（启用访问限制时的监听循环）和 `serve_on` 是两条代码路径，
-所以冒烟要跑两遍。CI 里也是两遍。
+`scripts/smoke-instances.sh` 会在临时状态目录下并行启动两个具名实例，验证端口状态互不覆盖、
+同名实例不能重复启动、共用帧目录会被拦截，以及停止一个实例不会影响另一个。
 
 ## 后台抓帧泵
 
@@ -274,7 +275,6 @@ allow =                # 预留：显式放行名单
 这一段不属于 RFC1918，公网上确实分配过，所以默认不当局域网。打开后它跟随
 「放行局域网请求」走，不是无条件放行。
 
-实现上，公网不放行时服务自己收连接（crescent 的 `serve_on` 把对端地址丢了，
-拿不到 IP），每条连接处理一个请求就关；公网放行时仍走原来的 `serve_on`。
+实现上，服务统一使用自己的连接循环，以便检查对端地址并应用访问策略；每条连接处理一个请求后关闭。
 
 
