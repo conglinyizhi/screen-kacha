@@ -54,6 +54,13 @@ grep -q 'XDG_STATE_HOME.*screen-kacha' "$ROOT/install.sh" \
 grep -q 'portal.token' "$ROOT/install.sh" \
   && ok || bad "卸载没有清 portal.token"
 
+# 已改名的 portal loop 不能作为可执行旧模板留在 contrib。
+if [ -e "$ROOT/contrib/screenstream-portal-loop" ]; then
+  bad "contrib 仍有旧名称的 portal loop"
+else
+  ok
+fi
+
 echo
 echo "通过 $PASS，失败 $FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
