@@ -1,7 +1,18 @@
 # 出错了怎么查
 
-这个服务由两部分组成：**服务**（`screen-kacha`，监听 {{PORT}}）和**托盘**
-（`screen-kacha-tray`，面板上的图标）。先看是哪一半不对，再往里查。
+默认实例由两部分组成：**服务**（`screen-kacha`，监听 {{PORT}}）和**托盘**
+（`screen-kacha-tray`，面板上的图标）。具名实例只运行独立服务，不另起托盘。
+下面的路径和 unit 名默认指向默认实例；排查具名实例时，先设置对应的实例名：
+
+```sh
+INSTANCE=default # 具名实例示例：capture-b
+UNIT=screen-kacha
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/screen-kacha"
+if [ "$INSTANCE" != default ]; then
+  UNIT="screen-kacha-$INSTANCE"
+  STATE_DIR="$STATE_DIR/instances/$INSTANCE"
+fi
+```
 
 ## 一、先看服务还活着没有
 
@@ -25,14 +36,14 @@ curl -s http://127.0.0.1:{{PORT}}/health
 
 ## 二、托盘的问题
 
-托盘把所有失败都写到一个固定文件里，**先看它**：
+默认实例的托盘会把最近失败写入状态目录的 `last-error.txt`，**先看它**：
 
 ```sh
-cat ~/.local/state/screen-kacha/last-error.txt
+cat "$STATE_DIR/last-error.txt"
 ```
 
 里面按时间倒序记着最近几次失败：时间、哪个动作、退出码、原始输出。
-如果是空的，说明托盘没遇到过失败。
+如果是空的，说明托盘没遇到过失败。具名实例没有托盘，应查看对应服务的 journal。
 
 托盘的运行日志：
 
@@ -46,8 +57,8 @@ journalctl --user -u screen-kacha-tray -n 50 --no-pager
 ## 三、服务的问题
 
 ```sh
-systemctl --user status screen-kacha
-journalctl --user -u screen-kacha -n 80 --no-pager
+systemctl --user status "$UNIT.service"
+journalctl --user -u "$UNIT.service" -n 80 --no-pager
 ```
 
 常见原因：
@@ -79,15 +90,18 @@ systemctl --user is-enabled screen-kacha screen-kacha-tray
 
 ## 五、访问被拒（403）
 
-`/health` 里的 `access` 字段写着当前策略。配置在
-`~/.config/screen-kacha/access.conf`：
+`/health` 里的 `access` 字段写着当前策略。默认配置在
+`~/.config/screen-kacha/access.conf`（或 `$XDG_CONFIG_HOME/screen-kacha/access.conf`）；
+具名实例默认共用这份用户级策略，也可通过 `--access` 指定独立文件：
 
 ```sh
-cat ~/.config/screen-kacha/access.conf
+ACCESS_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/screen-kacha/access.conf"
+cat "$ACCESS_CONF"
 ```
 
 回环地址永远放行；局域网和公网是两档开关。改完要重启服务才生效
-（从托盘菜单改会自动重启）。
+（从默认实例托盘菜单改会自动重启）。配置文件不存在时使用内置默认策略；如果文件存在但无法读取，
+服务会拒绝启动。此时检查文件路径和读取权限，并查看 `journalctl --user -u "$UNIT.service"`。
 
 ## 六、抓不到画面但服务是好的
 
@@ -105,8 +119,14 @@ curl -s http://127.0.0.1:{{PORT}}/health | grep source
 
 ```sh
 curl -s http://127.0.0.1:{{PORT}}/health
-cat ~/.local/state/screen-kacha/last-error.txt 2>/dev/null
-journalctl --user -u screen-kacha -u screen-kacha-tray -n 100 --no-pager
+cat "$STATE_DIR/last-error.txt" 2>/dev/null
+journalctl --user -u "$UNIT.service" -n 100 --no-pager
+```
+
+默认实例还可附上托盘日志：
+
+```sh
+journalctl --user -u screen-kacha-tray.service -n 100 --no-pager
 ```
 
 能复现的话，记下当时点了菜单里的哪一项。
