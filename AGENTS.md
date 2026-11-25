@@ -69,10 +69,12 @@ cmd/imgtest/      手动比对编码器输出的小工具
 `DISPLAY`，spectacle 的 Qt 初始化会直接 `abort()`，每跑一次测试就在系统里留一个
 核心转储（用户那边会看到一串崩溃提示）。
 
-**起临时实例必须把 `XDG_STATE_HOME` 一起指走。** 端口文件、portal 记录、错误日志
-都落在 `$XDG_STATE_HOME/screen-kacha`（缺省 `~/.local/state/screen-kacha`）。临时
-实例共用这个目录就会覆盖生产状态：托盘照着那个死端口轮询，显示「服务没响应」，而
-服务其实好好的。单测覆盖不到「两个进程抢同一个文件」这种事，只能靠这条规矩。
+**临时测试必须与生产状态目录隔离。** 端口文件、portal 记录和错误日志都写入
+`$XDG_STATE_HOME/screen-kacha`（默认是 `~/.local/state/screen-kacha`）。手动启动临时
+服务时，应将 `XDG_STATE_HOME` 指向本次测试的临时目录，避免覆盖生产状态。现有
+`smoke.sh` 和 `smoke-instances.sh` 会自行创建并清理临时状态目录。多实例并发测试中，
+同一轮的实例应共用这个临时 `XDG_STATE_HOME`，由 `instances/<名称>` 验证实例状态隔离；
+不要把测试状态写入生产目录。
 
 **光标合成在 C 里，尺寸从 PNG 头里读。** 两套素材（无尾巴 / 带尾巴）尺寸不同，
 但代码里不写死宽高，换素材不用改常量。合成走 `moonimage` 的 `cursor_overlay`。
