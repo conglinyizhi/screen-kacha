@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # install.sh 的两处坑，能在 CI 里静态验：
 #   1. Wayland socket 选择不能选中 *.lock / *sock
-#   2. 卸载要收掉 portal 助手和它的状态文件
+#   2. 卸载要收掉当前命名的 helper 和它的状态文件
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -43,12 +43,16 @@ else
 fi
 
 # --- 2) 卸载收尾 ---
-grep -q "pkill -f '\[s\]creenstream-portal'" "$ROOT/install.sh" \
-  && ok || bad "卸载没有收 portal 助手"
+grep -q "pkill -f '\[s\]creen-kacha-portal-loop'" "$ROOT/install.sh" \
+  && ok || bad "卸载没有停止 portal loop"
+grep -q "pkill -f '\[s\]creen-kacha-portal --out'" "$ROOT/install.sh" \
+  && ok || bad "卸载没有停止 portal helper"
+grep -q "pkill -f '\[s\]creen-kacha-cursor'" "$ROOT/install.sh" \
+  && ok || bad "卸载没有停止 cursor helper"
+grep -q 'XDG_STATE_HOME.*screen-kacha' "$ROOT/install.sh" \
+  && ok || bad "卸载没有使用 XDG_STATE_HOME 清理状态文件"
 grep -q 'portal.token' "$ROOT/install.sh" \
   && ok || bad "卸载没有清 portal.token"
-grep -q "pkill -f '\[s\]creenstream-cursor'" "$ROOT/install.sh" \
-  && ok || bad "卸载没有收光标 helper"
 
 echo
 echo "通过 $PASS，失败 $FAIL"

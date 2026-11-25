@@ -14,6 +14,8 @@ BIN="$PREFIX/bin"
 DATA="$PREFIX/share/screen-kacha"
 UNITS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 AUTOSTART="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/screen-kacha"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/screen-kacha"
 PORT="${PORT:-8930}"
 BIND="${BIND:-0.0.0.0}"
 
@@ -57,10 +59,10 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
   # 的指示、pw 里一条 capture 流），要等注销才消失 —— 软件已经删了，系统还在
   # 共享屏幕，观感上就是安全问题。
   # `[s]` 是为了让 pgrep 的模式不匹配到自己这条命令行。
-  pkill -f '[s]creenstream-cursor' 2>/dev/null || true
-  pkill -f '[s]creenstream-portal' 2>/dev/null || true
-  rm -f "$HOME/.local/state/screen-kacha/portal.node" \
-        "$HOME/.local/state/screen-kacha/portal.token"
+  pkill -f '[s]creen-kacha-portal-loop' 2>/dev/null || true
+  pkill -f '[s]creen-kacha-portal --out' 2>/dev/null || true
+  pkill -f '[s]creen-kacha-cursor' 2>/dev/null || true
+  rm -f "$RUNTIME_DIR/portal.node" "$STATE_DIR/portal.token"
   rm -f "$BIN/screen-kacha" "$BIN/screen-kacha-tray" \
         "$BIN/screen-kacha-portal" "$BIN/screen-kacha-portal-loop" \
         "$BIN/screen-kacha-cursor"
