@@ -257,6 +257,18 @@ async fn main {
   let shm = @util.pick(m, "shm", "/tmp/screen-kacha")
   let data_dir = @util.pick(m, "data", ".")
   let max_conns = @util.parse_int(@util.pick(m, "max-conns", "64"), 64)
+  let access_path = match @util.pick(m, "access", "") {
+    "" => @util.access_conf_path()
+    p => p
+  }
+  let access = match @store.load_access(access_path) {
+    Some(a) => a
+    None => {
+      eprintln("访问控制配置不可用，拒绝启动")
+      @store.exit_process(1)
+      return
+    }
+  }
   @fs.mkdir(shm, permission=0o700, recursive=true) catch {
     err =>
       // 目录已存在是正常情况（重启时），只有真的建不出来才报
@@ -342,11 +354,6 @@ async fn main {
   write_port_file(port)
   // 优先级：命令行 > access.conf > 内置默认。配置文件只放策略（谁能访问），
   // 不放身份（端口、帧目录）—— 同机跑两个实例得能各用各的
-  let access_path = match @util.pick(m, "access", "") {
-    "" => @util.access_conf_path()
-    p => p
-  }
-  let access = @store.load_access(access_path)
   for line in access_banner(access, bind, port) {
     eprintln(line)
   }

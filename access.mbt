@@ -334,24 +334,30 @@ pub fn parse_access(text : String) -> Access {
 }
 
 ///|
-/// 读配置；文件不存在就用默认（局域网放行、公网不放行）。
-pub async fn load_access(path : String) -> Access {
-  let exists = @fs.exists(path) catch { _ => false }
-  if !exists {
-    return Access::default()
+/// 读配置；文件不存在就用默认，其他读取错误返回 None，调用方必须拒绝启动。
+pub async fn load_access(path : String) -> Access? {
+  let file = Some(@fs.open(path, mode=ReadOnly)) catch {
+    @os_error.OSError(_) as err if err.is_ENOENT() =>
+      return Some(Access::default())
+    err => {
+      eprintln("读取访问控制配置失败（\{path}）：\{err}")
+      return None
+    }
   }
+  let file = file.unwrap()
+  defer file.close()
   let text = try {
-    let f = @fs.open(path, mode=ReadOnly)
-    let b = f.read_all().binary()
-    f.close()
-    @utf8.decode_lossy(b)
+    @utf8.decode_lossy(file.read_all().binary())
   } catch {
-    _ => ""
+    err => {
+      eprintln("读取访问控制配置失败（\{path}）：\{err}")
+      return None
+    }
   }
   for w in config_warnings(text) {
     eprintln("配置警告：\{w}")
   }
-  parse_access(text)
+  Some(parse_access(text))
 }
 
 ///|

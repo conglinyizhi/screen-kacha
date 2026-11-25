@@ -70,7 +70,7 @@ pub fn is_streaming(Int32) -> Bool
 
 pub fn judge_frame_flow(FrameSource, Int64, Int64, Int32, Int64) -> FrameFlow
 
-pub async fn load_access(String) -> Access
+pub async fn load_access(String) -> Access?
 
 pub fn make_res(Int32, String, Bytes) -> Resp
 

@@ -166,6 +166,27 @@ test "配置警告能指出废弃键和未知键" {
 }
 
 ///|
+async test "访问控制配置不存在时使用兼容默认策略" {
+  let loaded : Access? = load_access("/tmp/ssmb-missing-access-config")
+  match loaded {
+    Some(access) => {
+      assert_true(access.allows("192.168.1.2:8930"))
+      assert_false(access.allows("8.8.8.8:8930"))
+    }
+    None => fail("缺失配置应返回默认策略")
+  }
+}
+
+///|
+async test "访问控制配置读取失败时不返回默认放行策略" {
+  let path = "/tmp/ssmb-access-config-is-directory"
+  @fs.mkdir(path, recursive=true) catch { _ => () }
+  let loaded : Access? = load_access(path)
+  @fs.remove(path) catch { _ => () }
+  assert_true(loaded is None)
+}
+
+///|
 /// IPv4-mapped 地址要还原成 IPv4 再判定。
 ///
 /// `--bind [::]` 时 IPv4 客户端连进来对端就是 `::ffff:192.168.1.5` 这种写法。

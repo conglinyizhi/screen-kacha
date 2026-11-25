@@ -10,6 +10,7 @@ import {
   "moonbitlang/async/fs",
   "moonbitlang/async/process",
   "moonbitlang/async/http",
+  "moonbitlang/async/os_error" @os_error,
   "moonbitlang/core/env",
 }
 
