@@ -25,7 +25,12 @@
     background: var(--bg); color: var(--text);
     font: 15px/1.65 system-ui, -apple-system, "Noto Sans CJK SC", sans-serif;
   }
-  .wrap { max-width: 940px; margin: 0 auto; }
+  .wrap { max-width: 1120px; margin: 0 auto; }
+  #for_llm { max-width: 1120px; margin: 34px auto 0; }
+  #for_llm > pre {
+    margin: 0; padding: 12px 14px; color: var(--dim); font: inherit; font-size: .85rem;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  }
 
   h1 { font-size: 1.35rem; margin: 0 0 4px; letter-spacing: .01em; }
   .lede { color: var(--dim); margin: 0 0 24px; }
@@ -76,6 +81,33 @@
   pre code { background: none; padding: 0; }
 
   .note { color: var(--dim); font-size: .85rem; margin: 10px 0 0; }
+  .rainbow-check {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    color: var(--dim); font-size: .85rem;
+  }
+  .rainbow-check svg { flex-shrink: 0; }
+  .rainbow-arrow { transition: transform 280ms ease; }
+  .rainbow-arrow.is-flipped { transform: rotate(180deg); }
+  .rainbow-square {
+    width: 20px; height: 20px; flex-shrink: 0;
+    background-color: var(--rainbow-color, red);
+    transition: background-color 450ms ease;
+  }
+  .rainbow-square.is-exploding { background-color: #fff; }
+  .rainbow-message {
+    margin: 0; padding: 0; border: 0; background: transparent; color: inherit;
+    font: inherit; text-align: left;
+  }
+  .rainbow-message:not(:disabled) { cursor: pointer; }
+  .rainbow-message:not(:disabled):hover { color: var(--text); text-decoration: underline; }
+  .rainbow-particle {
+    position: fixed; z-index: 20; border-radius: 50%; pointer-events: none;
+    animation: rainbow-burst 1100ms cubic-bezier(.12,.72,.3,1) forwards;
+  }
+  @keyframes rainbow-burst {
+    from { opacity: 1; transform: translate(0, 0) scale(1); }
+    to { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(.2); }
+  }
   .flash {
     border: 1px solid var(--line); border-radius: 8px;
     background: var(--panel); padding: 0 16px; margin: 0 0 24px;
@@ -198,6 +230,14 @@
   </div>
 
   <section>
+    <div class="rainbow-check">
+      <div id="rainbow-square" class="rainbow-square" aria-hidden="true"></div>
+      <svg id="rainbow-arrow" class="rainbow-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M19 12H5m7-7-7 7 7 7"/>
+      </svg>
+      <button id="rainbow-message" class="rainbow-message" type="button" aria-live="polite" disabled>可以用这个色块和上方的截图检查服务是否正常</button>
+    </div>
     <h2 class="sec">怎么用</h2>
     <p>地址都相对于本服务根，下面这些直接能用：</p>
     <pre><code># 拿一张图，存成文件
@@ -509,6 +549,123 @@ curl -s 'http://127.0.0.1:{{PORT}}/health'</code></pre>
   } else {
     load();
   }
+})();
+</script>
+<script id="rainbow-cycle-script">
+(function () {
+  var square = document.getElementById('rainbow-square');
+  if (!square) return;
+
+  var colors = ['red', 'orangered', 'orange', 'yellow', 'green', '#65cbfe', 'indigo', 'violet'];
+  var recent = [];
+
+  function changeColor() {
+    var available = colors.filter(function (color) {
+      return recent.indexOf(color) === -1;
+    });
+    var color = available[Math.floor(Math.random() * available.length)];
+    square.style.setProperty('--rainbow-color', color);
+    recent.push(color);
+    if (recent.length > 4) recent.shift();
+  }
+
+  changeColor();
+  setInterval(changeColor, 500);
+})();
+</script>
+<script id="rainbow-easter-egg-script">
+(function () {
+  var square = document.getElementById('rainbow-square');
+  var message = document.getElementById('rainbow-message');
+  var arrow = document.getElementById('rainbow-arrow');
+  if (!square || !message || !arrow) return;
+
+  var clickWindow = 10000;
+  var clickLimit = 5;
+  var clickCount = 0;
+  var firstClickAt = null;
+  var exploding = false;
+  var burstStarted = false;
+  var particles = [];
+  var explosionColor = '';
+  var originalMessage = '可以用这个色块和上方的截图检查服务是否正常';
+  var restoreMessage = '你也可以点击这里让方块再次显示';
+
+  function burst() {
+    if (burstStarted) return;
+    burstStarted = true;
+    var rect = square.getBoundingClientRect();
+    square.hidden = true;
+    var particleCount = 28;
+    var createdParticles = [];
+
+    for (var i = 0; i < particleCount; i++) {
+      var particle = document.createElement('span');
+      var angle = Math.random() * Math.PI * 2;
+      var distance = 120 + Math.random() * 110;
+      var size = 9 + Math.random() * 7;
+      particle.className = 'rainbow-particle';
+      particle.style.left = (rect.left + rect.width / 2 - size / 2) + 'px';
+      particle.style.top = (rect.top + rect.height / 2 - size / 2) + 'px';
+      particle.style.width = size + 'px';
+      particle.style.height = size + 'px';
+      particle.style.backgroundColor = explosionColor;
+      particle.style.setProperty('--dx', Math.cos(angle) * distance + 'px');
+      particle.style.setProperty('--dy', Math.sin(angle) * distance + 'px');
+      document.body.appendChild(particle);
+      particles.push(particle);
+      createdParticles.push(particle);
+    }
+
+    setTimeout(function () {
+      createdParticles.forEach(function (particle) { particle.remove(); });
+      particles = particles.filter(function (particle) {
+        return createdParticles.indexOf(particle) === -1;
+      });
+      message.textContent = restoreMessage;
+      arrow.classList.add('is-flipped');
+      message.disabled = false;
+    }, 1120);
+  }
+
+  function startExplosion() {
+    if (exploding) return;
+    exploding = true;
+    explosionColor = getComputedStyle(square).backgroundColor;
+    square.classList.add('is-exploding');
+    setTimeout(burst, 500);
+    square.addEventListener('transitionend', function onFade(event) {
+      if (event.propertyName !== 'background-color') return;
+      square.removeEventListener('transitionend', onFade);
+      burst();
+    });
+  }
+
+  square.addEventListener('click', function () {
+    if (exploding) return;
+    var now = Date.now();
+    if (firstClickAt === null || now - firstClickAt > clickWindow) {
+      firstClickAt = now;
+      clickCount = 0;
+    }
+    clickCount++;
+    if (clickCount >= clickLimit) startExplosion();
+  });
+
+  message.addEventListener('click', function () {
+    if (!exploding || message.disabled) return;
+    particles.forEach(function (particle) { particle.remove(); });
+    particles = [];
+    square.hidden = false;
+    square.classList.remove('is-exploding');
+    message.textContent = originalMessage;
+    message.disabled = true;
+    arrow.classList.remove('is-flipped');
+    exploding = false;
+    burstStarted = false;
+    clickCount = 0;
+    firstClickAt = null;
+  });
 })();
 </script>
 </body>
