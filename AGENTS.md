@@ -27,13 +27,15 @@ moon test --target native
 moon build --target native cmd/main cmd/tray cmd/portal cmd/cursor
 moon build --release --target native cmd/main cmd/tray cmd/portal cmd/cursor
 bash scripts/smoke.sh
+bash scripts/smoke-instances.sh
 ```
 
 `moon build --target native` **不带目标**会把库包也当可执行文件链接，报 undefined main。
 永远显式写目标。
 
 `scripts/smoke.sh` 起一个临时实例走完整 HTTP 全链路，退出码非零表示失败。
-它也支持 `ACCESS_CONF=<path> bash scripts/smoke.sh` 走受限监听路径，两条路都要过。
+它也支持 `ACCESS_CONF=<path> bash scripts/smoke.sh` 验证受限访问策略，两种策略都要过。
+`scripts/smoke-instances.sh` 另外验证具名实例并行、实例状态隔离及帧目录锁。
 
 部署：
 
