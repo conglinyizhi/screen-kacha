@@ -21,7 +21,7 @@ fn cli_cmd() -> @argparse.Command {
       ]),
       @argparse.OptionArg(
         "instance",
-        about="实例名，用于隔离端口、托盘和错误状态",
+        about="实例名，用于隔离端口和实例状态；托盘仅由默认实例提供",
         default_values=["default"],
       ),
       @argparse.OptionArg(
