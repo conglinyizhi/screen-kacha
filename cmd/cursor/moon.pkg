@@ -1,7 +1,6 @@
 import {
   "conglinyizhi/screen-kacha/moonutil" @util,
   "conglinyizhi/moondbus/src" @dbus,
-  "moonbitlang/core/env",
 }
 
 supported_targets = "+native"

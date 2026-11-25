@@ -72,8 +72,8 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
   done
   systemctl --user daemon-reload 2>/dev/null || true
   say "已移除二进制、unit、自启和图标"
-  say "配置 $HOME/.config/screen-kacha 与缓存 $HOME/.local/state/screen-kacha 保留"
-  say "要彻底删干净：rm -rf ~/.config/screen-kacha ~/.local/state/screen-kacha"
+  say "配置 ${XDG_CONFIG_HOME:-$HOME/.config}/screen-kacha 与缓存 $STATE_DIR 保留"
+  say "要彻底删干净：rm -rf '${XDG_CONFIG_HOME:-$HOME/.config}/screen-kacha' '$STATE_DIR'"
   exit 0
 fi
 
@@ -207,7 +207,7 @@ if [ "$DO_START" -eq 1 ]; then
   say "已启动，健康检查："
   # 端口被占时服务会往上挪，挪完把实际端口写进状态目录。死认 $PORT 的话，
   # 这里会对着一个空端口报「服务还没起来」，而服务其实好好跑在隔壁。
-  ACTUAL=$(cat "$HOME/.local/state/screen-kacha/port" 2>/dev/null || true)
+  ACTUAL=$(cat "$STATE_DIR/port" 2>/dev/null || true)
   ACTUAL=${ACTUAL:-$PORT}
   [ "$ACTUAL" != "$PORT" ] && say "（$PORT 被占，实际监听 $ACTUAL）"
   curl -s --max-time 5 "http://127.0.0.1:$ACTUAL/health" || echo "  服务还没起来，看 journalctl --user -u screen-kacha"

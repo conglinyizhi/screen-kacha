@@ -63,7 +63,7 @@ pub async fn bind_with_fallback(
             "端口 \{port} 被别的程序占着（\{err}），改用 \{p}",
           )
           eprintln(
-            "托盘会读 ~/.local/state/screen-kacha/port 跟着过来；unit 里写的还是 \{port}",
+            "托盘会读状态目录里的 port 跟着过来；unit 里写的还是 \{port}",
           )
           return Some((s, p))
         }

@@ -655,15 +655,8 @@ pub fn Store::idle_ms(self : Store) -> Int64 {
 }
 
 ///|
-/// 当前用户的 uid。
-///
-/// 问系统要，不写死 1000：多用户机器、root、或者容器里 uid 都可能不是 1000，
-/// 猜错就会指到别人的运行时目录。
-extern "c" fn current_uid_raw() -> Int32 = "moonbit_current_uid"
-
-///|
 pub fn current_uid() -> Int32 {
-  current_uid_raw()
+  @util.current_uid()
 }
 
 ///|
@@ -672,16 +665,13 @@ pub fn current_uid() -> Int32 {
 /// 单独抽出来是为了能测：这台机器上 uid 正好是 1000，跟写死的旧值一样，
 /// 不换个 uid 试就看不出改没改。
 pub fn runtime_dir_from(env : String?, uid : Int32) -> String {
-  match env {
-    Some(v) => if v == "" { "/run/user/\{uid}" } else { v }
-    None => "/run/user/\{uid}"
-  }
+  @util.runtime_dir_with(env, uid)
 }
 
 ///|
 /// 当前进程该用的 runtime 目录。
 pub fn default_runtime_dir() -> String {
-  runtime_dir_from(@env.get_env_var("XDG_RUNTIME_DIR"), current_uid())
+  @util.runtime_paths().runtime_dir
 }
 
 ///|
@@ -1025,11 +1015,8 @@ pub async fn Store::recover_push_stream(self : Store, dir : String) -> Int32? {
 /// 用 runtime 目录：重启就清掉，本来就是瞬时状态。
 pub fn Store::cursor_pos_path(self : Store) -> String {
   let _ = self
-  let rt = match @env.get_env_var("XDG_RUNTIME_DIR") {
-    Some(v) => v
-    None => "/tmp"
-  }
-  "\{rt}/screen-kacha/cursor.pos"
+  let paths = @util.runtime_paths()
+  "\{paths.app_runtime_dir}/cursor.pos"
 }
 
 ///|

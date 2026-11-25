@@ -83,12 +83,6 @@ int32_t moonbit_instance_lock(const char *dir) {
   return 1;
 }
 
-/* 当前用户的 uid。
- *
- * 运行时目录以前写死 /run/user/1000：多用户机器或者 root 下会指到别人的目录，
- * 表现为「Wayland socket 明明在却读不到」。用 getuid() 问系统，别猜。 */
-int moonbit_current_uid(void) { return (int)getuid(); }
-
 /* 文件的修改时间（纳秒，自 epoch）；读不到返回 -1。
  *
  * 用途：portal.node 被重写过没有。用 C 是因为只要一个能比大小的整数，

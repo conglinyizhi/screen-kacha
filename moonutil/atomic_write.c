@@ -14,6 +14,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+MOONBIT_FFI_EXPORT
+int32_t moonbit_util_current_uid(void) { return (int32_t)getuid(); }
+
 // 把 path 里各级父目录逐级建出来（0700）。文件只有自己能读，目录也照这个来。
 // 已经存在就跳过：调用方可能已经建过，也可能是系统目录。
 static void mkdir_parents(const char *path) {

@@ -282,7 +282,10 @@ async fn main {
     eprintln(
       "帧目录 \{shm} 已经被另一个 screen-kacha 占着，这次不重复启动",
     )
-    eprintln("它在哪个端口：cat ~/.local/state/screen-kacha/port")
+    match @util.state_dir() {
+      Some(dir) => eprintln("它在哪个端口：cat \{dir}/port")
+      None => ()
+    }
     @store.exit_process(0)
     return
   }

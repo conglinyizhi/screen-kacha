@@ -8,17 +8,31 @@ import {
 // Values
 pub const TRAY_OWNER_MAX_BYTES : Int32 = 4096
 
+pub fn access_conf_path() -> String
+
+pub fn access_conf_path_with(String?, String?) -> String
+
 pub fn b64_encode(Bytes) -> String
 
 pub fn cstr(String) -> Bytes
+
+pub fn current_uid() -> Int32
 
 pub fn error_log_path() -> String?
 
 pub fn now_ms() -> Int64
 
+pub fn parse_flag(String) -> Bool
+
 pub fn parse_int(StringView, Int32) -> Int32
 
 pub fn pick(@argparse.Matches, String, String) -> String
+
+pub fn runtime_dir_with(String?, Int32) -> String
+
+pub fn runtime_paths() -> RuntimePaths
+
+pub fn runtime_paths_with(String?, String?, String?, String?, Int32) -> RuntimePaths
 
 pub fn state_dir() -> String?
 
@@ -31,6 +45,13 @@ pub fn write_atomic_text(String, String) -> Int32
 // Errors
 
 // Types and methods
+pub struct RuntimePaths {
+  state_dir : String?
+  access_conf : String
+  runtime_dir : String
+  app_runtime_dir : String
+}
+
 pub struct TrayOwner {
   pid : Int32
   script : String

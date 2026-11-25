@@ -62,11 +62,11 @@ fn rewritten_since(path : String, since_ns : Int64) -> Bool {
 /// 看门狗重连时走这条路 —— 缓存里那个 id 正是刚死掉的那条流。
 pub async fn acquire_portal_node(dir : String, force~ : Bool = false) -> Int32? {
   let out = "\{dir}/portal.node"
-  let home = match @env.get_env_var("HOME") {
-    Some(h) => h
-    None => "/tmp"
+  let paths = @util.runtime_paths()
+  let tok = match paths.state_dir {
+    Some(state_dir) => "\{state_dir}/portal.token"
+    None => ""
   }
-  let tok = "\{home}/.local/state/screen-kacha/portal.token"
 
   // ① 已经有人写了就直接用 —— 但必须先确认写它的助手还活着。
   //
@@ -120,9 +120,13 @@ pub async fn acquire_portal_node(dir : String, force~ : Bool = false) -> Int32? 
   }
 
   // 真的没人管：自己拉一个
-  let state_dir = "\{home}/.local/state/screen-kacha"
-  let _ = Some(@fs.mkdir(state_dir, permission=0o700, recursive=true)) catch {
-    _ => None
+  match paths.state_dir {
+    Some(state_dir) => {
+      let _ = Some(@fs.mkdir(state_dir, permission=0o700, recursive=true)) catch {
+        _ => None
+      }
+    }
+    None => ()
   }
   let bin = match @env.get_env_var("HOME") {
     Some(h) => "\{h}/.local/bin/screen-kacha-portal"

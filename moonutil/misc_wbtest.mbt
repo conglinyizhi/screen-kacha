@@ -50,6 +50,38 @@ test "配置文件路径：认 XDG_CONFIG_HOME" {
 }
 
 ///|
+test "RuntimePaths 统一解析 state config 和 runtime 路径" {
+  let paths = runtime_paths_with(
+    Some("/xdg/state"),
+    Some("/xdg/config"),
+    Some("/run/user/4242"),
+    Some("/home/u"),
+    1000,
+  )
+  assert_eq(paths.state_dir, Some("/xdg/state/screen-kacha"))
+  assert_eq(paths.access_conf, "/xdg/config/screen-kacha/access.conf")
+  assert_eq(paths.runtime_dir, "/run/user/4242")
+  assert_eq(paths.app_runtime_dir, "/run/user/4242/screen-kacha")
+}
+
+///|
+test "RuntimePaths 用 HOME 和 UID 回退" {
+  let paths = runtime_paths_with(None, None, None, Some("/home/u"), 4242)
+  assert_eq(paths.state_dir, Some("/home/u/.local/state/screen-kacha"))
+  assert_eq(paths.access_conf, "/home/u/.config/screen-kacha/access.conf")
+  assert_eq(paths.runtime_dir, "/run/user/4242")
+  assert_eq(paths.app_runtime_dir, "/run/user/4242/screen-kacha")
+}
+
+///|
+test "RuntimePaths 不为缺失 HOME 编造用户目录" {
+  let paths = runtime_paths_with(None, None, None, None, 0)
+  assert_eq(paths.state_dir, None)
+  assert_eq(paths.access_conf, "/etc/screen-kacha/access.conf")
+  assert_eq(paths.runtime_dir, "/run/user/0")
+}
+
+///|
 test "布尔解析：大小写和空白都认" {
   assert_true(parse_flag("true"))
   assert_true(parse_flag("  TRUE "))

@@ -74,6 +74,15 @@ pub fn b64_encode(data : Bytes) -> String {
 }
 
 ///|
+/// screen-kacha 使用的用户路径。CLI 显式路径（如 --shm、--data、--access）不在这里。
+pub struct RuntimePaths {
+  state_dir : String?
+  access_conf : String
+  runtime_dir : String
+  app_runtime_dir : String
+}
+
+///|
 /// 用户状态目录：`$XDG_STATE_HOME/screen-kacha`，否则 `$HOME/.local/state/screen-kacha`。
 ///
 /// 拿不到就返回 None。**不要**在这里再编一个 `/tmp` 兜底：多一份文件就多一个
@@ -95,8 +104,53 @@ pub fn state_dir_with(xdg : String?, home : String?) -> String? {
 }
 
 ///|
+pub fn runtime_dir_with(xdg : String?, uid : Int32) -> String {
+  match xdg {
+    Some(v) => if v == "" { "/run/user/\{uid}" } else { v }
+    None => "/run/user/\{uid}"
+  }
+}
+
+///|
+pub fn runtime_paths_with(
+  xdg_state : String?,
+  xdg_config : String?,
+  xdg_runtime : String?,
+  home : String?,
+  uid : Int32,
+) -> RuntimePaths {
+  let state_dir = state_dir_with(xdg_state, home)
+  let runtime_dir = runtime_dir_with(xdg_runtime, uid)
+  {
+    state_dir,
+    access_conf: access_conf_path_with(xdg_config, home),
+    runtime_dir,
+    app_runtime_dir: "\{runtime_dir}/screen-kacha",
+  }
+}
+
+///|
+extern "c" fn current_uid_raw() -> Int32 = "moonbit_util_current_uid"
+
+///|
+pub fn current_uid() -> Int32 {
+  current_uid_raw()
+}
+
+///|
+pub fn runtime_paths() -> RuntimePaths {
+  runtime_paths_with(
+    @env.get_env_var("XDG_STATE_HOME"),
+    @env.get_env_var("XDG_CONFIG_HOME"),
+    @env.get_env_var("XDG_RUNTIME_DIR"),
+    @env.get_env_var("HOME"),
+    current_uid(),
+  )
+}
+
+///|
 pub fn state_dir() -> String? {
-  state_dir_with(@env.get_env_var("XDG_STATE_HOME"), @env.get_env_var("HOME"))
+  runtime_paths().state_dir
 }
 
 ///|
@@ -145,10 +199,7 @@ pub fn access_conf_path_with(xdg : String?, home : String?) -> String {
 
 ///|
 pub fn access_conf_path() -> String {
-  access_conf_path_with(
-    @env.get_env_var("XDG_CONFIG_HOME"),
-    @env.get_env_var("HOME"),
-  )
+  runtime_paths().access_conf
 }
 
 ///|

@@ -40,11 +40,8 @@ extern "c" fn remove_pos_raw(path : Bytes) -> Int32 = "moonbit_cursor_remove"
 ///|
 /// 坐标文件路径。放 runtime 目录，重启就没了，本来也是瞬时状态。
 fn pos_path() -> String {
-  let rt = match @env.get_env_var("XDG_RUNTIME_DIR") {
-    Some(v) => v
-    None => "/tmp"
-  }
-  "\{rt}/screen-kacha/cursor.pos"
+  let paths = @util.runtime_paths()
+  "\{paths.app_runtime_dir}/cursor.pos"
 }
 
 ///|

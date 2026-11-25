@@ -20,11 +20,8 @@ let kwin_script_src : String = "var t = new QTimer();\n" +
 ///|
 /// 脚本文件放哪。tmpfs，重启自动没。
 fn kwin_script_path() -> String {
-  let rt = match @env.get_env_var("XDG_RUNTIME_DIR") {
-    Some(v) => v
-    None => "/tmp"
-  }
-  "\{rt}/screen-kacha/cursor-kwin.js"
+  let paths = @util.runtime_paths()
+  "\{paths.app_runtime_dir}/cursor-kwin.js"
 }
 
 ///|
@@ -225,9 +222,6 @@ fn remove_file(path : String) -> Bool {
 ///|
 /// 当前坐标文件的位置（和服务端同一个约定）。
 fn cursor_pos_path() -> String {
-  let rt = match @env.get_env_var("XDG_RUNTIME_DIR") {
-    Some(v) => v
-    None => "/tmp"
-  }
-  "\{rt}/screen-kacha/cursor.pos"
+  let paths = @util.runtime_paths()
+  "\{paths.app_runtime_dir}/cursor.pos"
 }
