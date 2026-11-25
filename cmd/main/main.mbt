@@ -20,6 +20,11 @@ fn cli_cmd() -> @argparse.Command {
         "0.0.0.0",
       ]),
       @argparse.OptionArg(
+        "instance",
+        about="实例名，用于隔离端口、托盘和错误状态",
+        default_values=["default"],
+      ),
+      @argparse.OptionArg(
         "access",
         about="访问控制配置文件；留空用 ~/.config/screen-kacha/access.conf",
         default_values=[""],
@@ -58,6 +63,11 @@ fn cli_cmd() -> @argparse.Command {
         "/tmp/screen-kacha",
       ]),
       @argparse.OptionArg(
+        "portal-dir",
+        about="屏幕共享会话目录；同一桌面会话的实例共享授权",
+        default_values=[""],
+      ),
+      @argparse.OptionArg(
         "data",
         about="素材与文档所在目录（光标 PNG、skill.md、llms.txt 等）",
         default_values=["."],
@@ -76,7 +86,7 @@ fn cli_cmd() -> @argparse.Command {
 /// 推模式来源：帧由常驻流自己送来，泵不去要 —— 但要盯着流有没有停。
 async fn pump_loop(
   store : @store.Store,
-  shm : String,
+  portal_dir : String,
   pw_node : Int32,
   interval_ms : Int32,
   idle_interval_ms : Int32,
@@ -111,7 +121,7 @@ async fn pump_loop(
               None
             }
           } else {
-            store.recover_push_stream(shm)
+            store.recover_push_stream(portal_dir)
           }
         }) {
         Recovered => {
@@ -147,6 +157,15 @@ async fn idle_loop(store : @store.Store, seconds : Int32) -> Unit {
   for ;; {
     @async.sleep(seconds * 1000)
     store.ensure(0L)
+  }
+}
+
+///|
+fn default_shm(instance : String) -> String {
+  if instance == "default" {
+    "/tmp/screen-kacha"
+  } else {
+    "/tmp/screen-kacha-\{instance}"
   }
 }
 
@@ -242,6 +261,45 @@ async fn main {
     return
   }
   let bind = @util.pick(m, "bind", "0.0.0.0")
+  let instance = @util.pick(m, "instance", "default")
+  match @util.instance_state_dir(instance) {
+    Some(dir) => {
+      let _ = Some(@fs.mkdir(dir, permission=0o700, recursive=true)) catch {
+        _ => None
+      }
+      let state_dir_kind = try {
+        Some(@fs.kind(dir))
+      } catch {
+        _ => None
+      }
+      let state_dir_ok = match state_dir_kind {
+        Some(@fs.FileKind::Directory) => true
+        _ => false
+      }
+      if !state_dir_ok {
+        eprintln("实例状态路径不是可访问目录：\{dir}")
+        @store.exit_process(1)
+        return
+      }
+      @fs.chmod(dir, 0o700) catch {
+        err => {
+          eprintln("收紧实例状态目录权限失败（\{dir}）：\{err}")
+          @store.exit_process(1)
+          return
+        }
+      }
+      if !@store.acquire_instance_lock(dir) {
+        eprintln("实例 \{instance} 已经被另一个 screen-kacha 占着，这次不重复启动")
+        @store.exit_process(0)
+        return
+      }
+    }
+    None => {
+      eprintln("--instance 只允许字母、数字、点、短横线和下划线")
+      @store.exit_process(2)
+      return
+    }
+  }
   let idle = @util.parse_int(@util.pick(m, "idle", "20"), 20)
   let pump = @util.parse_int(@util.pick(m, "pump", "500"), 500)
   let pump_idle = @util.parse_int(@util.pick(m, "pump-idle", "3000"), 3000)
@@ -254,7 +312,13 @@ async fn main {
     )
     @store.exit_process(2)
   }
-  let shm = @util.pick(m, "shm", "/tmp/screen-kacha")
+  let shm = @util.pick(m, "shm", default_shm(instance))
+  let portal_dir_arg = @util.pick(m, "portal-dir", "")
+  let portal_dir = if portal_dir_arg == "" {
+    @util.runtime_paths().app_runtime_dir
+  } else {
+    portal_dir_arg
+  }
   let data_dir = @util.pick(m, "data", ".")
   let max_conns = @util.parse_int(@util.pick(m, "max-conns", "64"), 64)
   let access_path = match @util.pick(m, "access", "") {
@@ -351,7 +415,7 @@ async fn main {
     Some(pair) => pair
     None => return
   }
-  write_port_file(port)
+  write_port_file(port, instance)
   // 优先级：命令行 > access.conf > 内置默认。配置文件只放策略（谁能访问），
   // 不放身份（端口、帧目录）—— 同机跑两个实例得能各用各的
   for line in access_banner(access, bind, port) {
@@ -393,14 +457,14 @@ async fn main {
       // 服务先跑起来，portal 在后台拿屏幕流；拿不到就一直按 spectacle 服务
       // 假帧源不碰 portal：有固定图可用，没必要去抢真实屏幕，
       // 否则每跑一次冒烟都会弹一次「屏幕共享权限请求」。
-      group.spawn_bg(no_wait=true) <| async fn() { portal_bg(store, shm) }
+      group.spawn_bg(no_wait=true) <| async fn() { portal_bg(store, portal_dir) }
     }
     if pump > 0 {
       // 推模式下泵不去要帧，但它是唯一盯着「流还活着没有」的地方，
       // 所以 push 模式也得起来 —— 原来这里排除了 use_pw，结果是
       // 指定 --pw-node 之后整个进程里没有任何人监督那条流。
       group.spawn_bg(no_wait=true) <| async fn() {
-        pump_loop(store, shm, pw_node, pump, pump_idle)
+        pump_loop(store, portal_dir, pw_node, pump, pump_idle)
       }
     }
     if pump <= 0 || use_pw {
@@ -415,7 +479,9 @@ async fn main {
     // 托盘正常退出会自己收，这条循环是给「没来得及收」准备的 ——
     // 读了它写的心跳，判定死了就替它收掉。没有托盘文件时它只是每 5 秒
     // 睁一次眼，不叫也不动手。
-    group.spawn_bg(no_wait=true) <| async fn() { @store.supervise_tray() }
+    if instance == "default" {
+      group.spawn_bg(no_wait=true) <| async fn() { @store.supervise_tray() }
+    }
     // 一律走自己的 accept 循环。
     //
     // 原来分两条路：有访问限制时自己收连接，放行公网时用框架自带的 serve_on。

@@ -154,11 +154,68 @@ pub fn state_dir() -> String? {
 }
 
 ///|
+fn valid_instance_name(name : String) -> Bool {
+  if name == "" || name.length() > 64 {
+    return false
+  }
+  for i = 0; i < name.length(); i = i + 1 {
+    let c = name[i].to_int()
+    if !((c >= 48 && c <= 57) || (c >= 65 && c <= 90) ||
+      (c >= 97 && c <= 122) || c == 45 || c == 95 || c == 46) {
+      return false
+    }
+  }
+  name != "." && name != ".."
+}
+
+///|
+pub fn instance_state_dir_with(
+  xdg_state : String?,
+  home : String?,
+  instance : String?,
+) -> String? {
+  let name = match instance {
+    Some(v) => v
+    None => "default"
+  }
+  if !valid_instance_name(name) {
+    return None
+  }
+  match state_dir_with(xdg_state, home) {
+    // 默认实例继续使用旧目录，升级后托盘仍能发现端口、portal 状态和错误记录。
+    Some(dir) =>
+      if name == "default" {
+        Some(dir)
+      } else {
+        Some("\{dir}/instances/\{name}")
+      }
+    None => None
+  }
+}
+
+///|
+pub fn instance_state_dir(instance : String) -> String? {
+  instance_state_dir_with(
+    @env.get_env_var("XDG_STATE_HOME"),
+    @env.get_env_var("HOME"),
+    Some(instance),
+  )
+}
+
+///|
 
 ///|
 /// 出错记录文件的位置。只有这一份，不存在第二个。
 pub fn error_log_path() -> String? {
   match state_dir() {
+    Some(d) => Some("\{d}/last-error.txt")
+    None => None
+  }
+}
+
+///|
+pub fn instance_error_log_path(instance : String) -> String? {
+  match instance_state_dir(instance) {
     Some(d) => Some("\{d}/last-error.txt")
     None => None
   }

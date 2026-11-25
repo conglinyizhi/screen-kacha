@@ -20,6 +20,12 @@ pub fn current_uid() -> Int32
 
 pub fn error_log_path() -> String?
 
+pub fn instance_error_log_path(String) -> String?
+
+pub fn instance_state_dir(String) -> String?
+
+pub fn instance_state_dir_with(String?, String?, String?) -> String?
+
 pub fn now_ms() -> Int64
 
 pub fn parse_flag(String) -> Bool

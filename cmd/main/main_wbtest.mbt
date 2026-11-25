@@ -113,3 +113,28 @@ test "state_dir 认 XDG_STATE_HOME" {
   // 两个都没有就不写：宁可没有端口文件，也不要写到别处
   assert_eq(@util.state_dir_with(None, None), None)
 }
+
+///|
+test "named instance default paths do not collide" {
+  assert_eq(default_shm("default"), "/tmp/screen-kacha")
+  assert_eq(default_shm("capture-b"), "/tmp/screen-kacha-capture-b")
+  assert_eq(
+    @util.instance_state_dir_with(
+      Some("/state"), Some("/home/u"), Some("capture-b"),
+    ),
+    Some("/state/screen-kacha/instances/capture-b"),
+  )
+}
+
+///|
+test "CLI exposes instance and shared portal directory" {
+  let m = cli_cmd().parse(argv=[
+    "--port", "8931", "--instance", "capture-b", "--portal-dir",
+    "/run/user/1000/screen-kacha",
+  ])
+  assert_eq(@util.pick(m, "instance", "default"), "capture-b")
+  assert_eq(
+    @util.pick(m, "portal-dir", ""),
+    "/run/user/1000/screen-kacha",
+  )
+}

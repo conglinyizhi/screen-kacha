@@ -15,5 +15,8 @@ SCREEN_KACHA_UNIT_TEMPLATES=(
   "screen-kacha.service.in:screen-kacha.service"
   "screen-kacha-tray.service.in:screen-kacha-tray.service"
 )
+SCREEN_KACHA_INSTANCE_UNIT_TEMPLATES=(
+  "screen-kacha.service.in:screen-kacha-@INSTANCE@.service"
+)
 SCREEN_KACHA_PORTAL_LOOP="screen-kacha-portal-loop"
 SCREEN_KACHA_PORTAL_DESKTOP="screen-kacha-portal.desktop"

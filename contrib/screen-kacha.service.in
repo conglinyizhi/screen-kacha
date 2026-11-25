@@ -18,7 +18,7 @@ WorkingDirectory=@DATA@
 Environment=XDG_RUNTIME_DIR=%t
 Environment=WAYLAND_DISPLAY=@WAYLAND@
 Environment=PATH=@BIN@:/usr/local/bin:/usr/bin
-ExecStart=@BIN@/screen-kacha --port @PORT@ --bind @BIND@ --source auto --shm %t/screen-kacha
+ExecStart=@BIN@/screen-kacha --instance @INSTANCE@ --port @PORT@ --bind @BIND@ --source auto --shm @SHM@ --portal-dir %t/screen-kacha
 Restart=always
 RestartSec=3
 # 指数退避：3s → 6s → 12s → 24s → 48s → 60s（封顶）。

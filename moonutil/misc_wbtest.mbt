@@ -82,6 +82,22 @@ test "RuntimePaths 不为缺失 HOME 编造用户目录" {
 }
 
 ///|
+test "实例状态目录按实例名隔离" {
+  assert_eq(
+    instance_state_dir_with(
+      Some("/xdg/state"), Some("/home/u"), Some("default"),
+    ),
+    Some("/xdg/state/screen-kacha"),
+  )
+  assert_eq(
+    instance_state_dir_with(None, Some("/home/u"), Some("worker-2")),
+    Some("/home/u/.local/state/screen-kacha/instances/worker-2"),
+  )
+  assert_eq(instance_state_dir_with(None, None, Some("default")), None)
+  assert_eq(instance_state_dir_with(None, Some("/home/u"), Some("bad/name")), None)
+}
+
+///|
 test "布尔解析：大小写和空白都认" {
   assert_true(parse_flag("true"))
   assert_true(parse_flag("  TRUE "))

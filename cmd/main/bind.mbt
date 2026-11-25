@@ -97,11 +97,11 @@ fn flag_on(m : @argparse.Matches, name : String) -> Bool {
 ///
 /// 走原子写：托盘随时可能在读这个文件，读到半截数字会把端口解析成别的值，
 /// 于是它去轮询一个不存在的端口，症状和「服务没起来」一模一样。
-fn write_port_file(port : Int32) -> Unit {
-  // 走 @util.state_dir()：它认 XDG_STATE_HOME。以前这里直接拼 HOME，
+fn write_port_file(port : Int32, instance : String) -> Unit {
+  // 走实例状态目录：它认 XDG_STATE_HOME，并隔离同机多实例。
   // 于是一个临时实例（测试、探针）会把生产的状态文件改掉 —— 托盘照着
   // 那个死端口轮询，就会显示「服务没响应」，而服务其实好好的。
-  match @util.state_dir() {
+  match @util.instance_state_dir(instance) {
     Some(dir) => {
       let path = "\{dir}/port"
       let rc = @util.write_atomic_text(path, port.to_string())

@@ -8,6 +8,8 @@ cd "$ROOT" || exit 1
 
 PORT=${PORT:-$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')}
 WORK=$(mktemp -d)
+XDG_STATE_HOME="$WORK/state"
+export XDG_STATE_HOME
 PORT_LOG="$WORK/server.log"
 PASS=0
 FAIL=0
@@ -222,7 +224,7 @@ sleep 0.6
 FB_DIR=$(mktemp -d "$WORK/fb.XXXXXX")
 FB_LOG="$WORK/fb.log"
 timeout 300 ./_build/native/debug/build/cmd/main/main.exe \
-  --port "$OCC" --bind 127.0.0.1 --pump 100 \
+  --instance port-fallback --port "$OCC" --bind 127.0.0.1 --pump 100 \
   --shm "$FB_DIR" --fake "$WORK/frame.png" --data "$WORK/data" \
   --access /dev/null >"$FB_LOG" 2>&1 &
 FB_PID=$!
@@ -251,7 +253,7 @@ echo "== 同一帧目录不重复启动 =="
 # 帧目录已经被主实例锁着，第二个实例应该干净退出而不是再起一份抢临时文件
 DUP_PORT=$((PORT + 1500))
 timeout 30 ./_build/native/debug/build/cmd/main/main.exe \
-  --port "$DUP_PORT" --bind 127.0.0.1 --pump 100 \
+  --instance duplicate-shm --port "$DUP_PORT" --bind 127.0.0.1 --pump 100 \
   --shm "$WORK/shm" --fake "$WORK/frame.png" --data "$WORK/data" \
   --access /dev/null >"$WORK/dup.log" 2>&1
 check "重复启动退出码" 0 "$?"
@@ -263,7 +265,7 @@ EMB_PORT=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));p
 EMB_SHM=$(mktemp -d "$WORK/emb.XXXXXX")
 MISSING_DATA="/tmp/screen-kacha-no-such-dir-$$"
 timeout 300 ./_build/native/debug/build/cmd/main/main.exe \
-  --port "$EMB_PORT" --bind 127.0.0.1 --pump 100 \
+  --instance embedded-assets --port "$EMB_PORT" --bind 127.0.0.1 --pump 100 \
   --shm "$EMB_SHM" --fake "$WORK/frame.png" --data "$MISSING_DATA" \
   --access /dev/null >"$WORK/emb.log" 2>&1 &
 for _ in $(seq 1 50); do

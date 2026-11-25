@@ -69,13 +69,22 @@ else
     && ok || bad "install.sh 没有使用共享命名表"
   [ -n "${SCREEN_KACHA_PROCESSES+x}" ] \
     && [ -n "${SCREEN_KACHA_UNIT_TEMPLATES+x}" ] \
+    && [ -n "${SCREEN_KACHA_INSTANCE_UNIT_TEMPLATES+x}" ] \
     && [ -n "${SCREEN_KACHA_PORTAL_LOOP+x}" ] \
     && ok || bad "命名表缺少 helper、unit 或 portal loop"
   [[ " ${SCREEN_KACHA_PROCESSES[*]} " == *" screen-kacha-portal-loop "* ]] \
     && [[ " ${SCREEN_KACHA_PROCESSES[*]} " == *" screen-kacha-portal --out "* ]] \
     && [[ " ${SCREEN_KACHA_PROCESSES[*]} " == *" screen-kacha-cursor "* ]] \
     && ok || bad "命名表没有列齐卸载要停止的进程"
+  [ "${#SCREEN_KACHA_INSTANCE_UNIT_TEMPLATES[@]}" -eq 1 ] \
+    && [[ " ${SCREEN_KACHA_INSTANCE_UNIT_TEMPLATES[*]} " == *" screen-kacha.service.in:screen-kacha-@INSTANCE@.service "* ]] \
+    && ok || bad "named instance 必须只创建独立主服务 unit，不创建第二个托盘"
 fi
+
+grep -q 'INSTANCE=.*default' "$ROOT/install.sh" \
+  && grep -q 'portal-dir %t/screen-kacha' "$ROOT/contrib/screen-kacha.service.in" \
+  && grep -q 'screen-kacha-@INSTANCE@.service' "$NAMES" \
+  && ok || bad "named instance 没有隔离 unit/state 或共享 portal 目录约定"
 
 # 运行代码与当前部署模板中不得再残留 Python 项目旧名。
 if grep -R -i -n 'screenstream' \

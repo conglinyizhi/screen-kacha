@@ -106,6 +106,15 @@ unit 模板在 `contrib/`，安装时替换 `BIN`、`DATA`、`PORT`、`BIND`、`
 PORT=9000 BIND=127.0.0.1 ./install.sh
 ```
 
+同一用户下可以安装具名服务实例：
+
+```bash
+INSTANCE=capture-b PORT=8940 ./install.sh --start
+INSTANCE=capture-b ./install.sh --uninstall
+```
+
+具名实例使用独立的端口状态、帧目录和 systemd 服务 unit。屏幕共享授权和访问控制配置仍是用户级共享资源；托盘只由默认实例提供，避免多个托盘争用桌面光标脚本。具名实例需要独立访问策略时，可用 `--access` 指定配置文件路径。
+
 ### 不装 systemd，直接跑
 
 ```bash

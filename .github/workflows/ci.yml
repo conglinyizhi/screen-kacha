@@ -85,6 +85,9 @@ jobs:
           printf 'local_only = true\n' > /tmp/restricted.conf
           ACCESS_CONF=/tmp/restricted.conf bash scripts/smoke.sh
 
+      - name: 多实例并发冒烟
+        run: bash scripts/smoke-instances.sh
+
       - name: 失败时打印服务日志
         if: failure()
         run: |

@@ -15,10 +15,31 @@ BIN="$PREFIX/bin"
 DATA="$PREFIX/share/screen-kacha"
 UNITS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 AUTOSTART="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
-STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/screen-kacha"
+STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/screen-kacha"
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/screen-kacha"
 PORT="${PORT:-8930}"
 BIND="${BIND:-0.0.0.0}"
+INSTANCE="${INSTANCE:-default}"
+SHM="${SHM:-}"
+
+if [[ ! "$INSTANCE" =~ ^[A-Za-z0-9._-]{1,64}$ ]] ||
+  [ "$INSTANCE" = "." ] || [ "$INSTANCE" = ".." ]; then
+  echo "INSTANCE 只允许 1-64 个字母、数字、点、短横线和下划线，且不能是 . 或 .." >&2
+  exit 2
+fi
+if [ "$INSTANCE" = "default" ]; then
+  STATE_DIR="$STATE_ROOT"
+  SHM="${SHM:-%t/screen-kacha}"
+else
+  STATE_DIR="$STATE_ROOT/instances/$INSTANCE"
+  SHM="${SHM:-%t/screen-kacha-$INSTANCE}"
+fi
+MAIN_UNIT="screen-kacha.service"
+TRAY_UNIT="screen-kacha-tray.service"
+if [ "$INSTANCE" != "default" ]; then
+  MAIN_UNIT="screen-kacha-$INSTANCE.service"
+  TRAY_UNIT="screen-kacha-tray-$INSTANCE.service"
+fi
 
 DO_START=0
 DO_UNINSTALL=0
@@ -44,6 +65,17 @@ say() { printf '  %s\n' "$1"; }
 # ---------------------------------------------------------------------------
 if [ "$DO_UNINSTALL" -eq 1 ]; then
   echo "== 卸载 =="
+  if [ "$INSTANCE" != "default" ]; then
+    if [ -f "$UNITS/$MAIN_UNIT" ]; then
+      systemctl --user disable --now "$MAIN_UNIT" 2>/dev/null || true
+    fi
+    rm -f "$UNITS/$MAIN_UNIT"
+    rm -f "$STATE_DIR/port" "$STATE_DIR/last-error.txt"
+    systemctl --user daemon-reload 2>/dev/null || true
+    say "已移除实例 $INSTANCE 的服务和状态"
+    say "共享二进制、托盘、portal 授权与访问策略均保留"
+    exit 0
+  fi
   # 只在 unit 确实落在本次的目录里才停服务。
   # systemctl 是按 unit 名字找的，不看 XDG_CONFIG_HOME；不加这层判断，
   # 在别的 PREFIX/配置目录下跑 --uninstall 会误停正在用的服务。
@@ -64,7 +96,9 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
     pattern="[${process:0:1}]${process:1}"
     pkill -f "$pattern" 2>/dev/null || true
   done
-  rm -f "$RUNTIME_DIR/portal.node" "$STATE_DIR/portal.token"
+  rm -f "$RUNTIME_DIR/portal.node" "$STATE_ROOT/portal.token"
+  rm -f "$STATE_DIR/port" "$STATE_DIR/tray.owner" \
+        "$STATE_DIR/tray.miss" "$STATE_DIR/last-error.txt"
   for entry in "${SCREEN_KACHA_BINARIES[@]}"; do
     rm -f "$BIN/${entry##*:}"
   done
@@ -178,18 +212,32 @@ render() { # 模板 → 目标
       -e "s|@WAYLAND@|$WAYLAND|g" \
       -e "s|@PORT@|$PORT|g" \
       -e "s|@BIND@|$BIND|g" \
+      -e "s|@INSTANCE@|$INSTANCE|g" \
+      -e "s|@SHM@|$SHM|g" \
       "$1" > "$2"
 }
-for entry in "${SCREEN_KACHA_UNIT_TEMPLATES[@]}"; do
-  template="${entry%%:*}"
-  unit="${entry##*:}"
-  render "$ROOT/contrib/$template" "$UNITS/$unit"
-  say "$UNITS/$unit"
-done
+if [ "$INSTANCE" = "default" ]; then
+  for entry in "${SCREEN_KACHA_UNIT_TEMPLATES[@]}"; do
+    template="${entry%%:*}"
+    unit="${entry##*:}"
+    render "$ROOT/contrib/$template" "$UNITS/$unit"
+    say "$UNITS/$unit"
+  done
+else
+  for entry in "${SCREEN_KACHA_INSTANCE_UNIT_TEMPLATES[@]}"; do
+    template="${entry%%:*}"
+    unit="${entry##*:}"
+    unit="${unit//@INSTANCE@/$INSTANCE}"
+    render "$ROOT/contrib/$template" "$UNITS/$unit"
+    say "$UNITS/$unit"
+  done
+fi
 
-echo "== 装 portal 自启 =="
-render "$ROOT/contrib/$SCREEN_KACHA_PORTAL_DESKTOP.in" "$AUTOSTART/$SCREEN_KACHA_PORTAL_DESKTOP"
-say "$AUTOSTART/$SCREEN_KACHA_PORTAL_DESKTOP"
+if [ "$INSTANCE" = "default" ]; then
+  echo "== 装 portal 自启 =="
+  render "$ROOT/contrib/$SCREEN_KACHA_PORTAL_DESKTOP.in" "$AUTOSTART/$SCREEN_KACHA_PORTAL_DESKTOP"
+  say "$AUTOSTART/$SCREEN_KACHA_PORTAL_DESKTOP"
+fi
 
 # 配置文件只在缺失时放一份样例，不覆盖用户已经改过的
 CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/screen-kacha"
@@ -201,24 +249,41 @@ fi
 
 echo "== 启用 =="
 systemctl --user daemon-reload
-systemctl --user enable screen-kacha.service screen-kacha-tray.service >/dev/null
-say "两个 unit 已 enable（开机随图形会话启动）"
+if [ "$INSTANCE" = "default" ]; then
+  systemctl --user enable "$MAIN_UNIT" "$TRAY_UNIT" >/dev/null
+  say "默认服务与托盘 unit 已 enable（开机随图形会话启动）"
+else
+  systemctl --user enable "$MAIN_UNIT" >/dev/null
+  say "实例 $INSTANCE 服务已 enable；托盘和桌面授权由默认实例共享"
+fi
 
 if [ "$DO_START" -eq 1 ]; then
-  systemctl --user restart screen-kacha.service
+  MAIN_UNIT="screen-kacha.service"
+  TRAY_UNIT="screen-kacha-tray.service"
+  if [ "$INSTANCE" != "default" ]; then
+    MAIN_UNIT="screen-kacha-$INSTANCE.service"
+    TRAY_UNIT="screen-kacha-tray-$INSTANCE.service"
+  fi
+  systemctl --user restart "$MAIN_UNIT"
   sleep 2
-  systemctl --user restart screen-kacha-tray.service
-  sleep 1
+  if [ "$INSTANCE" = "default" ]; then
+    systemctl --user restart "$TRAY_UNIT"
+    sleep 1
+  fi
   say "已启动，健康检查："
   # 端口被占时服务会往上挪，挪完把实际端口写进状态目录。死认 $PORT 的话，
   # 这里会对着一个空端口报「服务还没起来」，而服务其实好好跑在隔壁。
   ACTUAL=$(cat "$STATE_DIR/port" 2>/dev/null || true)
   ACTUAL=${ACTUAL:-$PORT}
   [ "$ACTUAL" != "$PORT" ] && say "（$PORT 被占，实际监听 $ACTUAL）"
-  curl -s --max-time 5 "http://127.0.0.1:$ACTUAL/health" || echo "  服务还没起来，看 journalctl --user -u screen-kacha"
+  curl -s --max-time 5 "http://127.0.0.1:$ACTUAL/health" || echo "  服务还没起来，看 journalctl --user -u $MAIN_UNIT"
 else
-  say "没有立刻启动。要现在启动：systemctl --user start screen-kacha screen-kacha-tray"
-  say "或者重新运行：$0 --start"
+  if [ "$INSTANCE" = "default" ]; then
+    say "没有立刻启动。要现在启动：systemctl --user start screen-kacha screen-kacha-tray"
+  else
+    say "没有立刻启动。要现在启动：systemctl --user start $MAIN_UNIT"
+  fi
+  say "或者重新运行：INSTANCE=$INSTANCE $0 --start"
 fi
 
 echo
