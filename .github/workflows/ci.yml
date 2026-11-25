@@ -67,12 +67,13 @@ jobs:
       - name: 单元测试
         run: moon test --target native
 
-      - name: 构建三个可执行文件
-        run: moon build --target native --release cmd/main cmd/tray cmd/portal
+      - name: 构建 release 可执行文件
+        run: moon build --release --target native cmd/main cmd/tray cmd/portal cmd/cursor
 
-      # 冒烟脚本直接跑 _build/native/debug 下的二进制，所以先单独编一次 debug。
-      - name: 构建 debug（冒烟用）
-        run: moon build --target native cmd/main
+      # 所有交付可执行文件都要在 debug/release 两种模式下可链接；
+      # 冒烟脚本只直接使用 debug main。
+      - name: 构建 debug 可执行文件
+        run: moon build --target native cmd/main cmd/tray cmd/portal cmd/cursor
 
       # 冒烟用 --fake 假帧源，不需要显示器，也不会碰 portal。
       # 两条监听路径都要过：默认走 serve_on，受限走 serve_with_access。
