@@ -5,6 +5,7 @@
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+NAMES="$ROOT/contrib/screen-kacha-names.sh"
 PASS=0
 FAIL=0
 ok() { PASS=$((PASS+1)); }
@@ -43,12 +44,8 @@ else
 fi
 
 # --- 2) 卸载收尾 ---
-grep -q "pkill -f '\[s\]creen-kacha-portal-loop'" "$ROOT/install.sh" \
-  && ok || bad "卸载没有停止 portal loop"
-grep -q "pkill -f '\[s\]creen-kacha-portal --out'" "$ROOT/install.sh" \
-  && ok || bad "卸载没有停止 portal helper"
-grep -q "pkill -f '\[s\]creen-kacha-cursor'" "$ROOT/install.sh" \
-  && ok || bad "卸载没有停止 cursor helper"
+grep -q 'SCREEN_KACHA_PROCESSES' "$ROOT/install.sh" \
+  && ok || bad "卸载没有从命名表停止 helper"
 grep -q 'XDG_STATE_HOME.*screen-kacha' "$ROOT/install.sh" \
   && ok || bad "卸载没有使用 XDG_STATE_HOME 清理状态文件"
 grep -q 'portal.token' "$ROOT/install.sh" \
@@ -57,6 +54,34 @@ grep -q 'portal.token' "$ROOT/install.sh" \
 # 已改名的 portal loop 不能作为可执行旧模板留在 contrib。
 if [ -e "$ROOT/contrib/screenstream-portal-loop" ]; then
   bad "contrib 仍有旧名称的 portal loop"
+else
+  ok
+fi
+
+# install 和卸载必须消费同一份产物命名表；避免安装名、卸载名和检查规则漂移。
+if [ ! -f "$NAMES" ]; then
+  bad "缺少共享的 screen-kacha 产物命名表"
+else
+  # shellcheck disable=SC1090
+  . "$NAMES"
+  [ -n "${SCREEN_KACHA_BINARIES+x}" ] \
+    && grep -q 'screen-kacha-names.sh' "$ROOT/install.sh" \
+    && ok || bad "install.sh 没有使用共享命名表"
+  [ -n "${SCREEN_KACHA_PROCESSES+x}" ] \
+    && [ -n "${SCREEN_KACHA_UNIT_TEMPLATES+x}" ] \
+    && [ -n "${SCREEN_KACHA_PORTAL_LOOP+x}" ] \
+    && ok || bad "命名表缺少 helper、unit 或 portal loop"
+  [[ " ${SCREEN_KACHA_PROCESSES[*]} " == *" screen-kacha-portal-loop "* ]] \
+    && [[ " ${SCREEN_KACHA_PROCESSES[*]} " == *" screen-kacha-portal --out "* ]] \
+    && [[ " ${SCREEN_KACHA_PROCESSES[*]} " == *" screen-kacha-cursor "* ]] \
+    && ok || bad "命名表没有列齐卸载要停止的进程"
+fi
+
+# 运行代码与当前部署模板中不得再残留 Python 项目旧名。
+if grep -R -i -n 'screenstream' \
+  "$ROOT/install.sh" "$ROOT/contrib" "$ROOT/cmd" "$ROOT/moonutil" \
+  "$ROOT/portal_proc.mbt" "$ROOT/store.mbt"; then
+  bad "运行代码或部署文件仍含旧项目名 screenstream"
 else
   ok
 fi

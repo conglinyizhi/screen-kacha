@@ -9,7 +9,7 @@ set -u
 
 TOKEN="${XDG_STATE_HOME:-$HOME/.local/state}/screen-kacha/portal.token"
 OUT="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/screen-kacha/portal.node"
-BIN="${SCREENSTREAM_BIN:-$HOME/.local/bin}"
+BIN="${SCREEN_KACHA_BIN:-$HOME/.local/bin}"
 
 mkdir -p "$(dirname "$OUT")" "$(dirname "$TOKEN")"
 

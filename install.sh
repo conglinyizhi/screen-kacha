@@ -9,6 +9,7 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
+. "$ROOT/contrib/screen-kacha-names.sh"
 PREFIX="${PREFIX:-$HOME/.local}"
 BIN="$PREFIX/bin"
 DATA="$PREFIX/share/screen-kacha"
@@ -46,26 +47,28 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
   # 只在 unit 确实落在本次的目录里才停服务。
   # systemctl 是按 unit 名字找的，不看 XDG_CONFIG_HOME；不加这层判断，
   # 在别的 PREFIX/配置目录下跑 --uninstall 会误停正在用的服务。
-  if [ -f "$UNITS/screen-kacha-tray.service" ]; then
-    systemctl --user disable --now screen-kacha-tray.service 2>/dev/null || true
-  fi
-  if [ -f "$UNITS/screen-kacha.service" ]; then
-    systemctl --user disable --now screen-kacha.service 2>/dev/null || true
-  fi
-  rm -f "$UNITS/screen-kacha.service" "$UNITS/screen-kacha-tray.service"
-  rm -f "$AUTOSTART/screen-kacha-portal.desktop"
+  for entry in "${SCREEN_KACHA_UNIT_TEMPLATES[@]}"; do
+    unit="${entry##*:}"
+    if [ -f "$UNITS/$unit" ]; then
+      systemctl --user disable --now "$unit" 2>/dev/null || true
+    fi
+    rm -f "$UNITS/$unit"
+  done
+  rm -f "$AUTOSTART/$SCREEN_KACHA_PORTAL_DESKTOP"
   # 光标 helper 和 portal 助手都是自启拉起来的，systemctl disable 管不到它们。
   # portal 那边不收尾，桌面上会留一条活的 ScreenCast 会话（「正在共享屏幕」
   # 的指示、pw 里一条 capture 流），要等注销才消失 —— 软件已经删了，系统还在
   # 共享屏幕，观感上就是安全问题。
   # `[s]` 是为了让 pgrep 的模式不匹配到自己这条命令行。
-  pkill -f '[s]creen-kacha-portal-loop' 2>/dev/null || true
-  pkill -f '[s]creen-kacha-portal --out' 2>/dev/null || true
-  pkill -f '[s]creen-kacha-cursor' 2>/dev/null || true
+  for process in "${SCREEN_KACHA_PROCESSES[@]}"; do
+    pattern="[${process:0:1}]${process:1}"
+    pkill -f "$pattern" 2>/dev/null || true
+  done
   rm -f "$RUNTIME_DIR/portal.node" "$STATE_DIR/portal.token"
-  rm -f "$BIN/screen-kacha" "$BIN/screen-kacha-tray" \
-        "$BIN/screen-kacha-portal" "$BIN/screen-kacha-portal-loop" \
-        "$BIN/screen-kacha-cursor"
+  for entry in "${SCREEN_KACHA_BINARIES[@]}"; do
+    rm -f "$BIN/${entry##*:}"
+  done
+  rm -f "$BIN/$SCREEN_KACHA_PORTAL_LOOP"
   # 图标
   for sz in 22 44; do
     rm -f "$PREFIX/share/icons/hicolor/${sz}x${sz}/apps/screen-kacha-"*.png
@@ -142,14 +145,14 @@ say "Wayland 显示 $WAYLAND"
 # ---------------------------------------------------------------------------
 echo "== 装二进制 =="
 mkdir -p "$BIN" "$DATA" "$UNITS" "$AUTOSTART"
-for exe in main:screen-kacha tray:screen-kacha-tray portal:screen-kacha-portal cursor:screen-kacha-cursor; do
+for exe in "${SCREEN_KACHA_BINARIES[@]}"; do
   src="${exe%%:*}"
   dst="${exe##*:}"
   install -m 0755 "$BUILD/$src/$(basename "$src").exe" "$BIN/$dst"
   say "$dst"
 done
-install -m 0755 "$ROOT/contrib/screen-kacha-portal-loop" "$BIN/screen-kacha-portal-loop"
-say "screen-kacha-portal-loop"
+install -m 0755 "$ROOT/contrib/$SCREEN_KACHA_PORTAL_LOOP" "$BIN/$SCREEN_KACHA_PORTAL_LOOP"
+say "$SCREEN_KACHA_PORTAL_LOOP"
 
 echo "== 装文档 =="
 for f in README.md error.md skill.md llms.txt robots.txt human.html; do
@@ -177,14 +180,16 @@ render() { # 模板 → 目标
       -e "s|@BIND@|$BIND|g" \
       "$1" > "$2"
 }
-render "$ROOT/contrib/screen-kacha.service.in" "$UNITS/screen-kacha.service"
-render "$ROOT/contrib/screen-kacha-tray.service.in" "$UNITS/screen-kacha-tray.service"
-say "$UNITS/screen-kacha.service"
-say "$UNITS/screen-kacha-tray.service"
+for entry in "${SCREEN_KACHA_UNIT_TEMPLATES[@]}"; do
+  template="${entry%%:*}"
+  unit="${entry##*:}"
+  render "$ROOT/contrib/$template" "$UNITS/$unit"
+  say "$UNITS/$unit"
+done
 
 echo "== 装 portal 自启 =="
-render "$ROOT/contrib/screen-kacha-portal.desktop.in" "$AUTOSTART/screen-kacha-portal.desktop"
-say "$AUTOSTART/screen-kacha-portal.desktop"
+render "$ROOT/contrib/$SCREEN_KACHA_PORTAL_DESKTOP.in" "$AUTOSTART/$SCREEN_KACHA_PORTAL_DESKTOP"
+say "$AUTOSTART/$SCREEN_KACHA_PORTAL_DESKTOP"
 
 # 配置文件只在缺失时放一份样例，不覆盖用户已经改过的
 CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/screen-kacha"
