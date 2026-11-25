@@ -72,3 +72,17 @@ test "read_flag 精确取键并支持大小写" {
   assert_false(read_flag(text, "allow_lan_nex", false))
   assert_true(read_flag(text, "不存在的键", true))
 }
+
+///|
+/// 托盘读取的端口文件必须和服务端使用同一个 XDG 状态目录。
+test "port_file_path follows XDG_STATE_HOME" {
+  assert_eq(
+    port_file_path_with(Some("/tmp/xdg-state"), Some("/home/user")),
+    Some("/tmp/xdg-state/screen-kacha/port"),
+  )
+  assert_eq(
+    port_file_path_with(None, Some("/home/user")),
+    Some("/home/user/.local/state/screen-kacha/port"),
+  )
+  assert_eq(port_file_path_with(None, None), None)
+}

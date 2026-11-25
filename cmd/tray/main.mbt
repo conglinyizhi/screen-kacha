@@ -55,9 +55,21 @@ fn flag_on(m : @argparse.Matches, name : String) -> Bool {
 /// 端口被占时服务会往上挪，挪完把实际端口写进状态目录；托盘要是死认 unit 里
 /// 写的那一个号，就会一直显示「服务没响应」，而服务其实好好跑在隔壁端口上。
 /// 只在启动时读一次：服务换端口一般发生在它重启的时候，那时托盘通常也跟着重启。
+fn port_file_path_with(xdg : String?, home : String?) -> String? {
+  match @util.state_dir_with(xdg, home) {
+    Some(dir) => Some("\{dir}/port")
+    None => None
+  }
+}
+
+///|
 fn resolve_port(configured : Int32) -> Int32 {
-  let path = match @env.get_env_var("HOME") {
-    Some(h) => "\{h}/.local/state/screen-kacha/port"
+  let path = match
+    port_file_path_with(
+      @env.get_env_var("XDG_STATE_HOME"),
+      @env.get_env_var("HOME"),
+    ) {
+    Some(p) => p
     None => return configured
   }
   match capture_whole(path) {
