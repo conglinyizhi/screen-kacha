@@ -180,9 +180,13 @@ async test "访问控制配置不存在时使用兼容默认策略" {
 ///|
 async test "访问控制配置读取失败时不返回默认放行策略" {
   let path = "/tmp/ssmb-access-config-is-directory"
-  @fs.mkdir(path, recursive=true) catch { _ => () }
+  @fs.mkdir(path, recursive=true) catch {
+    _ => ()
+  }
   let loaded : Access? = load_access(path)
-  @fs.remove(path) catch { _ => () }
+  @fs.remove(path) catch {
+    _ => ()
+  }
   assert_true(loaded is None)
 }
 

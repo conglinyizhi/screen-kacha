@@ -346,9 +346,7 @@ pub async fn load_access(path : String) -> Access? {
   }
   let file = file.unwrap()
   defer file.close()
-  let text = try {
-    @utf8.decode_lossy(file.read_all().binary())
-  } catch {
+  let text = @utf8.decode_lossy(file.read_all().binary()) catch {
     err => {
       eprintln("读取访问控制配置失败（\{path}）：\{err}")
       return None

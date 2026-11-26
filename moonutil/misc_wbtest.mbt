@@ -43,8 +43,14 @@ test "b64_encode 三种尾巴" {
 
 ///|
 test "配置文件路径：认 XDG_CONFIG_HOME" {
-  assert_eq(access_conf_path_with(Some("/tmp/xdg-cfg"), Some("/home/u")), "/tmp/xdg-cfg/screen-kacha/access.conf")
-  assert_eq(access_conf_path_with(None, Some("/home/u")), "/home/u/.config/screen-kacha/access.conf")
+  assert_eq(
+    access_conf_path_with(Some("/tmp/xdg-cfg"), Some("/home/u")),
+    "/tmp/xdg-cfg/screen-kacha/access.conf",
+  )
+  assert_eq(
+    access_conf_path_with(None, Some("/home/u")),
+    "/home/u/.config/screen-kacha/access.conf",
+  )
   // 两个都没有时退到系统级路径，这个是有意的
   assert_eq(access_conf_path_with(None, None), "/etc/screen-kacha/access.conf")
 }
@@ -85,7 +91,9 @@ test "RuntimePaths 不为缺失 HOME 编造用户目录" {
 test "实例状态目录按实例名隔离" {
   assert_eq(
     instance_state_dir_with(
-      Some("/xdg/state"), Some("/home/u"), Some("default"),
+      Some("/xdg/state"),
+      Some("/home/u"),
+      Some("default"),
     ),
     Some("/xdg/state/screen-kacha"),
   )
@@ -94,7 +102,10 @@ test "实例状态目录按实例名隔离" {
     Some("/home/u/.local/state/screen-kacha/instances/worker-2"),
   )
   assert_eq(instance_state_dir_with(None, None, Some("default")), None)
-  assert_eq(instance_state_dir_with(None, Some("/home/u"), Some("bad/name")), None)
+  assert_eq(
+    instance_state_dir_with(None, Some("/home/u"), Some("bad/name")),
+    None,
+  )
 }
 
 ///|

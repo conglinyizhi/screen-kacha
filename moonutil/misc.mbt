@@ -160,8 +160,12 @@ fn valid_instance_name(name : String) -> Bool {
   }
   for i = 0; i < name.length(); i = i + 1 {
     let c = name[i].to_int()
-    if !((c >= 48 && c <= 57) || (c >= 65 && c <= 90) ||
-      (c >= 97 && c <= 122) || c == 45 || c == 95 || c == 46) {
+    if !((c >= 48 && c <= 57) ||
+      (c >= 65 && c <= 90) ||
+      (c >= 97 && c <= 122) ||
+      c == 45 ||
+      c == 95 ||
+      c == 46) {
       return false
     }
   }
@@ -248,7 +252,12 @@ pub fn access_conf_path_with(xdg : String?, home : String?) -> String {
       }
     None =>
       match home {
-        Some(h) => if h == "" { "" } else { "\{h}/.config/screen-kacha/access.conf" }
+        Some(h) =>
+          if h == "" {
+            ""
+          } else {
+            "\{h}/.config/screen-kacha/access.conf"
+          }
         None => "/etc/screen-kacha/access.conf"
       }
   }
@@ -274,7 +283,13 @@ pub fn parse_flag(v : String) -> Bool {
   let mut i = 0
   while i < s.length() {
     let c = s[i].to_int()
-    buf.write_char(if c >= 65 && c <= 90 { (c + 32).unsafe_to_char() } else { s[i].unsafe_to_char() })
+    buf.write_char(
+      if c >= 65 && c <= 90 {
+        (c + 32).unsafe_to_char()
+      } else {
+        s[i].unsafe_to_char()
+      },
+    )
     i = i + 1
   }
   let t = buf.to_string()

@@ -120,7 +120,9 @@ test "named instance default paths do not collide" {
   assert_eq(default_shm("capture-b"), "/tmp/screen-kacha-capture-b")
   assert_eq(
     @util.instance_state_dir_with(
-      Some("/state"), Some("/home/u"), Some("capture-b"),
+      Some("/state"),
+      Some("/home/u"),
+      Some("capture-b"),
     ),
     Some("/state/screen-kacha/instances/capture-b"),
   )
@@ -129,12 +131,8 @@ test "named instance default paths do not collide" {
 ///|
 test "CLI exposes instance and shared portal directory" {
   let m = cli_cmd().parse(argv=[
-    "--port", "8931", "--instance", "capture-b", "--portal-dir",
-    "/run/user/1000/screen-kacha",
+    "--port", "8931", "--instance", "capture-b", "--portal-dir", "/run/user/1000/screen-kacha",
   ])
   assert_eq(@util.pick(m, "instance", "default"), "capture-b")
-  assert_eq(
-    @util.pick(m, "portal-dir", ""),
-    "/run/user/1000/screen-kacha",
-  )
+  assert_eq(@util.pick(m, "portal-dir", ""), "/run/user/1000/screen-kacha")
 }

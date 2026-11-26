@@ -267,11 +267,7 @@ async fn main {
       let _ = Some(@fs.mkdir(dir, permission=0o700, recursive=true)) catch {
         _ => None
       }
-      let state_dir_kind = try {
-        Some(@fs.kind(dir))
-      } catch {
-        _ => None
-      }
+      let state_dir_kind = Some(@fs.kind(dir)) catch { _ => None }
       let state_dir_ok = match state_dir_kind {
         Some(@fs.FileKind::Directory) => true
         _ => false
@@ -289,13 +285,17 @@ async fn main {
         }
       }
       if !@store.acquire_instance_lock(dir) {
-        eprintln("实例 \{instance} 已经被另一个 screen-kacha 占着，这次不重复启动")
+        eprintln(
+          "实例 \{instance} 已经被另一个 screen-kacha 占着，这次不重复启动",
+        )
         @store.exit_process(0)
         return
       }
     }
     None => {
-      eprintln("--instance 只允许字母、数字、点、短横线和下划线")
+      eprintln(
+        "--instance 只允许字母、数字、点、短横线和下划线",
+      )
       @store.exit_process(2)
       return
     }
@@ -457,7 +457,9 @@ async fn main {
       // 服务先跑起来，portal 在后台拿屏幕流；拿不到就一直按 spectacle 服务
       // 假帧源不碰 portal：有固定图可用，没必要去抢真实屏幕，
       // 否则每跑一次冒烟都会弹一次「屏幕共享权限请求」。
-      group.spawn_bg(no_wait=true) <| async fn() { portal_bg(store, portal_dir) }
+      group.spawn_bg(no_wait=true) <| async fn() {
+        portal_bg(store, portal_dir)
+      }
     }
     if pump > 0 {
       // 推模式下泵不去要帧，但它是唯一盯着「流还活着没有」的地方，
