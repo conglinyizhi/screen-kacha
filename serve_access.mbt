@@ -91,7 +91,7 @@ pub fn exit_process(code : Int32) -> Unit {
 ///   由内核的 listen backlog 兜住新连接（跟 `serve_on` 的做法一致）
 pub async fn serve_with_access(
   router : Router,
-  mcp : @mcp.MCPServer,
+  mcp : McpEndpoint,
   server : @http.Server,
   access : Access,
   max_conns : Int32,
@@ -304,7 +304,7 @@ pub fn host_allowed(host : String) -> Bool {
 /// 读一个请求、分发给 app、把结果写回去。三段各有超时。
 async fn handle_one(
   router : Router,
-  mcp : @mcp.MCPServer,
+  mcp : McpEndpoint,
   conn : @http.ServerConnection,
 ) -> Unit {
   let request = try {
@@ -455,10 +455,16 @@ async fn send_json(
 /// 无状态协议：一次 POST 一个 JSON-RPC，回一个 JSON。没有 SSE、不保持连接，
 /// 所以和其余接口共用同一套超时与连接生命周期。
 async fn handle_mcp(
-  mcp : @mcp.MCPServer,
+  mcp : McpEndpoint,
   conn : @http.ServerConnection,
   headers : Map[String, String],
 ) -> Unit {
+  // 端点没构造出来就别假装在线。以前这里退化成「在线但一个工具都没有」，
+  // 调用方只能看到空的 tools/list，会以为是自己工具名配错了。
+  if !mcp.available() {
+    send_json(conn, 503, "{\"error\":\"MCP 不可用\"}")
+    return
+  }
   let len = match header_lookup(headers, "content-length") {
     Some(v) => @util.parse_int(v, -1)
     None => -1
@@ -479,7 +485,7 @@ async fn handle_mcp(
     }
     Some(b) => b
   }
-  let resp = Some(mcp_response(mcp, @utf8.decode_lossy(body))) catch {
+  let resp = Some(mcp.handle_request(@utf8.decode_lossy(body))) catch {
     e => {
       eprintln("MCP 处理失败：\{e}")
       None

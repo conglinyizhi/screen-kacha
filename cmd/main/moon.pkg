@@ -1,5 +1,4 @@
 import {
-  "colmugx/mcp",
   "conglinyizhi/screen-kacha/moonutil" @util,
   "conglinyizhi/screen-kacha" @store,
   "moonbitlang/async",

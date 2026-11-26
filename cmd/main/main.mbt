@@ -448,8 +448,8 @@ async fn main {
   let mcp = @store.build_mcp(store, port, access) catch {
     e => {
       eprintln("MCP 初始化失败，/mcp 不可用：\{e}")
-      // 退化成没有任何工具的服务端，其余接口照常
-      @mcp.MCPServer::MCPServer("screen-kacha", "0.1.0")
+      // 占位端点：/mcp 回 503，其余接口照常
+      @store.McpEndpoint::unavailable()
     }
   }
   @async.with_task_group() <| group => {
