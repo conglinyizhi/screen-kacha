@@ -34,6 +34,21 @@
 - 许可证：Apache-2.0
 - 主页：https://www.moonbitlang.com/
 
+### MoonBit 包依赖
+
+打包进二进制的源码依赖，全部与本项目的 Apache-2.0 兼容。
+
+| 包 | 用途 | 许可证 |
+|---|---|---|
+| `moonbitlang/async` | 异步运行时、HTTP、socket | Apache-2.0 |
+| `colmugx/mcp` | MCP 服务端 | Apache-2.0 |
+| `cc06b/mooncry` | 上面这个包的依赖 | Apache-2.0 |
+| `gmlewis/base64` | 上面这个包的依赖 | Apache-2.0 |
+| `colmugx/json-schema` | 上面这个包的依赖，校验工具入参 | Apache-2.0 |
+| `conglinyizhi/moondbus` | D-Bus 客户端 | Apache-2.0 |
+| `conglinyizhi/moonsni` | 托盘 StatusNotifierItem | Apache-2.0 |
+| `conglinyizhi/moon-embed` | 把静态资源嵌进二进制 | MIT |
+
 ## 运行时可选
 
 ### libpng

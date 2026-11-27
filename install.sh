@@ -10,6 +10,7 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
 . "$ROOT/contrib/screen-kacha-names.sh"
+. "$ROOT/scripts/lib.sh"
 PREFIX="${PREFIX:-$HOME/.local}"
 BIN="$PREFIX/bin"
 DATA="$PREFIX/share/screen-kacha"
@@ -127,10 +128,11 @@ if [ "${#missing[@]}" -gt 0 ]; then
   exit 1
 fi
 
+# 产物路径要么带模块名（有 moon.work 时），要么不带，交给 scripts/lib.sh 判。
 BUILD=""
-for candidate in "$ROOT/_build/native/release/build/cmd" \
-                 "$ROOT/_build/native/debug/build/cmd"; do
-  [ -d "$candidate" ] && BUILD="$candidate" && break
+for profile in release debug; do
+  base=$(sk_build_root "$ROOT" "$profile") || continue
+  [ -d "$base/cmd" ] && BUILD="$base/cmd" && break
 done
 if [ -z "$BUILD" ]; then
   echo "找不到构建产物。先构建：" >&2

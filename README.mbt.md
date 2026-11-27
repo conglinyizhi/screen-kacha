@@ -40,7 +40,7 @@ moon build --target native --release cmd/main cmd/tray cmd/portal
 不想装 systemd 就直接跑：
 
 ```bash
-WAYLAND_DISPLAY=wayland-1 ./_build/native/release/build/cmd/main/main.exe --port 8930
+WAYLAND_DISPLAY=wayland-1 "$(bash -c '. scripts/lib.sh; sk_exe . release cmd/main')" --port 8930
 ```
 
 ## 端点

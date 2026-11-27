@@ -4,7 +4,11 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
-BIN="$ROOT/_build/native/debug/build/cmd/main/main.exe"
+. "$ROOT/scripts/lib.sh"
+BIN=$(sk_exe "$ROOT" debug cmd/main) || {
+  echo "找不到 debug 版 main.exe，先构建" >&2
+  exit 1
+}
 WORK=$(mktemp -d)
 STATE="$WORK/state"
 A_PID=""

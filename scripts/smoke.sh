@@ -5,6 +5,12 @@ set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT" || exit 1
+. "$ROOT/scripts/lib.sh"
+MAIN_EXE=$(sk_exe "$ROOT" debug cmd/main) || {
+  echo "找不到 debug 版 main.exe。先构建：" >&2
+  echo "  moon build --target native cmd/main cmd/tray cmd/portal cmd/cursor" >&2
+  exit 1
+}
 
 PORT=${PORT:-$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')}
 WORK=$(mktemp -d)
@@ -60,7 +66,7 @@ cp "$ROOT"/human.html "$ROOT"/llms.txt "$ROOT"/skill.md "$ROOT"/error.md \
 echo "== 起实例（端口 $PORT，假帧源）=="
 # timeout：即使外层把本脚本整个杀掉（ssh 断了、CI 取消、按了 Ctrl-C），
 #          服务也会在 300 秒后自己退出，不会变成抢屏幕流的孤儿进程。
-timeout 300 ./_build/native/debug/build/cmd/main/main.exe \
+timeout 300 "$MAIN_EXE" \
   --port "$PORT" --bind 127.0.0.1 --pump 100 \
   --shm "$WORK/shm" --fake "$WORK/frame.png" --data "$WORK/data" \
   ${ACCESS_CONF:+--access "$ACCESS_CONF"} >"$PORT_LOG" 2>&1 &
@@ -223,7 +229,7 @@ OCC_PID=$!
 sleep 0.6
 FB_DIR=$(mktemp -d "$WORK/fb.XXXXXX")
 FB_LOG="$WORK/fb.log"
-timeout 300 ./_build/native/debug/build/cmd/main/main.exe \
+timeout 300 "$MAIN_EXE" \
   --instance port-fallback --port "$OCC" --bind 127.0.0.1 --pump 100 \
   --shm "$FB_DIR" --fake "$WORK/frame.png" --data "$WORK/data" \
   --access /dev/null >"$FB_LOG" 2>&1 &
@@ -252,7 +258,7 @@ wait "$FB_PID" 2>/dev/null
 echo "== 同一帧目录不重复启动 =="
 # 帧目录已经被主实例锁着，第二个实例应该干净退出而不是再起一份抢临时文件
 DUP_PORT=$((PORT + 1500))
-timeout 30 ./_build/native/debug/build/cmd/main/main.exe \
+timeout 30 "$MAIN_EXE" \
   --instance duplicate-shm --port "$DUP_PORT" --bind 127.0.0.1 --pump 100 \
   --shm "$WORK/shm" --fake "$WORK/frame.png" --data "$WORK/data" \
   --access /dev/null >"$WORK/dup.log" 2>&1
@@ -264,7 +270,7 @@ echo "== 没有数据目录也能用（文档与素材内嵌在二进制里）==
 EMB_PORT=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
 EMB_SHM=$(mktemp -d "$WORK/emb.XXXXXX")
 MISSING_DATA="/tmp/screen-kacha-no-such-dir-$$"
-timeout 300 ./_build/native/debug/build/cmd/main/main.exe \
+timeout 300 "$MAIN_EXE" \
   --instance embedded-assets --port "$EMB_PORT" --bind 127.0.0.1 --pump 100 \
   --shm "$EMB_SHM" --fake "$WORK/frame.png" --data "$MISSING_DATA" \
   --access /dev/null >"$WORK/emb.log" 2>&1 &
@@ -288,11 +294,11 @@ echo "== 端口是必填的 =="
 # 端口没有默认值：不给就得拒绝启动，不能静默挑一个（那会和安装版撞端口，
 # 排查的人还以为连的是同一个服务）
 NO_PORT_RC=0
-./_build/native/debug/build/cmd/main/main.exe >/dev/null 2>&1 || NO_PORT_RC=$?
+"$MAIN_EXE" >/dev/null 2>&1 || NO_PORT_RC=$?
 [ "$NO_PORT_RC" -ne 0 ] && ok || bad "不给 --port 居然起了"
 for bad_port in 0 70000 abc; do
   RC=0
-  ./_build/native/debug/build/cmd/main/main.exe --port "$bad_port" >/dev/null 2>&1 || RC=$?
+  "$MAIN_EXE" --port "$bad_port" >/dev/null 2>&1 || RC=$?
   [ "$RC" -ne 0 ] && ok || bad "非法端口 $bad_port 居然被接受"
 done
 

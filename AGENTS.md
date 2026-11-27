@@ -5,8 +5,8 @@
 
 ## 先看这几条
 
-1. 冒烟脚本读的是 `_build/native/debug` 下的二进制。只编 release 会直接 FAIL，
-   两个 target 都得编
+1. 冒烟脚本读的是 debug 版 `main.exe`。只编 release 会直接 FAIL，两个 target 都得编。
+   二进制路径统一走 `scripts/lib.sh` 的 `sk_exe`，别在脚本和文档里写死
 2. 改 `.mbt` 要重编；改 `human.html`、`*.md`、`*.txt` **不用**，服务是运行时读文件的
 3. 手动跑二进制必须带 `--port`，代码里没有默认端口（免得和常驻服务撞端口）
 
@@ -40,7 +40,8 @@ bash scripts/smoke-instances.sh
 部署：
 
 ```bash
-install -m 0755 _build/native/release/build/cmd/main/main.exe ~/.local/bin/screen-kacha
+install -m 0755 "$(bash -c '. scripts/lib.sh; sk_exe . release cmd/main')" \
+  ~/.local/bin/screen-kacha
 systemctl --user restart screen-kacha.service
 ```
 
@@ -49,7 +50,8 @@ systemctl --user restart screen-kacha.service
 ```text
 根包              对外网关。app.mbt 定路由，store.mbt 管帧缓存和采集，
                   access.mbt 访问控制，cursor.mbt 画鼠标指针，
-                  pages.mbt 是各种文本页面和 `/` 的外壳
+                  pages.mbt 是各种文本页面和 `/` 的外壳，
+                  mcp.mbt 是两个 MCP 工具，mcp_endpoint.mbt 是端点抽象层
 moonpipewire/     PipeWire 取帧的 C 绑定，pw_shim.c 里自己起线程跑 main loop
 moonimage/        BGRA 到 JPEG/WebP，image_shim.c 里是面积平均缩放
 cmd/main/         服务本体
@@ -101,6 +103,16 @@ cmd/imgtest/      手动比对编码器输出的小工具
 
 **页面对 agent 不可见是设计。** 不执行 JS 的客户端只拿到外壳里那段说明文字，
 不会下载十几 KB 界面。改外壳时别把界面内容塞回去。
+
+**`@mcp` 只许出现在 `mcp_endpoint.mbt`。** 它是 MCP 端点的抽象层，上层
+（`mcp.mbt`、`serve_access.mbt`、`cmd/main`）只认 `McpEndpoint`、`McpToolResult`、
+`McpContent`、`McpTool` 这四个自家类型。要对齐 SDK 就在 `to_sdk_result` 里对，
+别把 `@mcp.` 漏到别的文件 —— 那样换实现时又要改一遍调用方。
+
+**MCP SDK 是 `colmugx/mcp@0.20.0`，来自注册表。** 1.0 RC 那阵子 0.19.2 编不过，
+曾经用 `moon.work` 顶过一份 vendored 源码。以后再遇到这种要顶的情况，注意
+`moon.work` 会把构建产物路径变成 `_build/.../build/<模块名>/<包>`，`scripts/lib.sh`
+两种布局都认，别另外写死路径。
 
 ## MoonBit 惯例
 

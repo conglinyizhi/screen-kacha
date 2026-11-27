@@ -118,7 +118,7 @@ INSTANCE=capture-b ./install.sh --uninstall
 ### 不装 systemd，直接跑
 
 ```bash
-WAYLAND_DISPLAY=wayland-1 ./_build/native/release/build/cmd/main/main.exe --port 8930
+WAYLAND_DISPLAY=wayland-1 "$(bash -c '. scripts/lib.sh; sk_exe . release cmd/main')" --port 8930
 ```
 
 ## 实现要点
